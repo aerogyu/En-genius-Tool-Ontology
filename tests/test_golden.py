@@ -76,11 +76,21 @@ def test_GRADE_OP_only_operation_mode():
     assert u.automatable and u.auto_if in oracle.NON_AUTO_IF   # 자동화 IF 로는 불가 — 조작 방식 분기로만 가능
 
 
-@pytest.mark.parametrize("case", ["GRADE-C", "GRADE-SUPPLIER-B", "GRADE-SUPPLIER-X", "P8", "P12", "D2"])
+@pytest.mark.parametrize("case", ["GRADE-C", "GRADE-SUPPLIER-B", "GRADE-SUPPLIER-X", "P8", "P12"])
 def test_manual_feed_grades(case):
     e = CASES[case]["manual_feed"]
     f = _feed(e["from"], e["to"])
     assert f.manual and f.grade == e["grade"]
+
+
+def test_I32_manual_applies_only_to_listed_partners():
+    for e in CASES["I32"]["manual_feeds"]:
+        assert _feed(e["from"], e["to"]).manual               # 연계 SW 에 두 상대 → 둘 다 수기
+    e = CASES["D2"]["not_manual_feed"]
+    f = _feed(e["from"], e["to"])                             # Feed 는 있지만
+    assert f.o.transfer in oracle.MANUAL_TRANSFER and f.o.partner_raw and f.i.owner.tool not in f.o.partner_tools
+    assert (f.manual, f.manual_basis, f.grade) == (False, None, None)   # 적힌 상대가 아니라 수기 아님
+    assert (f.o.owner.key, f.i.owner.key) not in {(s, c) for s, c, _, _ in _ranking()}
 
 
 def test_all_grades_present_in_ranking():
@@ -151,11 +161,29 @@ def test_P9_missing():
 
 
 def test_P11_note_signal_both_sides():
-    ranked = {(h["supplier"], h["consumer"]) for h in AGG["handoff_ranking"]}
+    ranked = {(s, c): (k, g) for s, c, k, g in _ranking()}
     for e in CASES["P11"]["feeds"]:
         f = _feed(e["from"], e["to"])
         assert (f.manual, f.manual_basis, f.grade) == (e["manual"], e["manual_basis"], e["grade"])
-        assert (f.o.owner.key, f.i.owner.key) not in ranked   # I3
+        assert ranked[(f.o.owner.key, f.i.owner.key)] == (CASES["P11"]["ranking_kind"], e["grade"])   # I3
+
+
+def test_I3_note_rows_follow_manual_within_grade():
+    rows = _ranking()
+    for g in ("A", "B", "C", "제외"):
+        kinds = [k for *_, k, gg in rows if gg == g]
+        assert kinds == sorted(kinds, key=lambda k: k == "비고"), g
+
+
+def test_RESEND_only_latest_file_loaded():
+    e = CASES["RESEND"]
+    per = AGG["loader_per_file"]
+    assert per[e["superseded"]]["superseded"] and not per[e["effective"]]["superseded"]
+    assert per[e["superseded"]]["usage_rows"] == per[e["superseded"]]["io_rows"] == 0
+    assert f"재발송으로 대체: {e['superseded']} → {e['effective']} (적재 안 함)" in AGG["warnings"]
+    assert e["absent_tool"] not in AGG["tools"] and e["absent_tool"] not in AGG["missing_tools"]
+    old = next(x for x in synth.load_spec()["files"] if "file_date" in x)
+    assert any(u["sw_id"] == "가상-구형설계툴" or u.get("name") == "가상-구형설계툴" for u in old["usages"])
 
 
 def test_D2_two_io_nodes():
@@ -230,10 +258,14 @@ def test_handoff_ranking_order_explained():
         ("연소기/COM-04", "시험/TEST-01", "수기", "A"),                 # 위와 정렬 키 동률 → 공급 키 순 (I5)
         ("터빈/TURB-01", "구조/STR-02", "변환", "A"),                   # 수요 주1회·6명
         ("성능/PERF-01", "2차유로(SAS)/SAS-02", "수기", "A"),           # 수요 주1회·3명
+        ("터빈/TURB-02", "터빈/TURB-03", "비고", "A"),                  # 비고 행은 같은 등급의 수기·변환 뒤 (I3)
+        ("연소기/COM-02", "터빈/TURB-03", "비고", "A"),                 # 수요 동일 → 공급 키 내림차순
+        ("2차유로(SAS)/SAS-04", "터빈/TURB-03", "비고", "A"),
+        ("시험/TEST-02", "시험/TEST-03", "비고", "A"),
         ("압축기/COM-05", "구조/STR-02", "변환", "B"),                  # 수요 주1회·6명, 공급 3명
         ("2차유로(SAS)/SAS-03", "구조/STR-02", "수기", "B"),            # 공급 인원 원문뿐 → 최소 (I6)
-        ("2차유로(SAS)/SAS-01", "2차유로(SAS)/SAS-03", "수기", "B"),    # 수요 인원 원문뿐 → STR-02 수요 행보다 뒤
-        ("터빈/TURB-02", "2차유로(SAS)/SAS-03", "수기", "B"),           # 공급 주1회
+        ("터빈/TURB-02", "2차유로(SAS)/SAS-03", "수기", "B"),           # 수요 인원 원문뿐 → STR-02 수요 행보다 뒤
+        # SAS-01 → SAS-03 (수기 행, 연계 SW 는 가상-미조사툴) 은 I32 로 수기가 아니라 순위에 없다
         ("시험/TEST-05", "2차유로(SAS)/SAS-03", "수기", "C"),
         ("구조/STR-04", "구조/STR-02", "수기", "제외"),                 # 공급 측 폐쇄망 불가
         ("구조/STR-03", "구조/STR-04", "수기", "제외"),                 # 수요 측 폐쇄망 불가

@@ -65,7 +65,7 @@ Name: engenius_tool
 | [loaded_at](loaded_at.md) | 적재 일시 |
 | [loaded_in](loaded_in.md) | 이 노드를 만든 적재 기록 (provenance) |
 | [manual](manual.md) | 수기 구간 여부 (전달 방법 기준) |
-| [manual_basis](manual_basis.md) | 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 |
+| [manual_basis](manual_basis.md) | 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false) |
 | [matched_category](matched_category.md) | 양쪽이 일치한 분류 |
 | [matched_extensions](matched_extensions.md) | 양쪽이 겹친 정규화 확장자 |
 | [merged_into](merged_into.md) | 사람 판정으로 다른 Tool 에 통합된 경우 그 대상 (status=통합됨과 함께) |

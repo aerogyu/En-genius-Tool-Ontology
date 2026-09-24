@@ -6,7 +6,7 @@ search:
 # Slot: manual 
 
 
-_수기 구간 여부 (전달 방법 기준)._
+_수기 구간 여부 (전달 방법 기준). 수기 행이 연계 SW 를 적었으면 그중 해석된 상대 툴과의 Feed 에만 적용한다 (골든 I32)._
 
 
 
@@ -92,7 +92,8 @@ URI: [eg:manual](http://en-genius.local/onto/manual)
 <details>
 ```yaml
 name: manual
-description: 수기 구간 여부 (전달 방법 기준).
+description: 수기 구간 여부 (전달 방법 기준). 수기 행이 연계 SW 를 적었으면 그중 해석된 상대 툴과의 Feed 에만 적용한다 (골든
+  I32).
 from_schema: http://en-genius.local/onto/
 rank: 1000
 owner: Feed

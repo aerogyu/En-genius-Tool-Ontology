@@ -6,7 +6,7 @@ search:
 # Slot: manual_basis 
 
 
-_수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호._
+_수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false)._
 
 
 
@@ -91,7 +91,7 @@ URI: [eg:manual_basis](http://en-genius.local/onto/manual_basis)
 <details>
 ```yaml
 name: manual_basis
-description: 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호.
+description: 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false).
 from_schema: http://en-genius.local/onto/
 rank: 1000
 owner: Feed

@@ -12,7 +12,8 @@ import pytest
 from engenius_onto import synth
 
 SPEC = synth.load_spec()
-BY_FIELD = {e["field"]: e for e in SPEC["files"]}
+BY_FIELD = {e["field"]: e for e in SPEC["files"] if "file_date" not in e}   # 분야별 유효 파일 (재발송 이전 파일 제외)
+FILE_IDS = [synth.file_name(SPEC, e) for e in SPEC["files"]]
 
 
 def test_committed_files_match_spec():
@@ -26,8 +27,9 @@ def test_generation_is_deterministic():
         hashlib.sha256(synth.build_workbook_bytes(SPEC, e)).digest()
 
 
-def _wb(field):
-    return openpyxl.load_workbook(synth.OUT_DIR / synth.file_name(SPEC, BY_FIELD[field]))
+def _wb(entry):
+    """분야 이름(유효 파일) 또는 파일 명세."""
+    return openpyxl.load_workbook(synth.OUT_DIR / synth.file_name(SPEC, BY_FIELD[entry] if isinstance(entry, str) else entry))
 
 
 def _rows(ws, start, renamed):
@@ -43,10 +45,10 @@ def _as_cell(v):
     return v
 
 
-@pytest.mark.parametrize("entry", SPEC["files"], ids=[e["field"] for e in SPEC["files"]])
+@pytest.mark.parametrize("entry", SPEC["files"], ids=FILE_IDS)
 def test_xlsx_carries_spec_rows(entry):
     """명세의 모든 행이 해당 파일의 올바른 위치에 그대로 들어 있다 (셀 타입·덧붙인 열 포함)."""
-    wb = _wb(entry["field"])
+    wb = _wb(entry)
     tmpl = openpyxl.load_workbook(synth.REPO_ROOT / SPEC["template"])
     overrides = entry.get("header_overrides", {})
     du, di = SPEC["defaults"]["usage"], SPEC["defaults"]["io"]
@@ -135,6 +137,16 @@ def test_guide_sheet_pseudonyms_only():
 def test_file_names_follow_form_rule():
     for e in SPEC["files"]:
         assert re.fullmatch(r"SW조사_[^_]+_\d{8}\.xlsx", synth.file_name(SPEC, e))
+    assert len(set(FILE_IDS)) == len(FILE_IDS)
+
+
+def test_resend_file_is_older_same_field():
+    """재발송 사례(I33): 같은 분야의 이전 날짜 파일이 따로 있고, 분야 이름으로 고르면 최신 파일이 나온다."""
+    old = [e for e in SPEC["files"] if "file_date" in e]
+    assert [e["field"] for e in old] == ["압축기"]
+    assert old[0]["file_date"] < SPEC["file_date"]
+    assert (synth.OUT_DIR / synth.file_name(SPEC, old[0])).exists()
+    assert synth.file_name(SPEC, "압축기").endswith(f"_{SPEC['file_date']}.xlsx")
 
 
 # --- 합성 데이터 규칙 (CLAUDE.md 절대 규칙 2·5) -------------------------------------------

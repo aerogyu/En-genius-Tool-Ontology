@@ -272,6 +272,16 @@ def check_row(keys: dict, v: dict, choices: dict, where: str, warnings: list, sh
 
 
 # --------------------------------------------------------------------------- 계산
+def manual_applies(row: "IO", counterpart_tool: str) -> bool:
+    """[I32] (Leo 2026-09-24) 수기 전달이 적힌 행이 연계 SW명을 적었다면 그 수기는 적힌(해석된) 상대에게만 적용한다.
+    연계 SW명이 비었으면 모든 상대에게 적용. 해석 못 한 이름만 적었으면 조사된 어떤 상대에게도 적용하지 않는다."""
+    if row.transfer not in MANUAL_TRANSFER:
+        return False
+    if not split_partners(row.partner_raw):
+        return True
+    return counterpart_tool in row.partner_tools
+
+
 def grade(supplier: Usage, consumer: Usage) -> str:
     if supplier.airgap in AIRGAP_EXCLUDED or consumer.airgap in AIRGAP_EXCLUDED:
         return "제외"
@@ -289,13 +299,31 @@ def compute(spec: dict, repo: Path) -> dict:
     by_file_id: dict[tuple[str, str], Usage] = {}
     raw_ios = []
 
+    # 재발송 [I33]: 파일명의 분야가 같은 파일 중 (날짜, 파일명) 이 가장 늦은 것만 적재한다
+    def fname_of(f):
+        return spec["file_name"].format(field=f["field"], date=f.get("file_date", spec["file_date"]))
+
+    latest = {}
+    for f in spec["files"]:
+        k = (f.get("file_date", spec["file_date"]), fname_of(f))
+        if f["field"] not in latest or k > latest[f["field"]][0]:
+            latest[f["field"]] = (k, f)
+    superseded = []
+    for f in spec["files"]:
+        if latest[f["field"]][1] is not f:
+            superseded.append(fname_of(f))
+            warnings.append(f"재발송으로 대체: {fname_of(f)} → {fname_of(latest[f['field']][1])} (적재 안 함)")
+            per_file[fname_of(f)] = {"usage_rows": 0, "io_rows": 0, "excluded": 0, "warnings": 1, "superseded": True}
+
     for f in spec["files"]:
         ff = f["field"]
-        fname = spec["file_name"].format(field=ff, date=f.get("file_date", spec["file_date"]))
+        fname = fname_of(f)
+        if fname in superseded:
+            continue
         choices = {k: list(v) for k, v in base_choices.items()}
         if f.get("extra_categories", True):
             choices["온톨로지분류"] += spec.get("extra_categories", [])
-        stats = {"usage_rows": 0, "io_rows": 0, "excluded": 0, "warnings": 0}
+        stats = {"usage_rows": 0, "io_rows": 0, "excluded": 0, "warnings": 0, "superseded": False}
         w0 = len(warnings)
 
         # 헤더 [docs/02 5장 1]: 바뀐 문구는 정규화 비교로 매핑, 매핑 안 되는 헤더는 경고
@@ -425,13 +453,13 @@ def compute(spec: dict, repo: Path) -> dict:
             m = sorted(set(o.exts) & set(i.exts))
             if not m:
                 continue
-            manual = o.transfer in MANUAL_TRANSFER or i.transfer in MANUAL_TRANSFER      # [I21] 정확 일치
+            manual = manual_applies(o, i.owner.tool) or manual_applies(i, o.owner.tool)   # [I21] [I32]
             note_hit = any(k in o.note or k in i.note for k in NOTE_KEYWORDS)              # 비고마다 따로
+            basis = "전달방법" if manual else ("비고" if note_hit else None)
             feeds.append(Feed(
                 o, i, m, "낮음" if all(e in GENERIC_EXT for e in m) else "보통",
                 (i.owner.tool in o.partner_tools) or (o.owner.tool in i.partner_tools),
-                manual, "전달방법" if manual else ("비고" if note_hit else None),
-                grade(o.owner, i.owner) if manual else None))                            # [I3]
+                manual, basis, grade(o.owner, i.owner) if basis else None))              # [I3] 비고 신호도 등급
 
     # CQ04 대조
     recon = []
@@ -466,8 +494,16 @@ def compute(spec: dict, repo: Path) -> dict:
             s, c = (u, x.owner) if x.direction == "in" else (x.owner, u)
             ent = handoffs.setdefault((s.key, c.key, "변환"), [s, c, "변환", grade(s, c), []])
             ent[4].append(x.key)
+    # [I3] (Leo 2026-09-24) 비고 신호 구간도 '비고' 종류로 올린다 — 같은 쌍의 수기 행이 있으면 올리지 않는다
+    for f in feeds:
+        if f.manual_basis == "비고" and (f.o.owner.key, f.i.owner.key, "수기") not in handoffs:
+            ent = handoffs.setdefault((f.o.owner.key, f.i.owner.key, "비고"),
+                                      [f.o.owner, f.i.owner, "비고", f.grade, []])
+            ent[4] += [f.o.key, f.i.key]
+    # [I18] 같은 등급 안에서 비고 행은 수기·변환 행 뒤 (근거가 약하다)
     ranked = sorted(handoffs.values(), key=lambda h: (
-        GRADE_ORDER[h[3]], *[-v for v in h[1].sort_key()], *[-v for v in h[0].sort_key()], h[0].key, h[1].key))
+        GRADE_ORDER[h[3]], h[2] == "비고", *[-v for v in h[1].sort_key()], *[-v for v in h[0].sort_key()],
+        h[0].key, h[1].key))
 
     # CQ05 고립 [I11]
     has_io = {x.owner.key for x in owned}

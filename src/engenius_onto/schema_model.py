@@ -364,7 +364,7 @@ class ManualBasis(str, Enum):
     """
     비고 = "비고"
     """
-    전달 방법은 아니지만 비고에 수작업 키워드 — 보조 신호
+    전달 방법은 아니지만 비고에 수작업 키워드 — 보조 신호. 착수 순위에 종류 '비고' 로 표시
     """
 
 
@@ -866,9 +866,9 @@ class Feed(Derived):
     confidence: FeedConfidence = Field(default=..., description="""겹친 확장자가 전부 범용(config rules.yaml generic_extensions)이면 낮음.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     declared: bool = Field(default=..., description="""어느 한쪽의 신고(연계 SW명)와 일치하는지 (docs/02 7.2).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     transfer: Optional[list[TransferMethod]] = Field(default=None, description="""양쪽 명세의 전달 방법.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
-    manual: bool = Field(default=..., description="""수기 구간 여부 (전달 방법 기준).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
-    manual_basis: Optional[ManualBasis] = Field(default=None, description="""수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
-    grade: Optional[StartGrade] = Field(default=None, description="""착수 등급 (docs/02 7.4) — 수기 연결(manual=true)인 Feed 에 매긴다. 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
+    manual: bool = Field(default=..., description="""수기 구간 여부 (전달 방법 기준). 수기 행이 연계 SW 를 적었으면 그중 해석된 상대 툴과의 Feed 에만 적용한다 (골든 I32).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
+    manual_basis: Optional[ManualBasis] = Field(default=None, description="""수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
+    grade: Optional[StartGrade] = Field(default=None, description="""착수 등급 (docs/02 7.4) — 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에 매긴다 (비고 신호는 착수 순위에 종류 '비고' 로 따로 올린다 — 골든 I3). 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     rule_version: str = Field(default=..., description="""이 파생 노드를 만든 규칙 버전 (예 feed_v1).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived']} })
     derived_from: list[str] = Field(default=..., description="""파생의 근거가 된 적재 기록 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:wasDerivedFrom'} })
     generated_at: datetime  = Field(default=..., description="""파생 노드 생성 일시 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:generatedAtTime'} })

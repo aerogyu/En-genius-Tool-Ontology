@@ -30,7 +30,7 @@ URI: [eg:ManualBasis](http://en-genius.local/onto/ManualBasis)
 
 | Name | Description |
 | ---  | --- |
-| [manual_basis](manual_basis.md) | 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 |
+| [manual_basis](manual_basis.md) | 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false) |
 
 
 
@@ -71,7 +71,7 @@ permissible_values:
     description: 어느 한쪽의 전달 방법이 수기 전달 값
   비고:
     text: 비고
-    description: 전달 방법은 아니지만 비고에 수작업 키워드 — 보조 신호
+    description: 전달 방법은 아니지만 비고에 수작업 키워드 — 보조 신호. 착수 순위에 종류 '비고' 로 표시
 
 ```
 </details>

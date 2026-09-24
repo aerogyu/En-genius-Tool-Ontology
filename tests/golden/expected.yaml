@@ -1,5 +1,5 @@
-# 골든 기대값 (M2 v2) — 합성 조사 파일(data/synthetic/survey/)로 M3 적재·M4 도출이 내야 할 결과.
-# 손으로 쓴 부분: interpretations, open_questions, loader, cases.
+# 골든 기대값 (M2 v3) — 합성 조사 파일(data/synthetic/survey/)로 M3 적재·M4 도출이 내야 할 결과.
+# 손으로 쓴 부분: interpretations, decisions, loader, cases.
 # 자동 부분: aggregates — tests/golden/oracle.py 가 명세에서 계산한다. test_golden 이 명세·참조 계산과 이 값이 같은지 검사한다.
 # 명세를 바꾸면 python tests/golden/make_expected.py 로 다시 만든다 (손으로 쓴 부분은 이 머리말 파일에서 유지).
 #
@@ -9,7 +9,7 @@
 #   고아    = "<파일 분야>/<SW ID>(고아)/..."
 #   툴      = 정규화 키 (docs/02 6.1) — 대표 이름(prefLabel)은 M3 가 정하므로 골든에서 검사하지 않는다
 
-version: 2
+version: 3
 spec: data/synthetic/survey_spec.yaml
 
 # docs/02 가 정하지 않아 M2 에서 정한 해석 — M3·M4 는 이대로 구현한다. 바꾸려면 여기와 oracle.py 를 함께 고친다.
@@ -19,8 +19,9 @@ interpretations:
     같으면 그 툴로 해석한다 (예 'ANSYS Fluent' → fluent, 'Microsoft Excel' → excel). 떼고 남는 것이 없으면 떼지 않는다 (I14).
   I2-버전토큰: "공백으로 나눈 토큰 중 ^(v\\d+(\\.\\d+)*|\\d{4}r\\d+|r\\d+[a-z]?|sp\\d+|\\d+(\\.\\d+)+)$ 는 버린다 (예 'CATIA V5' → catia)."
   I3-비고신호: >-
-    전달 방법은 수기가 아니고 입력·출력 어느 한쪽 비고에 수작업 키워드가 있는 Feed 는 manual=false·manual_basis=비고·등급 없음.
-    착수 순위에서 빼고 CQ02 보조 목록에만 둔다. (Leo 확인 Q-I3)
+    전달 방법은 수기가 아니고(I32 적용 후) 입력·출력 어느 한쪽 비고에 수작업 키워드가 있는 Feed 는 manual=false·manual_basis=비고,
+    등급은 수기와 같은 규칙(7.4)으로 매긴다. 착수 순위에 종류 '비고' 로 따로 올리고, 같은 등급 안에서 수기·변환 행 뒤에 둔다
+    (그 안의 순서는 I18·I5). 같은 (공급, 수요) 쌍에 수기 행이 있으면 비고 행은 만들지 않는다. (Leo 결정 2026-09-24, Q-I3)
   I4-변환구간: >-
     '숨은변환 의심' (입출력 x, 상대 툴 T) 는 T 의 툴사용 각각과 쌍으로 펼친다 (D1-2). x 가 입력이면 (T 의 툴사용 → x 소유),
     출력이면 (x 소유 → T 의 툴사용). 같은 (공급, 수요, 종류) 쌍은 한 행으로 합치고 근거 입출력을 모두 적는다.
@@ -64,23 +65,29 @@ interpretations:
     '실무 문의처' 열과 작성안내 시트는 읽지 않으므로 검사 대상도 아니다.
   I30-헤더매핑: NFKC 후 공백·'*' 를 무시하고 비교. 매핑 안 된 헤더는 경고. B 수식 열·K 문의처 열은 의도적 무시(경고 아님).
   I31-파일명분야: "파일명 'SW조사_<분야>_<YYYYMMDD>.xlsx' 의 두 번째 조각을 파일 분야로 본다 (작성안내 B26 규칙)."
+  I32-수기범위: >-
+    전달 방법이 수기인 행이 연계 SW 를 적었으면(빈 값 토큰 아님) 그 수기 신호는 적힌 상대 중 해석된 툴의 툴사용과의 Feed 에만 적용한다.
+    적힌 상대가 모두 해석 못 한 이름이면 어떤 Feed 에도 수기로 적용되지 않는다. 연계 SW 가 비었으면 docs/02 7.3 그대로 모든 상대에 적용.
+    Feed 의 manual = (o 가 i 소유 툴에 수기 적용) 또는 (i 가 o 소유 툴에 수기 적용). (Leo 결정 2026-09-24, Q-D2)
+  I33-재발송: >-
+    같은 파일 분야(I31)의 파일이 여럿이면 (파일명 날짜, 파일명) 이 가장 큰 파일 하나만 적재한다. 나머지는 읽기만 하고 적재하지 않으며
+    파일마다 '재발송으로 대체: <이전 파일> → <유효 파일> (적재 안 함)' 경고를 남긴다. 대체된 파일의 행은 제외 건수에 넣지 않는다.
+    (Leo 결정 2026-09-24, Q-R1)
 
-# Leo 확인이 필요한 규칙 — 결정 전까지 골든은 '현재안' 으로 계산돼 있다
-open_questions:
-  Q-R1-재발송: >-
-    같은 분야 파일이 두 개(재발송) 오면 어떻게 할까. 권장: 파일명 날짜가 가장 늦은 파일을 그 분야의 유효 응답으로 적재하고
-    이전 파일은 적재하지 않고 '재발송으로 대체' 경고. (현재 합성 데이터에는 이 사례가 없다 — 결정 후 추가)
+# Leo 가 결정한 규칙 (2026-09-24) — 골든은 이 결정으로 계산돼 있다
+decisions:
+  Q-R1-재발송: 같은 분야 파일이 두 개 오면 최신 파일만 적재한다 → I33. 합성 데이터에 압축기 이전 파일(20260917)을 넣었다 (사례 RESEND).
   Q-D2-수기번짐: >-
-    SAS-01 '유량 분배 결과' 수기 행은 연계 SW 로 가상-미조사툴만 적었는데, 분류·확장자가 맞는 SAS-03 입력에도 수기 Feed(B)가 된다.
-    현재안: docs/02 7.3 문자 그대로 (i 또는 o 의 전달 방법) — 수기. 대안: 연계 SW 를 적은 행이면 그 상대에게만 수기 적용.
-  Q-I3-비고신호: >-
-    비고에만 수작업이 적힌 구간(P11 등)을 착수 순위에 '비고 근거' 로 따로 올릴까. 현재안은 올리지 않음 (I3).
+    연계 SW 를 적은 수기 행은 그 상대에게만 수기 적용 → I32. SAS-01 '유량 분배 결과' 수기 행(상대 가상-미조사툴)은 SAS-03 입력과
+    Feed 는 되지만 수기가 아니다 (사례 D2). 운영 중 이 좁힘으로 놓치는 구간이 보이면 다시 검토한다 ('우선 그렇게 해보자').
+  Q-I3-비고신호: 비고에만 수작업이 적힌 구간도 착수 순위에 종류 '비고' 로 올린다 → I3 개정 (사례 P11).
 
 # M3 적재기 기대값 중 참조 계산이 엑셀 층이라 직접 못 세는 것 (나머지는 aggregates.loader_per_file·warnings)
 loader:
-  files: 8
+  files: 9                               # 적재 8 + 재발송으로 대체된 압축기 이전 파일 1 (I33 — 읽고 경고, 적재 안 함)
+  files_loaded: 8
   template_example_rows_excluded: 31     # 템플릿 위치 30 (SW기본정보 8 + SW입출력 22) + 성능 파일의 예시 복사본 1 (I15)
-  excluded_total: 33                     # 예시 31 + 중복 SW ID 1 (구조 STR-03 Abaqus) + SW ID 없는 내용 행 1 (압축기)
+  excluded_total: 33                     # 예시 31 + 중복 SW ID 1 (구조 STR-03 Abaqus) + SW ID 없는 내용 행 1 (압축기). 대체된 파일 행은 세지 않음
   loaded: {usages: 34, io_rows: 77, fields: 8, categories: 8}
   person_tokens_absent: >-
     다음 문자열은 어떤 출력(TTL·보고서·로그)에도 나오면 안 된다 — 실무 문의처 열과 작성안내 시트 값:
@@ -111,6 +118,7 @@ loader:
     I22: 압축기 파일 SW입출력의 SW ID 없는 '형상 검토 메모' 행 → 건너뛰고 경고.
     P21: 제어 파일은 SW ID 를 SW명으로 적었다 (MATLAB, Simulink, 가상-제어로직툴) — 두 시트가 일치하므로 경고 없음.
     D3: 압축기·연소기가 같은 SW ID(COM-01~03)를 쓴다 — 충돌 아님, 입출력 소유는 같은 파일 안에서 해석.
+    RESEND: 압축기 파일이 둘(20260917·20260924) — 20260924 만 적재. 이전 파일의 툴(가상-구형설계툴)은 어떤 출력에도 없다 (I33).
 
 # 심어 둔 사례별 기대값 — test_golden 이 참조 계산과 일치하는지 검사한다
 cases:
@@ -188,19 +196,20 @@ cases:
   P10:
     title: 템플릿 예시 행 잔존 — loader 참고
   P11:
-    title: 비고에만 적힌 수작업 (출력 쪽 비고, 입력 쪽 비고 둘 다)
+    title: 비고에만 적힌 수작업 (출력 쪽 비고, 입력 쪽 비고 둘 다) — 착수 순위에 종류 '비고' 로 (I3)
     feeds:
-      - {from: 시험/TEST-02/out/시험 조건 기록, to: 시험/TEST-03/in/시험 조건 기록, manual: false, manual_basis: 비고, grade: null}
-      - {from: 터빈/TURB-02/out/터빈 유동장, to: 터빈/TURB-03/in/유동장 결과, manual: false, manual_basis: 비고, grade: null}
+      - {from: 시험/TEST-02/out/시험 조건 기록, to: 시험/TEST-03/in/시험 조건 기록, manual: false, manual_basis: 비고, grade: A}
+      - {from: 터빈/TURB-02/out/터빈 유동장, to: 터빈/TURB-03/in/유동장 결과, manual: false, manual_basis: 비고, grade: A}
+    ranking_kind: 비고
   P12:
     title: 폐쇄망 구동 불가 툴이 낀 수기 구간
     manual_feed: {from: 구조/STR-03/out/구조 해석 결과, to: 구조/STR-04/in/구조 해석 결과, grade: 제외}
   D2:
-    title: 같은 데이터를 상대별로 두 행 — 두 입출력으로 유지 (Leo 확인 Q-D2)
+    title: 같은 데이터를 상대별로 두 행 — 두 입출력으로 유지, 수기 행은 적힌 상대에게만 수기 (I32)
     io_keys:
       - "2차유로(SAS)/SAS-01/out/유량 분배 결과[파일 저장|가상-열해석]"
       - "2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]"
-    manual_feed: {from: "2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]", to: "2차유로(SAS)/SAS-03/in/유량 분배 결과", grade: B}
+    not_manual_feed: {from: "2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]", to: "2차유로(SAS)/SAS-03/in/유량 분배 결과"}
     reconciliation:
       - {io: "2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]", tool: 가상열해석, verdict: 잠재(신고와 다름)}
   D3:
@@ -233,7 +242,18 @@ cases:
   I6:
     title: 수요 측 인원수가 원문뿐('약 4명')이면 가장 작게 — 같은 B 등급에서 STR-02 수요 행이 SAS-03 수요 행보다 앞
     before: [2차유로(SAS)/SAS-03, 구조/STR-02]
-    after: [2차유로(SAS)/SAS-01, 2차유로(SAS)/SAS-03]
+    after: [터빈/TURB-02, 2차유로(SAS)/SAS-03]
+  I32:
+    title: 수기 행의 연계 SW 에 두 상대를 적음 — 두 상대 모두 수기, 적힌 상대가 없는 수기 행은 수기 아님
+    manual_feeds:
+      - {from: 시험/TEST-02/out/고속 계측 원시 데이터, to: 시험/TEST-01/in/고속 계측 원시 데이터}
+      - {from: 연소기/COM-04/out/연소 계측 원시 데이터, to: 시험/TEST-01/in/고속 계측 원시 데이터}
+    not_manual: D2 의 not_manual_feed
+  RESEND:
+    title: 같은 분야 재발송 — 최신 파일만 적재 (I33)
+    superseded: SW조사_압축기_20260917.xlsx
+    effective: SW조사_압축기_20260924.xlsx
+    absent_tool: 가상구형설계툴
 
 # ---- 아래는 tests/golden/oracle.py 가 명세에서 계산한 값 (손으로 고치지 말 것 — make_expected.py)
 aggregates:
@@ -245,57 +265,71 @@ aggregates:
     fields: 8
     categories: 8
     feeds: 71
-    feeds_manual: 10
+    feeds_manual: 9
     feeds_note_signal: 4
     feeds_low_confidence: 49
     feeds_declared: 70
   loader_per_file:
+    SW조사_압축기_20260917.xlsx:
+      usage_rows: 0
+      io_rows: 0
+      excluded: 0
+      warnings: 1
+      superseded: true
     SW조사_성능_20260924.xlsx:
       usage_rows: 4
       io_rows: 9
       excluded: 5
       warnings: 1
+      superseded: false
     SW조사_2차유로(SAS)_20260924.xlsx:
       usage_rows: 4
       io_rows: 13
       excluded: 4
       warnings: 2
+      superseded: false
     SW조사_터빈_20260924.xlsx:
       usage_rows: 5
       io_rows: 10
       excluded: 4
       warnings: 5
+      superseded: false
     SW조사_압축기_20260924.xlsx:
       usage_rows: 4
       io_rows: 7
       excluded: 5
       warnings: 1
+      superseded: false
     SW조사_연소기_20260924.xlsx:
       usage_rows: 4
       io_rows: 8
       excluded: 4
       warnings: 1
+      superseded: false
     SW조사_구조_20260924.xlsx:
       usage_rows: 5
       io_rows: 14
       excluded: 5
       warnings: 5
+      superseded: false
     SW조사_제어_20260924.xlsx:
       usage_rows: 3
       io_rows: 7
       excluded: 2
       warnings: 1
+      superseded: false
     SW조사_시험_20260924.xlsx:
       usage_rows: 5
       io_rows: 9
       excluded: 4
       warnings: 4
+      superseded: false
   reconciliation_counts:
     숨은변환 의심: 3
-    잠재(신고와 다름): 13
+    잠재(신고와 다름): 12
     잠재(연계 미기재): 32
     확장자 미기재: 1
-    확정: 54
+    확정: 55
   handoff_ranking:
   - supplier: 2차유로(SAS)/SAS-02
     consumer: 2차유로(SAS)/SAS-01
@@ -332,6 +366,34 @@ aggregates:
     evidence:
     - 2차유로(SAS)/SAS-02/in/성능 경계조건
     - 성능/PERF-01/out/성능 경계조건 표
+  - supplier: 터빈/TURB-02
+    consumer: 터빈/TURB-03
+    kind: 비고
+    grade: A
+    evidence:
+    - 터빈/TURB-02/out/터빈 유동장
+    - 터빈/TURB-03/in/유동장 결과
+  - supplier: 연소기/COM-02
+    consumer: 터빈/TURB-03
+    kind: 비고
+    grade: A
+    evidence:
+    - 연소기/COM-02/out/연소실 유동장
+    - 터빈/TURB-03/in/유동장 결과
+  - supplier: 2차유로(SAS)/SAS-04
+    consumer: 터빈/TURB-03
+    kind: 비고
+    grade: A
+    evidence:
+    - 2차유로(SAS)/SAS-04/out/2차유로 유동장
+    - 터빈/TURB-03/in/유동장 결과
+  - supplier: 시험/TEST-02
+    consumer: 시험/TEST-03
+    kind: 비고
+    grade: A
+    evidence:
+    - 시험/TEST-02/out/시험 조건 기록
+    - 시험/TEST-03/in/시험 조건 기록
   - supplier: 압축기/COM-05
     consumer: 구조/STR-02
     kind: 변환
@@ -346,13 +408,6 @@ aggregates:
     evidence:
     - 2차유로(SAS)/SAS-03/out/금속 온도 결과
     - 구조/STR-02/in/금속 온도 결과
-  - supplier: 2차유로(SAS)/SAS-01
-    consumer: 2차유로(SAS)/SAS-03
-    kind: 수기
-    grade: B
-    evidence:
-    - 2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]
-    - 2차유로(SAS)/SAS-03/in/유량 분배 결과
   - supplier: 터빈/TURB-02
     consumer: 2차유로(SAS)/SAS-03
     kind: 수기
@@ -582,7 +637,7 @@ aggregates:
     터빈 → 2차유로(SAS): 1
     터빈 → 터빈: 1
   field_matrix_manual:
-    2차유로(SAS) → 2차유로(SAS): 2
+    2차유로(SAS) → 2차유로(SAS): 1
     2차유로(SAS) → 구조: 1
     구조 → 구조: 2
     성능 → 2차유로(SAS): 1
@@ -639,9 +694,9 @@ aggregates:
     - dat
     confidence: 보통
     declared: true
-    manual: true
-    basis: 전달방법
-    grade: B
+    manual: false
+    basis: null
+    grade: null
   - from: 2차유로(SAS)/SAS-01/out/유량 분배 결과[파일 저장|가상-열해석]
     to: 2차유로(SAS)/SAS-03/in/유량 분배 결과
     matched:
@@ -732,7 +787,7 @@ aggregates:
     declared: true
     manual: false
     basis: 비고
-    grade: null
+    grade: A
   - from: 구조/STR-01/out/구조 메시
     to: 구조/STR-03/in/구조 메시
     matched:
@@ -993,7 +1048,7 @@ aggregates:
     declared: true
     manual: false
     basis: 비고
-    grade: null
+    grade: A
   - from: 시험/TEST-05/out/계측 온도 보정표
     to: 2차유로(SAS)/SAS-03/in/계측 온도 보정표
     matched:
@@ -1192,7 +1247,7 @@ aggregates:
     declared: true
     manual: false
     basis: 비고
-    grade: null
+    grade: A
   - from: 연소기/COM-04/out/연소 계측 데이터
     to: 성능/PERF-02/in/시험 계측 데이터
     matched:
@@ -1274,7 +1329,7 @@ aggregates:
     declared: true
     manual: false
     basis: 비고
-    grade: null
+    grade: A
   reconciliation:
   - io: 2차유로(SAS)/SAS-01/in/보정 경계조건
     tool: excel
@@ -1425,7 +1480,7 @@ aggregates:
     verdict: 확정
   - io: 시험/TEST-01/in/고속 계측 원시 데이터
     tool: 가상연소계측기
-    verdict: 잠재(신고와 다름)
+    verdict: 확정
   - io: 시험/TEST-01/out/시험 계측 데이터
     tool: matlab
     verdict: 확정
@@ -1601,6 +1656,7 @@ aggregates:
   - '인명 유사 패턴: SW조사_2차유로(SAS)_20260924.xlsx SW기본정보 SAS-02 ''현재 수작업·애로 구간'''
   - '인명 유사 패턴: SW조사_시험_20260924.xlsx SW기본정보 TEST-02 ''비고'''
   - '인명 유사 패턴: SW조사_터빈_20260924.xlsx SW입출력 TURB-01 ''터빈 블레이드 3D 모델'' ''비고'''
+  - '재발송으로 대체: SW조사_압축기_20260917.xlsx → SW조사_압축기_20260924.xlsx (적재 안 함)'
   - '중복 SW ID: SW조사_구조_20260924.xlsx STR-03 — 먼저 나온 행 사용, ''Abaqus'' 행 제외'
   - '파일 분야 ≠ 담당 부서: SW조사_구조_20260924.xlsx STR-05 → ''시험'''
   - '필수값 누락: SW조사_시험_20260924.xlsx SW기본정보 TEST-05 ''자동화 인터페이스 *'''

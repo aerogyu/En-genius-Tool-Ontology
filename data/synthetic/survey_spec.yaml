@@ -268,7 +268,8 @@ files:
          detail: 진동 계측, op: null, auto_if: null, cases: [REQUIRED-MISSING, GRADE-C]}  # 필수값 두 칸이 빔
     ios:
       - {sw_id: TEST-01, dir: in, name: 고속 계측 원시 데이터, cat: 시험-계측데이터, ext: bin(사내), std: 사내 표준 포맷,
-         transfer: 메일·수기 전달, partner: 가상-데이터수집기, cases: [P6]}
+         transfer: 메일·수기 전달, partner: "가상-데이터수집기, 가상-연소계측기", cases: [P6, I32, I5]}
+                                             # 수기 전달은 연계 SW 에 적은 상대에게만 적용 (I32) — 두 공급자를 모두 적었다
       - {sw_id: TEST-01, dir: out, name: 시험 계측 데이터, cat: 시험-계측데이터, ext: csv, partner: MATLAB, cases: [P7]}
       - {sw_id: TEST-02, dir: out, name: 고속 계측 원시 데이터, cat: 시험-계측데이터, ext: bin(사내), std: 사내 표준 포맷,
          partner: LabVIEW}
@@ -281,3 +282,18 @@ files:
          partner: 가상-열해석, cases: [GRADE-C]}
       - {sw_id: TEST-05, dir: out, name: 진동 계측 데이터, cat: 시험-계측데이터, ext: csv 또는 엑셀, partner: MATLAB,
          cases: [EXT-UNMAPPED]}              # '또는' 은 확장자가 아니다 — 원문 보존 + 경고, 나머지는 매칭
+
+  # ------------------------------------------------------------------ 압축기 (재발송 전 옛 파일 — I33)
+  # 같은 분야의 20260924 판이 있으므로 이 파일은 적재하지 않는다 ('재발송으로 대체' 경고).
+  # SW ID 통일 전이라 SW명을 ID 로 적었고, 이 파일에만 있는 가상-구형설계툴은 어떤 결과에도 나오면 안 된다.
+  - field: 압축기
+    file_date: "20260917"
+    usages:
+      - {sw_id: STAR-CCM+, name: STAR-CCM+, version: 2210, vendor: Siemens, kind: 상용, detail: 압축기 유동 해석,
+         cases: [I33]}
+      - {sw_id: 가상-구형설계툴, name: 가상-구형설계툴, version: "0.5", vendor: 자체개발, kind: 자체개발, purpose: 설계,
+         detail: 압축기 익형 설계 (구판), cases: [I33]}
+    ios:
+      - {sw_id: 가상-구형설계툴, dir: out, name: 익형 형상, cat: 해석-입력데이터, ext: stp, transfer: 메일·수기 전달,
+         partner: HyperMesh, cases: [I33]}
+      - {sw_id: STAR-CCM+, dir: out, name: 압축기 유동장, cat: 해석-결과, ext: plt, cases: [I33]}

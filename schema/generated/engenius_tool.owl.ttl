@@ -794,7 +794,7 @@ eg:from_io a owl:ObjectProperty ;
 
 eg:grade a owl:DatatypeProperty ;
     rdfs:label "grade" ;
-    skos:definition "착수 등급 (docs/02 7.4) — 수기 연결(manual=true)인 Feed 에 매긴다. 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항)." ;
+    skos:definition "착수 등급 (docs/02 7.4) — 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에 매긴다 (비고 신호는 착수 순위에 종류 '비고' 로 따로 올린다 — 골든 I3). 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항)." ;
     skos:inScheme eg: .
 
 eg:headless a owl:DatatypeProperty ;
@@ -870,12 +870,12 @@ eg:loaded_in a owl:ObjectProperty ;
 
 eg:manual a owl:DatatypeProperty ;
     rdfs:label "manual" ;
-    skos:definition "수기 구간 여부 (전달 방법 기준)." ;
+    skos:definition "수기 구간 여부 (전달 방법 기준). 수기 행이 연계 SW 를 적었으면 그중 해석된 상대 툴과의 Feed 에만 적용한다 (골든 I32)." ;
     skos:inScheme eg: .
 
 eg:manual_basis a owl:DatatypeProperty ;
     rdfs:label "manual_basis" ;
-    skos:definition "수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호." ;
+    skos:definition "수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false)." ;
     skos:inScheme eg: .
 
 eg:matched_category a owl:ObjectProperty ;
