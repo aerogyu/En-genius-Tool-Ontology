@@ -1,0 +1,349 @@
+# 골든 기대값 (M2) — 합성 조사 파일(data/synthetic/survey/)로 M3 적재·M4 도출이 내야 할 결과.
+# 손으로 쓴 부분: interpretations, loader, cases.  자동 부분: aggregates (tests/golden/oracle.py 가
+# 명세에서 계산 — test_golden 이 명세·참조 계산과 이 값이 같은지 검사한다. 명세를 바꾸면 다시 만든다).
+#
+# 키 규칙 (골든 전용 표기)
+#   툴사용  = "<분야>/<SW ID>"             분야 = 행의 '담당 부서' (파일 분야와 다를 수 있음 — P17)
+#   입출력  = "<툴사용>/<in|out>/<명칭>"   같은 명칭이 전달·연계만 다르면 "[전달|연계]", 완전 중복이면 "#순번"
+#   고아    = "<파일 분야>/<SW ID>(고아)/..."
+#   툴      = 정규화 키 (docs/02 6.1) — 대표 이름(prefLabel)은 M3 가 정하므로 골든에서 검사하지 않는다
+
+version: 1
+spec: data/synthetic/survey_spec.yaml
+
+# docs/02 가 정하지 않아 M2 에서 정한 해석 — M3·M4 는 이대로 구현한다 (바꾸려면 여기와 oracle.py 를 함께)
+interpretations:
+  I1-연계SW해석: >-
+    연계 SW명에는 제조사 열이 없다. 정규화 키가 툴 키와 같거나, 조사에 나온 제조사명(정규화)을 앞에서 떼어낸
+    키가 같으면 그 툴로 해석한다 (예: 'ANSYS Fluent' → fluent, 'Microsoft Excel' → excel).
+  I2-버전토큰: "공백으로 나눈 토큰 중 ^(v\\d+(\\.\\d+)*|\\d{4}r\\d+|r\\d+[a-z]?|sp\\d+|\\d+(\\.\\d+)+)$ 는 버리고 이어 붙인다 (예: 'CATIA V5' → catia, 'ANSYS Fluent 2024R1' → fluent)."
+  I3-비고신호: 전달 방법은 수기가 아니고 비고에만 수작업 키워드가 있는 Feed 는 manual=false·manual_basis=비고·등급 없음. 착수 순위에서 빼고 CQ02 보조 목록에만 둔다.
+  I4-변환구간: >-
+    '숨은변환 의심' (입출력 x, 상대 툴 T) 는 T 의 툴사용 각각과 쌍으로 펼친다 (D1-2). x 가 입력이면 (T 의 툴사용 → x 소유),
+    출력이면 (x 소유 → T 의 툴사용). 같은 (공급, 수요, 종류) 쌍은 한 행으로 합치고 근거 입출력을 모두 적는다.
+  I5-정렬동률: 착수 순위 정렬(등급 → 수요 빈도·인원·우선순위 → 공급 같은 순서) 뒤에도 같으면 공급 키, 수요 키 문자열 순.
+  I6-인원수없음: 사용 인원수가 정수가 아니면(원문만 보존) 정렬에서 가장 작은 값으로 본다.
+  I7-허브지표: 툴별로 Feed(방향 무관)로 이어진 서로 다른 상대 툴 수. 자기 자신 제외. 순위에는 쓰지 않는다.
+  I8-영향범위: CQ06 결과는 주어진 (분류, 확장자)를 소비하는 툴사용 자신 + eg:feeds+ 로 도달하는 하류.
+  I9-고아대조: 고아 입출력(io_owner 없음)은 Feed·CQ04 대조 대상이 아니다.
+  I10-누락후보키: CQ09 는 해석 못 한 연계 SW명을 정규화 키로 묶어 언급 횟수·언급 분야를 센다.
+  I11-무연결판정: CQ05 ② 는 입출력이 있으나 소유 입출력 어디에도 Feed 가 없고 해석된 신고 상대도 없는 툴사용.
+  I12-확장자: 괄호 주석 '(사내)'·'사내' 는 떼고 inhouse_format=true. 그 밖의 토큰이 확장자 패턴이 아니면 버리고 원문 보존 + 경고.
+
+# M3 적재기 기대값 — 참조 계산은 명세 데이터 기준이라 엑셀 층 사례는 여기서 손으로 적는다
+loader:
+  files: 8
+  file_field_from_name: "SW조사_<분야>_<YYYYMMDD>.xlsx 의 두 번째 조각"
+  template_example_rows_excluded:
+    total: 30                    # SW기본정보 8 (파일마다 4행) + SW입출력 22 (7개 파일 × 4~6행 3줄 + 제어 파일 4행 1줄)
+    note: 내용 일치로 판별. 행 번호로 판별하면 제어 파일(P10-b)에서 실제 응답 2행을 잘못 버린다.
+  loaded:
+    usages: 33                   # 구조 파일 STR-03 중복 1행 제외 (P19)
+    io_rows: 65                  # 고아 1행 포함, 완전 중복 2행 모두 포함 (순번으로 구분)
+    fields: 8
+    categories: 7                # 설계-2D Layout 포함 (P22)
+  cases:
+    P10-b: 제어 파일 SW입출력 5·6행(예시 위치)의 MATLAB 행 2개는 응답이다 — 적재한다.
+    P10-c: >-
+      2차유로(SAS) 파일에는 예시 행(SAS-01 SANTA)과 실제 SAS-01(가상-1D네트워크)이 둘 다 있다. 예시만 제외하고
+      중복 SW ID 경고를 내지 않는다. (실제 조사에서 SAS-01=SANTA 로 예시와 똑같은 응답이 올 수 있으므로,
+      예시와 내용이 같지만 예시 위치가 아닌 행은 제외하지 않고 '예시와 동일' 경고를 낸다 — M3 규칙.)
+    GAP: 성능 파일 SW입출력 중간의 빈 행 1개 다음 행들(PERF-02~04)도 적재한다.
+    PERSON-COL: >-
+      '실무 문의처' 열 값(예시 행의 '홍OO 책임(내선 1234)', 시험 파일 TEST-01 의 'OOO 책임(내선 0000)')은
+      어떤 출력(TTL·보고서·로그)에도 나타나지 않는다.
+    D5-int: 터빈 TURB-02 버전 셀 정수 2024 → "2024" (경고 없음). 압축기 COM-02 2210, 시험 TEST-04 365 도 같다.
+    D5-float: 구조 STR-01 버전 셀 실수 5.1 → "5.1" + '엑셀 숫자 변환으로 값이 바뀌었을 수 있음' 경고.
+    D5-date: 성능 PERF-03 만료 시기 날짜 셀 2027-03-31 → "2027-03" (license_expiry 패턴 통과).
+    D5-raw: 터빈 TURB-03 사용 인원수 '약 6명' → user_count 없음, user_count_raw='약 6명', 경고.
+    D6: "시험 TEST-02 비고 '문의: OOO 책임(내선 0000)' → 인명 유사 패턴 경고 (값은 삭제하지 않음)."
+    P20: 제어 MATLAB 조작 방식 'GUI+CLI(일부)' → 원문 그대로 적재, SHACL sh:in 위반 = 경고.
+    P22: 압축기 COM-01 분류 '설계-2D Layout' → 그 파일의 선택지 시트에 있으므로 경고 없음, DataCategory 생성.
+    EXT-EMPTY: 제어 MATLAB '제어 요구 사양' 확장자 '모름' → extensions 없음, 도출 단계 '확장자 미기재' 경고.
+    D3: 압축기·연소기가 같은 SW ID(COM-01~03)를 쓴다 — 충돌 아님. 입출력 소유는 같은 파일 안에서 해석.
+    P21: 제어 파일은 SW ID 를 SW명으로 적었다(MATLAB, Simulink, 가상-제어로직툴) — 두 시트가 일치하므로 경고 없음.
+  warnings_expected_in_addition_to_aggregates:
+    - 구조/STR-01 버전 실수 셀 경고 (D5-float)
+    - 시험/TEST-02 비고 인명 유사 패턴 경고 (D6)
+    - 제어/MATLAB 조작 방식 목록 밖 값 (P20, SHACL)
+    - 제어/MATLAB/in/제어 요구 사양 확장자 미기재 (EXT-EMPTY, 도출 단계)
+
+# 심어 둔 사례별 기대값 (docs/03 M2 표 P1~P12 + 결정 D2·D3 등) — test_golden 이 참조 계산과 일치하는지 검사
+cases:
+  P1:
+    title: 3단 수기 체인 가상-성능덱 → Excel 상관식 → 가상-1D네트워크
+    manual_feeds:
+      - {from: 성능/PERF-01/out/성능 경계조건 표, to: 2차유로(SAS)/SAS-02/in/성능 경계조건, grade: A, confidence: 낮음, declared: true}
+      - {from: 2차유로(SAS)/SAS-02/out/보정 경계조건, to: 2차유로(SAS)/SAS-01/in/보정 경계조건, grade: A, confidence: 낮음, declared: true}
+  P2:
+    title: 숨은 변환 — 입력은 연계 SW=CATIA·stp 인데 CATIA 출력은 catpart 뿐
+    reconciliation:
+      - {io: 구조/STR-02/in/블레이드 형상, tool: catia, verdict: 숨은변환 의심}
+      - {io: 터빈/TURB-01/out/터빈 블레이드 3D 모델, tool: mechanical, verdict: 숨은변환 의심}
+    conversion_handoff: {supplier: 터빈/TURB-01, consumer: 구조/STR-02, grade: A}
+  P3:
+    title: 신고 없는 잠재 연결 (분류·확장자 일치, 연계 SW명 공란)
+    feed: {from: 압축기/COM-02/out/압축기 유동장, to: 터빈/TURB-03/in/외부 유동장, declared: false, manual: false}
+    reconciliation:
+      - {io: 터빈/TURB-03/in/외부 유동장, tool: starccm, verdict: 잠재(연계 미기재)}
+      - {io: 압축기/COM-02/out/압축기 유동장, tool: tecplot, verdict: 잠재(연계 미기재)}
+  P4:
+    title: 고립 2종
+    no_io: [제어/가상-제어로직툴]
+    unlinked: [연소기/COM-01]
+  P5:
+    title: 툴 표기 변형 통합 + 통합 후보 + 속성 엇갈림
+    merged: {fluent: [ANSYS FLUENT, ANSYS Fluent 2024R1, Fluent], excel: [Excel, Microsoft Excel]}
+    candidates_only: [[matlab, matlabsimulink]]
+    attribute_conflict: {tool: matlab, attr: kind, majority: 상용}
+  P6:
+    title: 확장자 변형 정규화
+    extensions:
+      - {io: 압축기/COM-01/out/익형 형상, raw: .STEP, normalized: [stp]}
+      - {io: 구조/STR-01/in/익형 형상, raw: "*.stp", normalized: [stp]}
+      - {io: 2차유로(SAS)/SAS-02/out/보정 경계조건, raw: 엑셀, normalized: [xlsx]}
+      - {io: "2차유로(SAS)/SAS-03/in/유량 분배 결과", raw: .dat(사내), normalized: [dat], inhouse: true}
+      - {io: 연소기/COM-01/in/연소 조건, raw: cmb(사내), normalized: [cmb], inhouse: true}
+    feed_via_normalization: {from: 압축기/COM-01/out/익형 형상, to: 구조/STR-01/in/익형 형상, matched: [stp]}
+  P7:
+    title: 허브 — Excel·MATLAB 5개 분야 사용, 연결 상대 수 최상위, 착수 순위에는 영향 없음
+    top_hubs: [excel, matlab]
+    fields_using: {excel: 5, matlab: 5}
+  P8:
+    title: GUI 전용 끝단의 수기 구간
+    manual_feed: {from: 터빈/TURB-02/out/벽면 온도 조건, to: 2차유로(SAS)/SAS-03/in/벽면 온도 조건, grade: B}
+  P9:
+    title: 조사에 없는 연계 툴
+    missing: {key: 가상미조사툴, mentions: 2, fields: [2차유로(SAS), 제어]}
+  P10:
+    title: 템플릿 예시 행 잔존 — loader.template_example_rows_excluded 참고
+  P11:
+    title: 비고에만 적힌 수작업
+    feed: {from: 시험/TEST-02/out/시험 조건 기록, to: 시험/TEST-03/in/시험 조건 기록, manual: false, manual_basis: 비고, grade: null}
+  P12:
+    title: 폐쇄망 구동 불가 툴이 낀 수기 구간
+    manual_feed: {from: 구조/STR-03/out/구조 해석 결과, to: 구조/STR-04/in/구조 해석 결과, grade: 제외}
+  D2:
+    title: 같은 데이터를 상대별로 두 행 — 두 입출력으로 유지
+    io_keys:
+      - "2차유로(SAS)/SAS-01/out/유량 분배 결과[파일 저장|가상-열해석]"
+      - "2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]"
+    manual_feed: {from: "2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]", to: "2차유로(SAS)/SAS-03/in/유량 분배 결과", grade: B}
+    reconciliation:
+      - {io: "2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]", tool: 가상열해석, verdict: 잠재(신고와 다름)}
+  D3:
+    title: 분야 간 같은 SW ID — 파일 안에서만 해석
+    owner_of: {"연소기/COM-01/in/연소 조건": 가상연소해석기, "압축기/COM-01/out/익형 형상": 가상공력설계툴}
+  P24:
+    title: 완전 중복 입출력 행 — 경고 후 순번
+    io_keys: ["연소기/COM-01/out/연소 결과", "연소기/COM-01/out/연소 결과#1"]
+
+# ---- 아래는 tests/golden/oracle.py 가 명세에서 계산한 값 (손으로 고치지 말 것 — 명세를 고치고 다시 만든다)
+aggregates:
+  counts:
+    usages: 33
+    tools: 22
+    io_specs: 65
+    orphan_io_specs: 1
+    fields: 8
+    categories: 7
+    feeds: 65
+    feeds_manual: 6
+    feeds_note_signal: 1
+    feeds_low_confidence: 49
+    feeds_declared: 64
+  reconciliation_counts:
+    숨은변환 의심: 2
+    잠재(신고와 다름): 11
+    잠재(연계 미기재): 32
+    확정: 45
+  handoff_ranking:
+  - supplier: 2차유로(SAS)/SAS-02
+    consumer: 2차유로(SAS)/SAS-01
+    kind: 수기
+    grade: A
+  - supplier: 시험/TEST-02
+    consumer: 시험/TEST-01
+    kind: 수기
+    grade: A
+  - supplier: 터빈/TURB-01
+    consumer: 구조/STR-02
+    kind: 변환
+    grade: A
+  - supplier: 성능/PERF-01
+    consumer: 2차유로(SAS)/SAS-02
+    kind: 수기
+    grade: A
+  - supplier: 2차유로(SAS)/SAS-01
+    consumer: 2차유로(SAS)/SAS-03
+    kind: 수기
+    grade: B
+  - supplier: 터빈/TURB-02
+    consumer: 2차유로(SAS)/SAS-03
+    kind: 수기
+    grade: B
+  - supplier: 구조/STR-03
+    consumer: 구조/STR-04
+    kind: 수기
+    grade: 제외
+  isolated:
+    no_io:
+    - 제어/가상-제어로직툴
+    unlinked:
+    - 연소기/COM-01
+  hub_partner_counts:
+    excel: 5
+    matlab: 5
+    fluent: 3
+    hypermesh: 3
+    가상열해석: 3
+    labview: 2
+    mechanical: 2
+    nastran: 2
+    starccm: 2
+    tecplot: 2
+    가상1d네트워크: 2
+    가상공력설계툴: 2
+    가상데이터수집기: 2
+    가상성능덱: 2
+    matlabsimulink: 1
+    python: 1
+    가상수명평가툴: 1
+    가상연소계측기: 1
+    가상진동계측기: 1
+  missing_tools:
+    가상미조사툴:
+      mentions: 2
+      fields:
+      - 2차유로(SAS)
+      - 제어
+  tools:
+    catia:
+    - CATIA V5
+    excel:
+    - Excel
+    - Microsoft Excel
+    fluent:
+    - ANSYS FLUENT
+    - ANSYS Fluent 2024R1
+    - Fluent
+    hypermesh:
+    - HyperMesh
+    labview:
+    - LabVIEW
+    matlab:
+    - MATLAB
+    matlabsimulink:
+    - MATLAB Simulink
+    mechanical:
+    - ANSYS Mechanical
+    nastran:
+    - NASTRAN
+    python:
+    - Python
+    starccm:
+    - STAR-CCM+
+    tecplot:
+    - Tecplot
+    가상1d네트워크:
+    - 가상-1D네트워크
+    가상공력설계툴:
+    - 가상-공력설계툴
+    가상데이터수집기:
+    - 가상-데이터수집기
+    가상성능덱:
+    - 가상-성능덱
+    가상수명평가툴:
+    - 가상-수명평가툴
+    가상연소계측기:
+    - 가상-연소계측기
+    가상연소해석기:
+    - 가상-연소해석기
+    가상열해석:
+    - 가상-열해석
+    가상제어로직툴:
+    - 가상-제어로직툴
+    가상진동계측기:
+    - 가상-진동계측기
+  merge_candidates:
+  - - matlab
+    - matlabsimulink
+  attribute_conflicts:
+    matlab:
+      kind:
+        majority: 상용
+        values:
+          상용: 4
+          프리웨어: 1
+  field_matrix:
+    2차유로(SAS) → 2차유로(SAS): 4
+    2차유로(SAS) → 구조: 1
+    2차유로(SAS) → 성능: 1
+    2차유로(SAS) → 시험: 2
+    2차유로(SAS) → 압축기: 1
+    2차유로(SAS) → 터빈: 2
+    구조 → 2차유로(SAS): 2
+    구조 → 구조: 2
+    구조 → 성능: 1
+    구조 → 시험: 2
+    구조 → 압축기: 1
+    구조 → 연소기: 1
+    구조 → 터빈: 2
+    성능 → 2차유로(SAS): 2
+    성능 → 성능: 2
+    성능 → 시험: 2
+    성능 → 압축기: 1
+    성능 → 터빈: 1
+    시험 → 성능: 2
+    시험 → 시험: 4
+    시험 → 연소기: 2
+    시험 → 제어: 2
+    시험 → 터빈: 2
+    압축기 → 2차유로(SAS): 2
+    압축기 → 구조: 1
+    압축기 → 성능: 2
+    압축기 → 시험: 4
+    압축기 → 압축기: 2
+    압축기 → 터빈: 3
+    연소기 → 성능: 1
+    연소기 → 시험: 1
+    연소기 → 연소기: 1
+    연소기 → 제어: 1
+    연소기 → 터빈: 2
+    제어 → 제어: 1
+    터빈 → 2차유로(SAS): 1
+    터빈 → 터빈: 1
+  field_matrix_manual:
+    2차유로(SAS) → 2차유로(SAS): 2
+    구조 → 구조: 1
+    성능 → 2차유로(SAS): 1
+    시험 → 시험: 1
+    터빈 → 2차유로(SAS): 1
+  impact_해석결과_csv:
+  - 2차유로(SAS)/SAS-01
+  - 2차유로(SAS)/SAS-02
+  - 2차유로(SAS)/SAS-03
+  - 구조/STR-02
+  - 성능/PERF-03
+  - 시험/STR-05
+  - 시험/TEST-04
+  - 압축기/COM-03
+  - 터빈/TURB-05
+  downstream_of_성능_PERF-01:
+  - 2차유로(SAS)/SAS-01
+  - 2차유로(SAS)/SAS-02
+  - 2차유로(SAS)/SAS-03
+  - 구조/STR-02
+  - 성능/PERF-03
+  - 성능/PERF-04
+  - 시험/STR-05
+  - 시험/TEST-04
+  - 압축기/COM-03
+  - 터빈/TURB-05
+  warnings:
+  - '고아 입출력: 터빈 파일 SW ID ''TURB-3'' (냉각 공기 조건) — SW기본정보에 없음'
+  - '사용 인원수 정수 변환 실패: 터빈/TURB-03 ''약 6명'' — 원문 보존'
+  - '완전 중복 입출력 행: 연소기/COM-01/out/연소 결과#1 — 경고 후 순번'
+  - '중복 SW ID: 구조 파일 STR-03 — 먼저 나온 행 사용, ''Abaqus'' 행 제외'
+  - '파일 분야 ≠ 담당 부서: 구조 파일 STR-05 → 담당 부서 ''시험'''
+  - '확장자 매핑 실패: 시험/TEST-05/out/진동 계측 데이터 토큰 [''또는''] — 원문 보존'

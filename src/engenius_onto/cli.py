@@ -111,6 +111,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("schema", help="LinkML 스키마 점검(lint·양식 매핑·선택지) 후 OWL·SHACL·문서·Pydantic 생성")
     sp.add_argument("--check", action="store_true", help="생성하지 않고 커밋된 생성물이 스키마와 일치하는지만 확인")
     sp.set_defaults(func=lambda a: __import__("engenius_onto.schema_gen", fromlist=["run"]).run(check=a.check))
+    sp = sub.add_parser("synth", help="합성 조사 파일 생성 (data/synthetic/survey_spec.yaml → 분야별 xlsx)")
+    sp.add_argument("--check", action="store_true", help="생성하지 않고 커밋된 파일이 명세와 같은지만 확인")
+    sp.set_defaults(func=lambda a: __import__("engenius_onto.synth", fromlist=["run"]).run(check=a.check))
     return p
 
 
