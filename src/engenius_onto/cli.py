@@ -55,13 +55,23 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     jv = _java_version()
     print(f"[{'OK' if jv else '--'}] Java: {jv or '없음 (Fuseki 백엔드에만 필요)'}")
 
-    for mod in ("rdflib", "pydantic", "openpyxl", "pandas", "yaml"):
+    from importlib.metadata import PackageNotFoundError, version
+
+    for dist in ("rdflib", "pydantic", "openpyxl", "pandas", "PyYAML", "linkml", "rfc3986-validator"):
         try:
-            m = __import__(mod)
-            print(f"[OK] {mod} {getattr(m, '__version__', '')}")
-        except ImportError:
+            print(f"[OK] {dist} {version(dist)}")
+        except PackageNotFoundError:
             ok = False
-            print(f"[NG] {mod} 없음")
+            print(f"[NG] {dist} 없음")
+
+    from engenius_onto.licenses import DENYLIST, audit, denylisted
+
+    bad = denylisted(audit())
+    for r in bad:
+        ok = False
+        print(f"[NG] {r.name} 설치돼 있음 — {DENYLIST[r.name.lower()]}")
+    if not bad:
+        print("[OK] 금지 패키지 없음 (rfc3987 등)")
 
     cfg = fuseki_config()
     if fuseki_alive(cfg):
@@ -71,6 +81,17 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     else:
         print(f"[--] Fuseki {cfg.endpoint} 응답 없음 (로컬 백엔드만 사용 가능)")
     return 0 if ok else 1
+
+
+def cmd_licenses(args: argparse.Namespace) -> int:
+    """설치 패키지 라이선스 표. 금지(GPL) 항목이 있으면 rc=1 — 반입 심사 자료."""
+    from engenius_onto.licenses import FORBIDDEN, MULTI, UNKNOWN, WEAK, audit, to_markdown
+
+    rows = audit()
+    print(to_markdown(rows))
+    counts = {c: sum(r.cls == c for r in rows) for c in (FORBIDDEN, MULTI, WEAK, UNKNOWN)}
+    print(f"\n전체 {len(rows)}개 — " + ", ".join(f"{c} {n}" for c, n in counts.items()))
+    return 1 if counts[FORBIDDEN] else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -85,6 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.set_defaults(func=lambda a, n=name: _not_yet(n))
     sp = sub.add_parser("doctor", help="실행 환경 점검 (Python·Java·패키지·Fuseki)")
     sp.set_defaults(func=cmd_doctor)
+    sp = sub.add_parser("licenses", help="설치 패키지 라이선스 표 (금지 항목 있으면 rc=1)")
+    sp.set_defaults(func=cmd_licenses)
     return p
 
 

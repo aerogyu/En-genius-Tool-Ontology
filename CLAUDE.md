@@ -17,6 +17,9 @@
 ## 확정된 결정 (재논의하지 않음 — 근거는 `docs/01_배경과_결정사항.md`)
 
 - 스키마: **LinkML** (마스터, Git 형상관리). Protégé는 생성된 OWL을 보는 검토용 뷰어.
+  **사내에도 반입한다** (사내에서 스키마 수정·생성 — Leo 2026-09-24). 단 전이 의존 `rfc3987`(GPLv3+)
+  은 설치하지 않는다 — jsonschema 가 `rfc3986-validator`(MIT)로 대체하며 결과 동일 실측
+  (`docs/04` 부록 C). `python -m engenius_onto licenses` / `tests/test_license_guard.py` 가 감시한다.
 - 그래프 저장소: **Apache Jena Fuseki** (TDB2). Jena 5 계열은 Java 17 이상 필요.
 - 로컬 처리: rdflib (LinkML 의존성으로 설치됨), 엑셀: openpyxl·pandas.
 - 에이전트 단계(M6부터): **LangGraph + MCP 공식 Python SDK + langchain-mcp-adapters**. LLM은 사내 제공(OpenAI 호환 API 가정, 설정으로 교체).
@@ -82,7 +85,8 @@ offline/         반입 패키지 (wheels 등)
 
 ## 미확정 사항 (Leo에게 확인)
 
-- 사내 PC/서버의 OS와 파이썬 버전 — 오프라인 wheel 준비에 필요 (M5 전)
+- 사내 PC/서버의 OS — 오프라인 wheel 준비에 필요 (M5 전). ~~파이썬 버전~~ → **3.10.2 확정**
+  (2026-09-24; 개발 venv 는 3.10.11). 사내 라이브러리는 요청하면 대부분 추가된다.
 - 실제 양식의 헤더·드롭다운 변경분 — **데이터가 아니라 헤더 이름과 선택지 목록만** 받는다 (M3 전)
 - Fuseki를 띄울 위치 (개인 PC 또는 서버)
 - 사내 LLM API 형식 (M6 전)

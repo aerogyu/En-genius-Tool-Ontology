@@ -1,9 +1,14 @@
 # 런타임 의존성 (반입 대상). 버전 고정은 requirements.lock (M5).
 # 새 패키지는 docs/04_반입목록.md 에 라이선스와 함께 추가한다.
 #
-# linkml 은 여기 넣지 않는다 — linkml 이 jsonschema[format] 을 거쳐 rfc3987(GPLv3+)
-# 을 끌어온다. 스키마 생성(gen-owl/gen-shacl/gen-pydantic)은 개발 PC 에서 하고
-# 생성물을 schema/ 에 커밋한다. 사내 런타임은 생성된 Pydantic 클래스로 검증한다.
+# linkml: 사내에서도 스키마 수정·생성을 한다 (2026-09-24 Leo 결정 — 반입 대상).
+# 단 linkml → jsonschema[format] 이 끌어오는 rfc3987 (GPLv3+) 은 설치하지 않는다.
+# rfc3987 이 없으면 jsonschema 가 rfc3986-validator (MIT) 로 자동 대체한다
+# (jsonschema 공식 format-nongpl 경로 — 생성·검증 결과 동일, docs/04 부록 C).
+# 설치 직후 반드시:  pip uninstall -y rfc3987
+# 남아 있으면 `python -m engenius_onto licenses` 와 tests/test_license_guard.py 가 실패한다.
+linkml
+rfc3986-validator
 rdflib
 pydantic
 openpyxl
