@@ -1,5 +1,5 @@
 # Fuseki 접속과 named graph IRI (docs/02 8장)
-endpoint: http://localhost:3030
+endpoint: http://127.0.0.1:3030  # localhost 는 Windows 에서 IPv6(::1) 먼저 시도 → 요청마다 ~2 s 지연 (--localhost 는 IPv4 바인딩)
 dataset: engenius
 graphs:
   schema: http://en-genius.local/graph/schema

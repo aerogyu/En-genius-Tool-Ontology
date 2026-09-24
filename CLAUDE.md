@@ -20,7 +20,8 @@
   **사내에도 반입한다** (사내에서 스키마 수정·생성 — Leo 2026-09-24). 단 전이 의존 `rfc3987`(GPLv3+)
   은 설치하지 않는다 — jsonschema 가 `rfc3986-validator`(MIT)로 대체하며 결과 동일 실측
   (`docs/04` 부록 C). `python -m engenius_onto licenses` / `tests/test_license_guard.py` 가 감시한다.
-- 그래프 저장소: **Apache Jena Fuseki** (TDB2). Jena 5 계열은 Java 17 이상 필요.
+- 그래프 저장소: **Apache Jena Fuseki** (TDB2). 6.2.0 은 Java 21, 5.6.0 은 Java 17 — 사내 Java 에 맞춰
+  고른다 (둘 다 같은 설정으로 M0 테스트 통과, `docs/04`). 개발 PC: `C:\EnGenius\tools\` (git 밖).
 - 로컬 처리: rdflib (LinkML 의존성으로 설치됨), 엑셀: openpyxl·pandas.
 - 에이전트 단계(M6부터): **LangGraph + MCP 공식 Python SDK + langchain-mcp-adapters**. LLM은 사내 제공(OpenAI 호환 API 가정, 설정으로 교체).
 - W3C 표준(RDF·SPARQL·OWL·SHACL)만 사용 — 저장소 교체 가능성을 유지한다.
@@ -38,8 +39,8 @@
 
 ## 현재 상태
 
-- [ ] M0 환경·골격 ← **다음 작업**
-- [ ] M1 스키마 v0.1 (Leo 확인 ①)
+- [x] M0 환경·골격 (2026-09-24 — help 동작 / Fuseki 6.2.0·5.6.0 에 engenius 데이터셋 기동 / pytest 21 통과·skip 0)
+- [ ] M1 스키마 v0.1 (Leo 확인 ①) ← **다음 작업 — 착수 전 Leo 승인 필요**
 - [ ] M2 합성 데이터·골든
 - [ ] M3 적재 파이프라인
 - [ ] M4 연결 도출·질의·보고서 (Leo 확인 ②)
@@ -89,4 +90,5 @@ offline/         반입 패키지 (wheels 등)
   (2026-09-24; 개발 venv 는 3.10.11). 사내 라이브러리는 요청하면 대부분 추가된다.
 - 실제 양식의 헤더·드롭다운 변경분 — **데이터가 아니라 헤더 이름과 선택지 목록만** 받는다 (M3 전)
 - Fuseki를 띄울 위치 (개인 PC 또는 서버)
+- 사내 Java 버전 — 21 이면 Fuseki 6.2.0, 17 이면 5.6.0 (M5 전)
 - 사내 LLM API 형식 (M6 전)

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Fuseki 기동 - DB 는 fuseki-data/engenius (git 제외).
-# FUSEKI_HOME : apache-jena-fuseki-5.x 압축을 푼 폴더 (fuseki-server.jar 가 있는 곳)
-# JAVA_HOME   : JDK 17 이상 (없으면 PATH 의 java 사용)
+# FUSEKI_HOME : apache-jena-fuseki-6.x(Java 21) 또는 5.x(Java 17) 압축을 푼 폴더
+# JAVA_HOME   : Fuseki 6.x 는 JDK 21, 5.x 는 17 이상 (없으면 PATH 의 java 사용)
 set -e
 cd "$(dirname "$0")/.."
 if [ -z "$FUSEKI_HOME" ]; then
