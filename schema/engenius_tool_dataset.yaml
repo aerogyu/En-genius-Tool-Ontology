@@ -1,0 +1,58 @@
+id: http://en-genius.local/onto/dataset
+name: engenius_tool_dataset
+title: En-Genius 툴 온톨로지 — 검증용 컨테이너
+version: 0.1.0
+description: >-
+  적재 결과 전체를 한 문서로 묶어 검증·직렬화하기 위한 컨테이너. 온톨로지 본체가 아니므로
+  OWL·SHACL 생성 대상이 아니다 (engenius_tool.yaml 만 생성). Pydantic 클래스는 이 파일에서
+  생성해 적재기(M3)가 인스턴스 검증에 쓴다.
+license: 사내 전용 — 개발은 합성 데이터로만
+prefixes:
+  linkml: https://w3id.org/linkml/
+  eg: http://en-genius.local/onto/
+default_prefix: eg
+default_range: string
+imports:
+  - linkml:types
+  - engenius_tool
+
+classes:
+  Dataset:
+    tree_root: true
+    description: 적재 1회 분량의 survey 그래프 + (선택) derived 그래프 내용.
+    attributes:
+      fields:
+        range: ResearchField
+        multivalued: true
+        inlined_as_list: true
+        description: 분야 노드.
+      tools:
+        range: Tool
+        multivalued: true
+        inlined_as_list: true
+        description: 통합된 툴 노드.
+      data_categories:
+        range: DataCategory
+        multivalued: true
+        inlined_as_list: true
+        description: 데이터 분류 노드.
+      tool_usages:
+        range: ToolUsage
+        multivalued: true
+        inlined_as_list: true
+        description: 툴사용 노드 (SW기본정보 행).
+      io_specs:
+        range: IOSpec
+        multivalued: true
+        inlined_as_list: true
+        description: 입출력 명세 노드 (SW입출력 행).
+      survey_loads:
+        range: SurveyLoad
+        multivalued: true
+        inlined_as_list: true
+        description: 적재 기록.
+      feeds:
+        range: Feed
+        multivalued: true
+        inlined_as_list: true
+        description: (파생) 공급 연결.

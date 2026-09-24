@@ -1,0 +1,1468 @@
+# 자동 생성 — 직접 고치지 말 것. 원본: schema/engenius_tool.yaml, 명령: python -m engenius_onto schema
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix eg: <http://en-genius.local/onto/> .
+@prefix linkml: <https://w3id.org/linkml/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix pav: <http://purl.org/pav/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+eg:Feed a owl:Class ;
+    rdfs:label "Feed" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom eg:ToolUsage ;
+            owl:onProperty eg:consumer ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:ToolUsage ;
+            owl:onProperty eg:supplier ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:ManualBasis ;
+            owl:onProperty eg:manual_basis ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:TransferMethod ;
+            owl:onProperty eg:transfer ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:consumer ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:confidence ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:matched_extensions ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:manual_basis ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:supplier ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:to_io ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:IOSpec ;
+            owl:onProperty eg:to_io ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:DataCategory ;
+            owl:onProperty eg:matched_category ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:FeedConfidence ;
+            owl:onProperty eg:confidence ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:matched_category ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:from_io ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:IOSpec ;
+            owl:onProperty eg:from_io ],
+        [ a owl:Restriction ;
+            owl:minCardinality 1 ;
+            owl:onProperty eg:matched_extensions ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:anyURI [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:string ;
+                                owl:withRestrictions ( [ xsd:pattern "^egid:FEED-[0-9a-f]{10}$" ] ) ] ) ] ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:grade ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:StartGrade ;
+            owl:onProperty eg:grade ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty eg:manual ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:manual ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty eg:declared ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:declared ],
+        eg:Derived ;
+    skos:definition "(파생) 규칙으로 계산한 공급 연결 — 출력 명세 from_io 와 입력 명세 to_io 의 분류가 같고 정규화 확장자가 겹칠 때 (docs/02 7.1). 매번 전체 재계산하며 derived 그래프에만 있다." ;
+    skos:inScheme eg: .
+
+rdfs:label rdfs:label "label" ;
+    skos:definition "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+    skos:inScheme eg: .
+
+skos:altLabel a owl:AnnotationProperty ;
+    rdfs:label "alt_labels" ;
+    skos:definition "조사에서 나온 변형 표기들 (CQ10)." ;
+    skos:inScheme eg: .
+
+skos:prefLabel a owl:AnnotationProperty ;
+    rdfs:label "pref_label" ;
+    skos:definition "대표 이름." ;
+    skos:inScheme eg: .
+
+eg:AirgapSupport a rdfs:Datatype ;
+    rdfs:label "AirgapSupport" ;
+    eg:form_list "폐쇄망구동" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "가능" "부분 가능(비고 기재)" "불가" "모름" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '폐쇄망구동' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "가능",
+        "모름",
+        "부분 가능(비고 기재)",
+        "불가" .
+
+eg:AuthMethod a rdfs:Datatype ;
+    rdfs:label "AuthMethod" ;
+    eg:form_list "인증방식" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "없음" "사내 SSO" "자체 계정" "라이선스 서버" "모름" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '인증방식' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "라이선스 서버",
+        "모름",
+        "사내 SSO",
+        "없음",
+        "자체 계정" .
+
+eg:AutomationInterface a rdfs:Datatype ;
+    rdfs:label "AutomationInterface" ;
+    eg:form_list "자동화IF" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "없음" "CLI 인자" "내장 스크립팅" "REST API" "COM·OLE" "SDK·라이브러리" "파일 폴링" "모름" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '자동화IF' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "CLI 인자",
+        "COM·OLE",
+        "REST API",
+        "SDK·라이브러리",
+        "내장 스크립팅",
+        "모름",
+        "없음",
+        "파일 폴링" .
+
+eg:BatchCapability a rdfs:Datatype ;
+    rdfs:label "BatchCapability" ;
+    eg:form_list "배치실행" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "가능" "불가" "모름" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '배치실행' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "가능",
+        "모름",
+        "불가" .
+
+eg:DataNature a rdfs:Datatype ;
+    rdfs:label "DataNature" ;
+    eg:form_list "데이터성격" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "서술형 문서" "수치·표" "3D·2D 형상" "이미지" "코드·스크립트" "혼합" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '데이터성격' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "3D·2D 형상",
+        "서술형 문서",
+        "수치·표",
+        "이미지",
+        "코드·스크립트",
+        "혼합" .
+
+eg:Derived a owl:Class ;
+    rdfs:label "Derived" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:minCardinality 1 ;
+            owl:onProperty prov:wasDerivedFrom ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:rule_version ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty prov:generatedAtTime ] ;
+    skos:definition "규칙으로 계산한 파생 노드의 provenance 묶음 (docs/02 8장). derived 그래프에만 있다." ;
+    skos:inScheme eg: .
+
+eg:DevPhase a rdfs:Datatype ;
+    rdfs:label "DevPhase" ;
+    eg:form_list "사용단계" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "전 단계" "개념설계" "기본설계" "상세설계" "개념~기본" "기본~상세" "상세~시험" "시험·인증 이후" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '사용단계' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "개념~기본",
+        "개념설계",
+        "기본~상세",
+        "기본설계",
+        "상세~시험",
+        "상세설계",
+        "시험·인증 이후",
+        "전 단계" .
+
+eg:EntityStatus a rdfs:Datatype ;
+    rdfs:label "EntityStatus" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "활성" "통합됨" "폐기" ) ] ;
+    skos:definition "수명주기 상태 — 삭제 대신 전이 (상위 스키마 v0.2 §6, docs/01 원칙 9)." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "통합됨",
+        "폐기",
+        "활성" .
+
+eg:FeedConfidence a rdfs:Datatype ;
+    rdfs:label "FeedConfidence" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "낮음" "보통" ) ] ;
+    skos:definition "공급 연결 신뢰도 (docs/02 7.1)." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "낮음",
+        "보통" .
+
+eg:FormatStandard a rdfs:Datatype ;
+    rdfs:label "FormatStandard" ;
+    eg:form_list "포맷표준성" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "국제·업계 표준" "사내 표준 포맷" "SW 전용(바이너리)" "모름" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '포맷표준성' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "SW 전용(바이너리)",
+        "국제·업계 표준",
+        "모름",
+        "사내 표준 포맷" .
+
+eg:HeadlessCapability a rdfs:Datatype ;
+    rdfs:label "HeadlessCapability" ;
+    eg:form_list "가능불가모름" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "가능" "불가" "모름" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '가능불가모름' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "가능",
+        "모름",
+        "불가" .
+
+eg:IODirection a rdfs:Datatype ;
+    rdfs:label "IODirection" ;
+    eg:form_list "방향" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "입력(소비)" "출력(생산)" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '방향' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "입력(소비)",
+        "출력(생산)" .
+
+eg:LicenseType a rdfs:Datatype ;
+    rdfs:label "LicenseType" ;
+    eg:form_list "라이선스형태" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "영구" "연간 구독" "플로팅(동시사용)" "노드락" "무료" "모름" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '라이선스형태' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "노드락",
+        "모름",
+        "무료",
+        "연간 구독",
+        "영구",
+        "플로팅(동시사용)" .
+
+eg:ManualBasis a rdfs:Datatype ;
+    rdfs:label "ManualBasis" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "전달방법" "비고" ) ] ;
+    skos:definition "수기 구간 판정 근거 (docs/02 7.3)." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "비고",
+        "전달방법" .
+
+eg:OperationMode a rdfs:Datatype ;
+    rdfs:label "OperationMode" ;
+    eg:form_list "조작방식" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "GUI 전용" "CLI 지원" "GUI+CLI" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '조작방식' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "CLI 지원",
+        "GUI 전용",
+        "GUI+CLI" .
+
+eg:Priority a rdfs:Datatype ;
+    rdfs:label "Priority" ;
+    eg:form_list "우선순위" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "상" "중" "하" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '우선순위' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "상",
+        "중",
+        "하" .
+
+eg:PurposeClass a rdfs:Datatype ;
+    rdfs:label "PurposeClass" ;
+    eg:form_list "용도대분류" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "설계" "해석" "시험·계측" "데이터·형상관리" "문서·협업" "프로젝트관리" "기타" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '용도대분류' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "기타",
+        "데이터·형상관리",
+        "문서·협업",
+        "설계",
+        "시험·계측",
+        "프로젝트관리",
+        "해석" .
+
+eg:RuntimeEnv a rdfs:Datatype ;
+    rdfs:label "RuntimeEnv" ;
+    eg:form_list "실행환경" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "Windows PC" "Windows 서버" "Linux 서버" "HPC 클러스터" "사내 웹" "외부 클라우드(SaaS)" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '실행환경' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "HPC 클러스터",
+        "Linux 서버",
+        "Windows PC",
+        "Windows 서버",
+        "사내 웹",
+        "외부 클라우드(SaaS)" .
+
+eg:SecurityGrade a rdfs:Datatype ;
+    rdfs:label "SecurityGrade" ;
+    eg:form_list "보안등급" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "L1" "L2" "L3" "L4" "L5" "미정" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '보안등급' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "미정" .
+
+eg:StartGrade a rdfs:Datatype ;
+    rdfs:label "StartGrade" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "A" "B" "C" "제외" ) ] ;
+    skos:definition "착수 등급 (docs/02 7.4)." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "A",
+        "B",
+        "C",
+        "제외" .
+
+eg:StorageLocation a rdfs:Datatype ;
+    rdfs:label "StorageLocation" ;
+    eg:form_list "저장위치" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "PDM(ENOVIA)" "공유폴더" "전용 DB" "개인 PC" "혼재" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '저장위치' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "PDM(ENOVIA)",
+        "개인 PC",
+        "공유폴더",
+        "전용 DB",
+        "혼재" .
+
+eg:UsageFrequency a rdfs:Datatype ;
+    rdfs:label "UsageFrequency" ;
+    eg:form_list "사용빈도" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "매일" "주 1회 이상" "월 1회 이상" "분기 이하" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '사용빈도' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "매일",
+        "분기 이하",
+        "월 1회 이상",
+        "주 1회 이상" .
+
+eg:ValidationStatus a rdfs:Datatype ;
+    rdfs:label "ValidationStatus" ;
+    eg:form_list "검증상태" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "완료" "진행중" "미실시" "해당없음" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '검증상태' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "미실시",
+        "완료",
+        "진행중",
+        "해당없음" .
+
+eg:YesNoUnknown a rdfs:Datatype ;
+    rdfs:label "YesNoUnknown" ;
+    eg:form_list "예아니오모름" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "예" "아니오" "모름" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '예아니오모름' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "모름",
+        "아니오",
+        "예" .
+
+eg:extensions a owl:DatatypeProperty ;
+    rdfs:label "extensions" ;
+    skos:definition "정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용). 연결 계산 키 ② (docs/02 6.2)." ;
+    skos:inScheme eg: .
+
+eg:feeds a owl:ObjectProperty ;
+    rdfs:label "feeds" ;
+    skos:definition "(파생) 이 툴사용이 데이터를 공급하는 툴사용 — Feed 의 지름길, 경로 질의(eg:feeds+)용. derived 그래프에만 있다." ;
+    skos:inScheme eg: .
+
+eg:partner_tools a owl:ObjectProperty ;
+    rdfs:label "partner_tools" ;
+    skos:definition "연계 SW명 중 Tool 로 해석된 것." ;
+    skos:inScheme eg: .
+
+eg:partner_unresolved a owl:DatatypeProperty ;
+    rdfs:label "partner_unresolved" ;
+    skos:definition "연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09)." ;
+    skos:inScheme eg: .
+
+eg:rule_version a owl:DatatypeProperty ;
+    rdfs:label "rule_version" ;
+    skos:definition "이 파생 노드를 만든 규칙 버전 (예 feed_v1)." ;
+    skos:inScheme eg: .
+
+eg:succeeded_by a owl:ObjectProperty ;
+    rdfs:label "succeeded_by" ;
+    skos:definition "통폐합·분할로 이 분야를 이어받은 분야." ;
+    skos:inScheme eg: .
+
+eg:transfer a owl:DatatypeProperty ;
+    rdfs:label "transfer" ;
+    skos:definition "양쪽 명세의 전달 방법." ;
+    skos:inScheme eg: .
+
+prov:generatedAtTime a owl:DatatypeProperty ;
+    rdfs:label "generated_at" ;
+    rdfs:range xsd:dateTime ;
+    skos:definition "파생 노드 생성 일시 (provenance)." ;
+    skos:inScheme eg: .
+
+prov:wasDerivedFrom a owl:ObjectProperty ;
+    rdfs:label "derived_from" ;
+    rdfs:range eg:SurveyLoad ;
+    skos:definition "파생의 근거가 된 적재 기록 (provenance)." ;
+    skos:inScheme eg: .
+
+eg:DataCategory a owl:Class ;
+    rdfs:label "DataCategory" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:anyURI [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:string ;
+                                owl:withRestrictions ( [ xsd:pattern "^egid:CAT-\\d{3}$" ] ) ] ) ] ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:id ] ;
+    skos:definition "데이터 분류 (SW입출력 '분류' 드롭다운 값). 연결 계산 키 ① (docs/02 7.1)." ;
+    skos:inScheme eg: .
+
+eg:Field a owl:Class ;
+    rdfs:label "ResearchField" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:anyURI [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:string ;
+                                owl:withRestrictions ( [ xsd:pattern "^egid:FLD-\\d{3}$" ] ) ] ) ] ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:Field ;
+            owl:onProperty eg:succeeded_by ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:status ] ;
+    skos:definition "연구소 분야 (조직 노드, RDF 클래스 eg:Field — docs/02 용어). SW기본정보 '담당 부서' 값에서 만든다. 개명은 label 갱신, 통폐합·분할은 새 노드 + succeeded_by (상위 스키마 v0.2 §9). ID 는 레지스트리로 고정. 스키마·파이썬 이름만 ResearchField — 'Field' 는 생성되는 Pydantic 코드에서 pydantic.Field 를 덮어써 모든 클래스가 깨진다 (M1 에서 실측)." ;
+    skos:exactMatch eg:ResearchField ;
+    skos:inScheme eg: .
+
+eg:IOSpec a owl:Class ;
+    rdfs:label "IOSpec" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom eg:ToolUsage ;
+            owl:onProperty eg:io_owner ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:FormatStandard ;
+            owl:onProperty eg:format_standard ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:anyURI [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:string ;
+                                owl:withRestrictions ( [ xsd:pattern "^egid:IO-[0-9a-f]{10}$" ] ) ] ) ] ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:io_owner ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:Tool ;
+            owl:onProperty eg:partner_tools ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:note ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:owner_source_key ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:format_standard ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:TransferMethod ;
+            owl:onProperty eg:transfer_method ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:direction ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:inhouse_format ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:owner_source_key ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:transfer_method ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:security_grade ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:DataNature ;
+            owl:onProperty eg:data_nature ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty eg:inhouse_format ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:IODirection ;
+            owl:onProperty eg:direction ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:data_nature ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:SecurityGrade ;
+            owl:onProperty eg:security_grade ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:partner_unresolved ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:onDatatype xsd:string ;
+                    owl:withRestrictions ( [ xsd:pattern "^[a-z0-9_+-]+$" ] ) ] ;
+            owl:onProperty eg:extensions ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:data_name ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:loaded_in ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:extensions_raw ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:data_name ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:partner_raw ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:partner_raw ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:DataCategory ;
+            owl:onProperty eg:io_category ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:source_row ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:storage_path ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:extensions_raw ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:storage_path ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:io_category ] ;
+    skos:definition "SW입출력 1행. 한 툴사용이 받거나(입력) 내놓는(출력) 데이터 1종 — 에이전트 단계에서 MCP 함수의 입력·출력 정의가 된다 (docs/01 원칙 6)." ;
+    skos:inScheme eg: .
+
+eg:SurveyLoad a owl:Class ;
+    rdfs:label "SurveyLoad" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:integer [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:integer ;
+                                owl:withRestrictions ( [ xsd:minInclusive 0 ] ) ] ) ] ;
+            owl:onProperty eg:warning_count ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:warning_count ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:integer [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:integer ;
+                                owl:withRestrictions ( [ xsd:minInclusive 0 ] ) ] ) ] ;
+            owl:onProperty eg:row_count ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:row_count ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:onDatatype xsd:string ;
+                    owl:withRestrictions ( [ xsd:pattern "^[0-9a-f]{64}$" ] ) ] ;
+            owl:onProperty eg:source_sha256 ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:run_id ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:dateTime ;
+            owl:onProperty eg:loaded_at ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:anyURI [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:string ;
+                                owl:withRestrictions ( [ xsd:pattern "^egid:LOAD-\\d{8}T\\d{6}-\\d{2}$" ] ) ] ) ] ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:source_sha256 ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:run_id ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:loaded_at ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:source_file_name ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:source_file_name ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:excluded_row_count ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:integer [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:integer ;
+                                owl:withRestrictions ( [ xsd:minInclusive 0 ] ) ] ) ] ;
+            owl:onProperty eg:excluded_row_count ] ;
+    skos:definition "적재 기록 1건 — 원천 조사 파일 1개를 한 번 적재한 것. 같은 실행(run_id)에서 여러 파일을 적재하면 파일마다 1건. 경로는 남기지 않는다 (파일명과 sha256 만)." ;
+    skos:inScheme eg: .
+
+eg:ToolKind a rdfs:Datatype ;
+    rdfs:label "ToolKind" ;
+    eg:form_list "구분" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "상용" "자체개발" "오픈소스" "프리웨어" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '구분' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "상용",
+        "오픈소스",
+        "자체개발",
+        "프리웨어" .
+
+eg:TransferMethod a rdfs:Datatype ;
+    rdfs:label "TransferMethod" ;
+    eg:form_list "전달방법" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "파일 저장" "PDM 등록" "DB 기록" "메일·수기 전달" "타 SW 직접 연동" ) ] ;
+    skos:definition "원본 양식 '선택지' 시트의 '전달방법' 목록." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "DB 기록",
+        "PDM 등록",
+        "메일·수기 전달",
+        "타 SW 직접 연동",
+        "파일 저장" .
+
+eg:airgap_ok a owl:DatatypeProperty ;
+    rdfs:label "airgap_ok" ;
+    eg:form_column "R" ;
+    eg:form_header "폐쇄망 구동 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "폐쇄망 구동. '불가'가 낀 수기 구간은 착수 등급 '제외' (docs/02 7.4)." ;
+    skos:inScheme eg: .
+
+eg:auth_method a owl:DatatypeProperty ;
+    rdfs:label "auth_method" ;
+    eg:form_column "X" ;
+    eg:form_header "인증/로그인 방식" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "인증/로그인 방식 — MCP 연결 시 인증 설계용." ;
+    skos:inScheme eg: .
+
+eg:automation_detail a owl:DatatypeProperty ;
+    rdfs:label "automation_detail" ;
+    eg:form_column "V" ;
+    eg:form_header "자동화 상세" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "자동화 상세 — 언어·모듈·예시 — Python API, journal 파일, TCL 등." ;
+    skos:inScheme eg: .
+
+eg:automation_if a owl:DatatypeProperty ;
+    rdfs:label "automation_if" ;
+    eg:form_column "U" ;
+    eg:form_header "자동화 인터페이스 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "자동화 인터페이스 (대표 1개). 착수 등급 규칙의 입력 (docs/02 7.4)." ;
+    skos:inScheme eg: .
+
+eg:automation_wish a owl:DatatypeProperty ;
+    rdfs:label "automation_wish" ;
+    eg:form_column "AC" ;
+    eg:form_header "자동화 희망 작업 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "자동화 희망 작업 — 반복적이라 AI/에이전트가 대신하면 좋을 일." ;
+    skos:inScheme eg: .
+
+eg:batch_capable a owl:DatatypeProperty ;
+    rdfs:label "batch_capable" ;
+    eg:form_column "T" ;
+    eg:form_header "배치/스크립트 실행 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "배치/스크립트 실행 — 사람이 클릭하지 않고 실행 가능한가." ;
+    skos:inScheme eg: .
+
+eg:certification_use a owl:DatatypeProperty ;
+    rdfs:label "certification_use" ;
+    eg:form_column "AB" ;
+    eg:form_header "감항·인증 업무 사용 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "감항·인증 업무 사용 — 인증 근거 생산에 쓰이는가." ;
+    skos:inScheme eg: .
+
+eg:confidence a owl:DatatypeProperty ;
+    rdfs:label "confidence" ;
+    skos:definition "겹친 확장자가 전부 범용(config rules.yaml generic_extensions)이면 낮음." ;
+    skos:inScheme eg: .
+
+eg:consumer a owl:ObjectProperty ;
+    rdfs:label "consumer" ;
+    skos:definition "수요 측 툴사용 (to_io 의 io_owner)." ;
+    skos:inScheme eg: .
+
+eg:data_name a owl:DatatypeProperty ;
+    rdfs:label "data_name" ;
+    eg:form_column "D" ;
+    eg:form_header "데이터/산출물 명칭 *" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "데이터/산출물 명칭 원문. 표기가 제각각이라 연결 키로 쓰지 않는다 (docs/01 원칙 3)." ;
+    skos:inScheme eg: .
+
+eg:data_nature a owl:DatatypeProperty ;
+    rdfs:label "data_nature" ;
+    eg:form_column "H" ;
+    eg:form_header "데이터 성격 *" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "데이터 성격 — 서술형은 문서 RAG, 수치는 DB 적재 대상." ;
+    skos:inScheme eg: .
+
+eg:declared a owl:DatatypeProperty ;
+    rdfs:label "declared" ;
+    skos:definition "어느 한쪽의 신고(연계 SW명)와 일치하는지 (docs/02 7.2)." ;
+    skos:inScheme eg: .
+
+eg:direction a owl:DatatypeProperty ;
+    rdfs:label "direction" ;
+    eg:form_column "C" ;
+    eg:form_header "방향 *" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "방향 — 이 SW 가 받는 것 = 입력(소비), 내놓는 것 = 출력(생산)." ;
+    skos:inScheme eg: .
+
+eg:excluded_row_count a owl:DatatypeProperty ;
+    rdfs:label "excluded_row_count" ;
+    skos:definition "제외한 행 수 (예시 행·빈 행 등, 사유는 실행 로그)." ;
+    skos:inScheme eg: .
+
+eg:extensions_raw a owl:DatatypeProperty ;
+    rdfs:label "extensions_raw" ;
+    eg:form_column "F" ;
+    eg:form_header "파일 형식/확장자 *" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "파일 형식/확장자 원문." ;
+    skos:inScheme eg: .
+
+eg:format_standard a owl:DatatypeProperty ;
+    rdfs:label "format_standard" ;
+    eg:form_column "G" ;
+    eg:form_header "포맷 표준성" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "포맷 표준성." ;
+    skos:inScheme eg: .
+
+eg:frequency a owl:DatatypeProperty ;
+    rdfs:label "frequency" ;
+    eg:form_column "M" ;
+    eg:form_header "사용 빈도" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "사용 빈도 — 착수 순위 정렬 키 (docs/02 7.4)." ;
+    skos:inScheme eg: .
+
+eg:from_io a owl:ObjectProperty ;
+    rdfs:label "from_io" ;
+    skos:definition "공급 측 출력 명세." ;
+    skos:inScheme eg: .
+
+eg:grade a owl:DatatypeProperty ;
+    rdfs:label "grade" ;
+    skos:definition "착수 등급 (수기·변환 구간에만 매긴다, docs/02 7.4)." ;
+    skos:inScheme eg: .
+
+eg:headless a owl:DatatypeProperty ;
+    rdfs:label "headless" ;
+    eg:form_column "W" ;
+    eg:form_header "헤드리스 실행" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "헤드리스 실행 — 화면 없이(서버에서) 실행 가능한가." ;
+    skos:inScheme eg: .
+
+eg:inhouse_format a owl:DatatypeProperty ;
+    rdfs:label "inhouse_format" ;
+    skos:definition "확장자 원문에 '(사내)'·'사내' 표기가 있었는지." ;
+    skos:inScheme eg: .
+
+eg:io_category a owl:ObjectProperty ;
+    rdfs:label "io_category" ;
+    eg:form_column "E" ;
+    eg:form_header "분류 *" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "분류. 연결 계산 키 ①." ;
+    skos:inScheme eg: .
+
+eg:io_owner a owl:ObjectProperty ;
+    rdfs:label "io_owner" ;
+    skos:definition "이 입출력을 가진 툴사용 (owner_source_key 로 찾은 것)." ;
+    skos:inScheme eg: .
+
+eg:kind a owl:DatatypeProperty ;
+    rdfs:label "kind" ;
+    skos:definition "구분 — 사용 기록들의 응답 중 다수값." ;
+    skos:inScheme eg: .
+
+eg:license_count a owl:DatatypeProperty ;
+    rdfs:label "license_count" ;
+    eg:form_column "O" ;
+    eg:form_header "보유 수량" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "보유 수량 (정수 변환 성공 시)." ;
+    skos:inScheme eg: .
+
+eg:license_count_raw a owl:DatatypeProperty ;
+    rdfs:label "license_count_raw" ;
+    skos:definition "보유 수량 원문 — 정수 변환에 실패했을 때만 보존 (경고와 함께)." ;
+    skos:inScheme eg: .
+
+eg:license_expiry a owl:DatatypeProperty ;
+    rdfs:label "license_expiry" ;
+    eg:form_column "P" ;
+    eg:form_header "만료 시기" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "만료 시기 YYYY-MM. 영구면 비움." ;
+    skos:inScheme eg: .
+
+eg:license_type a owl:DatatypeProperty ;
+    rdfs:label "license_type" ;
+    eg:form_column "N" ;
+    eg:form_header "라이선스 형태" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "라이선스 형태." ;
+    skos:inScheme eg: .
+
+eg:loaded_at a owl:DatatypeProperty ;
+    rdfs:label "loaded_at" ;
+    skos:definition "적재 일시." ;
+    skos:inScheme eg: .
+
+eg:loaded_in a owl:ObjectProperty ;
+    rdfs:label "loaded_in" ;
+    rdfs:range eg:SurveyLoad ;
+    skos:definition "이 노드를 만든 적재 기록 (provenance)." ;
+    skos:inScheme eg: .
+
+eg:manual a owl:DatatypeProperty ;
+    rdfs:label "manual" ;
+    skos:definition "수기 구간 여부 (전달 방법 기준)." ;
+    skos:inScheme eg: .
+
+eg:manual_basis a owl:DatatypeProperty ;
+    rdfs:label "manual_basis" ;
+    skos:definition "수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호." ;
+    skos:inScheme eg: .
+
+eg:matched_category a owl:ObjectProperty ;
+    rdfs:label "matched_category" ;
+    skos:definition "양쪽이 일치한 분류." ;
+    skos:inScheme eg: .
+
+eg:matched_extensions a owl:DatatypeProperty ;
+    rdfs:label "matched_extensions" ;
+    skos:definition "양쪽이 겹친 정규화 확장자." ;
+    skos:inScheme eg: .
+
+eg:merged_into a owl:ObjectProperty ;
+    rdfs:label "merged_into" ;
+    skos:definition "사람 판정으로 다른 Tool 에 통합된 경우 그 대상 (status=통합됨과 함께)." ;
+    skos:inScheme eg: .
+
+eg:note a owl:DatatypeProperty ;
+    rdfs:label "note" ;
+    skos:definition "비고 (원문)." ;
+    skos:inScheme eg: .
+
+eg:operation_mode a owl:DatatypeProperty ;
+    rdfs:label "operation_mode" ;
+    eg:form_column "S" ;
+    eg:form_header "조작 방식 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "조작 방식. 착수 등급 규칙의 입력 (docs/02 7.4)." ;
+    skos:inScheme eg: .
+
+eg:output_storage a owl:DatatypeProperty ;
+    rdfs:label "output_storage" ;
+    eg:form_column "Y" ;
+    eg:form_header "산출물 주 저장 위치" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "산출물 주 저장 위치 (상세 경로는 SW입출력 시트)." ;
+    skos:inScheme eg: .
+
+eg:owner_source_key a owl:DatatypeProperty ;
+    rdfs:label "owner_source_key" ;
+    eg:form_column "A" ;
+    eg:form_header "SW ID *" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "SW ID 원문. SW기본정보에 없으면 고아 입출력 — io_owner 없이 적재하고 경고." ;
+    skos:inScheme eg: .
+
+eg:pain_points a owl:DatatypeProperty ;
+    rdfs:label "pain_points" ;
+    eg:form_column "AD" ;
+    eg:form_header "현재 수작업·애로 구간" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "현재 수작업·애로 구간 — 타 SW 와 데이터를 주고받을 때 수작업 구간 등." ;
+    skos:inScheme eg: .
+
+eg:partner_raw a owl:DatatypeProperty ;
+    rdfs:label "partner_raw" ;
+    eg:form_column "J" ;
+    eg:form_header "연계 SW명" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "연계 SW명 원문 — 신고된 연결." ;
+    skos:inScheme eg: .
+
+eg:phase a owl:DatatypeProperty ;
+    rdfs:label "phase" ;
+    eg:form_column "H" ;
+    eg:form_header "주 사용 단계 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "이 SW 를 주로 쓰는 개발 단계 (걸치면 범위로)." ;
+    skos:inScheme eg: .
+
+eg:priority_opinion a owl:DatatypeProperty ;
+    rdfs:label "priority_opinion" ;
+    eg:form_column "AE" ;
+    eg:form_header "우선순위 의견" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4)." ;
+    skos:inScheme eg: .
+
+eg:purpose_class a owl:DatatypeProperty ;
+    rdfs:label "purpose_class" ;
+    eg:form_column "F" ;
+    eg:form_header "용도 대분류 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "용도 대분류." ;
+    skos:inScheme eg: .
+
+eg:purpose_detail a owl:DatatypeProperty ;
+    rdfs:label "purpose_detail" ;
+    eg:form_column "G" ;
+    eg:form_header "용도 상세 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "용도 상세 원문. 예) 이차유로 1D 유동 네트워크 해석" ;
+    skos:inScheme eg: .
+
+eg:reported_kind a owl:DatatypeProperty ;
+    rdfs:label "reported_kind" ;
+    eg:form_column "E" ;
+    eg:form_header "구분 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "구분 원문. Tool.kind(다수값)의 입력." ;
+    skos:inScheme eg: .
+
+eg:reported_tool_name a owl:DatatypeProperty ;
+    rdfs:label "reported_tool_name" ;
+    eg:form_column "B" ;
+    eg:form_header "SW명(정식) *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "SW명(정식) 원문. 툴 통합 정규화 키의 입력." ;
+    skos:inScheme eg: .
+
+eg:reported_vendor a owl:DatatypeProperty ;
+    rdfs:label "reported_vendor" ;
+    eg:form_column "D" ;
+    eg:form_header "제조사 / 개발주체 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "제조사/개발주체 원문. Tool.vendor(다수값)의 입력." ;
+    skos:inScheme eg: .
+
+eg:roadmap_note a owl:DatatypeProperty ;
+    rdfs:label "roadmap_note" ;
+    eg:form_column "AF" ;
+    eg:form_header "대체/업그레이드 계획" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "대체/업그레이드 계획 — 단종·버전업·전환 예정." ;
+    skos:inScheme eg: .
+
+eg:row_count a owl:DatatypeProperty ;
+    rdfs:label "row_count" ;
+    skos:definition "적재한 행 수 (두 시트 합)." ;
+    skos:inScheme eg: .
+
+eg:run_id a owl:DatatypeProperty ;
+    rdfs:label "run_id" ;
+    skos:definition "적재 실행 ID (output/<실행ID> 와 같다)." ;
+    skos:inScheme eg: .
+
+eg:runtime_env a owl:DatatypeProperty ;
+    rdfs:label "runtime_env" ;
+    eg:form_column "Q" ;
+    eg:form_header "실행 환경 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "실행 환경 (복수면 대표 1개 + 비고)." ;
+    skos:inScheme eg: .
+
+eg:security_grade a owl:DatatypeProperty ;
+    rdfs:label "security_grade" ;
+    eg:form_column "L" ;
+    eg:form_header "보안등급" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "보안등급 — 지금은 속성으로만 적재, 접근 통제는 M6 이후 MCP 게이트웨이 (docs/02 11장)." ;
+    skos:inScheme eg: .
+
+eg:source_file_name a owl:DatatypeProperty ;
+    rdfs:label "source_file_name" ;
+    skos:definition "원천 파일명 (경로 제외)." ;
+    skos:inScheme eg: .
+
+eg:source_key a owl:DatatypeProperty ;
+    rdfs:label "source_key" ;
+    eg:form_column "A" ;
+    eg:form_header "SW ID *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "SW ID 원문 (분야 약칭이 들어 있어 URI 로 쓰지 않는다 — docs/02 4장)." ;
+    skos:inScheme eg: .
+
+eg:source_row a owl:DatatypeProperty ;
+    rdfs:label "source_row" ;
+    rdfs:range xsd:integer ;
+    skos:definition "원천 엑셀 시트의 행 번호 (조사 보완 시 원본 행을 찾기 위한 추적 정보)." ;
+    skos:inScheme eg: .
+
+eg:source_sha256 a owl:DatatypeProperty ;
+    rdfs:label "source_sha256" ;
+    skos:definition "원천 파일 SHA-256 (소문자 16진수)." ;
+    skos:inScheme eg: .
+
+eg:status a owl:DatatypeProperty ;
+    rdfs:label "status" ;
+    rdfs:range eg:EntityStatus ;
+    skos:definition "수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6)." ;
+    skos:inScheme eg: .
+
+eg:storage_path a owl:DatatypeProperty ;
+    rdfs:label "storage_path" ;
+    eg:form_column "K" ;
+    eg:form_header "저장 위치/경로" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "저장 위치/경로 원문 (공유폴더 경로, PDM 폴더명)." ;
+    skos:inScheme eg: .
+
+eg:supplier a owl:ObjectProperty ;
+    rdfs:label "supplier" ;
+    skos:definition "공급 측 툴사용 (from_io 의 io_owner)." ;
+    skos:inScheme eg: .
+
+eg:task_summary a owl:DatatypeProperty ;
+    rdfs:label "task_summary" ;
+    eg:form_column "I" ;
+    eg:form_header "주요 사용 업무 요약 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "이 SW 로 실제 수행하는 업무 1~2문장." ;
+    skos:inScheme eg: .
+
+eg:to_io a owl:ObjectProperty ;
+    rdfs:label "to_io" ;
+    skos:definition "수요 측 입력 명세." ;
+    skos:inScheme eg: .
+
+eg:transfer_method a owl:DatatypeProperty ;
+    rdfs:label "transfer_method" ;
+    eg:form_column "I" ;
+    eg:form_header "전달 방법 *" ;
+    eg:form_sheet "SW입출력" ;
+    skos:definition "전달 방법. '메일·수기 전달'이면 수기 구간 (docs/02 7.3)." ;
+    skos:inScheme eg: .
+
+eg:usage_field a owl:ObjectProperty ;
+    rdfs:label "usage_field" ;
+    eg:form_column "J" ;
+    eg:form_header "담당 부서 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "담당 부서 값으로 만든 Field (문자열이 아니라 노드)." ;
+    skos:inScheme eg: .
+
+eg:usage_tool a owl:ObjectProperty ;
+    rdfs:label "usage_tool" ;
+    skos:definition "통합된 Tool (reported_tool_name 을 정규화해 결정)." ;
+    skos:inScheme eg: .
+
+eg:user_count a owl:DatatypeProperty ;
+    rdfs:label "user_count" ;
+    eg:form_column "L" ;
+    eg:form_header "사용 인원수" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "사용 인원수 (정수 변환 성공 시)." ;
+    skos:inScheme eg: .
+
+eg:user_count_raw a owl:DatatypeProperty ;
+    rdfs:label "user_count_raw" ;
+    skos:definition "사용 인원수 원문 — 정수 변환에 실패했을 때만 보존 (경고와 함께)." ;
+    skos:inScheme eg: .
+
+eg:validation_ref a owl:DatatypeProperty ;
+    rdfs:label "validation_ref" ;
+    eg:form_column "AA" ;
+    eg:form_header "검증 기준/문서번호" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "검증 기준/문서번호 원문." ;
+    skos:inScheme eg: .
+
+eg:validation_status a owl:DatatypeProperty ;
+    rdfs:label "validation_status" ;
+    eg:form_column "Z" ;
+    eg:form_header "사내 검증 상태 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "사내 검증 상태 (해석 SW 의 V&V 등)." ;
+    skos:inScheme eg: .
+
+eg:vendor a owl:DatatypeProperty ;
+    rdfs:label "vendor" ;
+    skos:definition "제조사/개발주체 — 사용 기록들의 응답 중 다수값 (엇갈리면 검토표에 표시)." ;
+    skos:inScheme eg: .
+
+eg:version a owl:DatatypeProperty ;
+    rdfs:label "version" ;
+    eg:form_column "C" ;
+    eg:form_header "버전 *" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "사용 중인 버전 전부 (원문)." ;
+    skos:inScheme eg: .
+
+eg:warning_count a owl:DatatypeProperty ;
+    rdfs:label "warning_count" ;
+    skos:definition "적재 중 경고 수 (내용은 실행 로그)." ;
+    skos:inScheme eg: .
+
+eg:Tool a owl:Class ;
+    rdfs:label "Tool" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:anyURI [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:string ;
+                                owl:withRestrictions ( [ xsd:pattern "^egid:TOOL-\\d{6}$" ] ) ] ) ] ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:vendor ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:Tool ;
+            owl:onProperty eg:merged_into ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:vendor ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:kind ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:merged_into ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:ToolKind ;
+            owl:onProperty eg:kind ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:status ] ;
+    skos:definition "제품 단위 툴 (표기 변형을 통합한 것). 예 ANSYS Fluent. 분야별 사용 기록은 ToolUsage. 통합은 정규화 키 일치일 때만 자동, 유사도 후보는 사람이 판정 (docs/02 6.1)." ;
+    skos:inScheme eg: .
+
+eg:ToolUsage a owl:Class ;
+    rdfs:label "ToolUsage" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom eg:UsageFrequency ;
+            owl:onProperty eg:frequency ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:license_count_raw ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:StorageLocation ;
+            owl:onProperty eg:output_storage ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:RuntimeEnv ;
+            owl:onProperty eg:runtime_env ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:reported_tool_name ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:Tool ;
+            owl:onProperty eg:usage_tool ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:license_count_raw ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:headless ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:version ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:HeadlessCapability ;
+            owl:onProperty eg:headless ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:frequency ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:note ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:reported_tool_name ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:output_storage ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:runtime_env ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:purpose_detail ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:roadmap_note ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:batch_capable ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:version ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:ValidationStatus ;
+            owl:onProperty eg:validation_status ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:validation_status ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:roadmap_note ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:reported_vendor ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:anyURI [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:string ;
+                                owl:withRestrictions ( [ xsd:pattern "^egid:USE-\\d{6}$" ] ) ] ) ] ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:purpose_class ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:user_count_raw ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:license_type ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:purpose_detail ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:id ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:user_count_raw ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:DevPhase ;
+            owl:onProperty eg:phase ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:AutomationInterface ;
+            owl:onProperty eg:automation_if ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:license_count ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:automation_if ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:ToolUsage ;
+            owl:onProperty eg:feeds ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:user_count ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:BatchCapability ;
+            owl:onProperty eg:batch_capable ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:YesNoUnknown ;
+            owl:onProperty eg:certification_use ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:source_key ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:reported_vendor ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:auth_method ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:automation_detail ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:license_expiry ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:automation_detail ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:usage_tool ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:LicenseType ;
+            owl:onProperty eg:license_type ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:AirgapSupport ;
+            owl:onProperty eg:airgap_ok ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:phase ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:PurposeClass ;
+            owl:onProperty eg:purpose_class ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:source_key ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:integer [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:integer ;
+                                owl:withRestrictions ( [ xsd:minInclusive 0 ] ) ] ) ] ;
+            owl:onProperty eg:license_count ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:automation_wish ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:reported_kind ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:pain_points ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:certification_use ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:pain_points ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:loaded_in ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:task_summary ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:operation_mode ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:integer [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:integer ;
+                                owl:withRestrictions ( [ xsd:minInclusive 0 ] ) ] ) ] ;
+            owl:onProperty eg:user_count ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:validation_ref ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:Priority ;
+            owl:onProperty eg:priority_opinion ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:automation_wish ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:validation_ref ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:ToolKind ;
+            owl:onProperty eg:reported_kind ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:usage_field ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:OperationMode ;
+            owl:onProperty eg:operation_mode ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:priority_opinion ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:source_row ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:onDatatype xsd:string ;
+                    owl:withRestrictions ( [ xsd:pattern "^\\d{4}-(0[1-9]|1[0-2])$" ] ) ] ;
+            owl:onProperty eg:license_expiry ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:task_summary ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:AuthMethod ;
+            owl:onProperty eg:auth_method ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:airgap_ok ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:Field ;
+            owl:onProperty eg:usage_field ] ;
+    skos:definition "분야별 SW 응답 1건 = SW기본정보 1행 = SW ID 1개. 같은 툴을 여러 분야가 적으면 여러 개. 입출력(IOSpec)은 분야마다 다르므로 여기에 붙는다." ;
+    skos:inScheme eg: .
+
+eg:id a owl:DatatypeProperty ;
+    rdfs:label "id" ;
+    rdfs:range xsd:anyURI ;
+    skos:definition "노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001" ;
+    skos:inScheme eg: .
+
+eg: a owl:Ontology ;
+    rdfs:label "engenius_tool" ;
+    eg:form_excluded_columns "SW기본정보|실무 문의처(선택)|인명 — 읽지도 저장하지도 않는다 (CLAUDE.md 절대 규칙 5); SW입출력|SW명(자동)|VLOOKUP 수식 열 — SW명은 SW ID 로 SW기본정보에서 찾는다" ;
+    eg:form_source "reference/SW조사양식_EnGenius_v1.0.xlsx (원본 양식 — 사내 배포본은 헤더·선택지가 다를 수 있음)" ;
+    dcterms:license "사내 전용 — 개발은 합성 데이터로만" ;
+    dcterms:title "En-Genius 툴 온톨로지" ;
+    pav:version "0.1.0" ;
+    skos:definition "연구소 분야별 SW 조사(SW기본정보·SW입출력)를 담아 툴 간 데이터 연결을 계산하기 위한 스키마. 설계 기준은 docs/02_툴온톨로지_설계.md (3·4·7장). 클래스 7종: Field, Tool, ToolUsage, IOSpec, DataCategory, Feed(파생), SurveyLoad. ID 는 의미 없는 일련번호·해시(egid:TOOL-000001 등), 사람이 읽는 이름은 rdfs:label(@ko). 언어 태그(@ko)는 LinkML 이 데이터로 표현하지 못하므로 적재기(M3)가 RDF 를 만들 때 붙인다. 예약(미구현): WbsTask —uses_tool→ ToolUsage/Tool (지멘스 PoC 의 WBS Lv.6 연결)." .
+

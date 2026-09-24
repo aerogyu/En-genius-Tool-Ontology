@@ -1,0 +1,704 @@
+# 자동 생성 — 직접 고치지 말 것. 원본: schema/engenius_tool.yaml, 명령: python -m engenius_onto schema
+@prefix eg: <http://en-genius.local/onto/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+eg:Derived a sh:NodeShape ;
+    rdfs:comment "규칙으로 계산한 파생 노드의 provenance 묶음 (docs/02 8장). derived 그래프에만 있다." ;
+    sh:closed false ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:description "이 파생 노드를 만든 규칙 버전 (예 feed_v1)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 0 ;
+            sh:path eg:rule_version ],
+        [ sh:datatype xsd:dateTime ;
+            sh:description "파생 노드 생성 일시 (provenance)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 2 ;
+            sh:path prov:generatedAtTime ],
+        [ sh:class eg:SurveyLoad ;
+            sh:description "파생의 근거가 된 적재 기록 (provenance)." ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 1 ;
+            sh:path prov:wasDerivedFrom ] ;
+    sh:targetClass eg:Derived .
+
+eg:Feed a sh:NodeShape ;
+    rdfs:comment "(파생) 규칙으로 계산한 공급 연결 — 출력 명세 from_io 와 입력 명세 to_io 의 분류가 같고 정규화 확장자가 겹칠 때 (docs/02 7.1). 매번 전체 재계산하며 derived 그래프에만 있다." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:description "양쪽 명세의 전달 방법." ;
+            sh:in ( "파일 저장" "PDM 등록" "DB 기록" "메일·수기 전달" "타 SW 직접 연동" ) ;
+            sh:order 10 ;
+            sh:path eg:transfer ],
+        [ sh:description "수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호." ;
+            sh:in ( "전달방법" "비고" ) ;
+            sh:maxCount 1 ;
+            sh:order 12 ;
+            sh:path eg:manual_basis ],
+        [ sh:datatype xsd:string ;
+            sh:description "이 파생 노드를 만든 규칙 버전 (예 feed_v1)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 14 ;
+            sh:path eg:rule_version ],
+        [ sh:datatype xsd:string ;
+            sh:description "양쪽이 겹친 정규화 확장자." ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 7 ;
+            sh:path eg:matched_extensions ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "어느 한쪽의 신고(연계 SW명)와 일치하는지 (docs/02 7.2)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 9 ;
+            sh:path eg:declared ],
+        [ sh:class eg:SurveyLoad ;
+            sh:description "파생의 근거가 된 적재 기록 (provenance)." ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 15 ;
+            sh:path prov:wasDerivedFrom ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "수기 구간 여부 (전달 방법 기준)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 11 ;
+            sh:path eg:manual ],
+        [ sh:description "착수 등급 (수기·변환 구간에만 매긴다, docs/02 7.4)." ;
+            sh:in ( "A" "B" "C" "제외" ) ;
+            sh:maxCount 1 ;
+            sh:order 13 ;
+            sh:path eg:grade ],
+        [ sh:datatype rdf:langString ;
+            sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:class eg:IOSpec ;
+            sh:description "공급 측 출력 명세." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 2 ;
+            sh:path eg:from_io ],
+        [ sh:datatype xsd:dateTime ;
+            sh:description "파생 노드 생성 일시 (provenance)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 16 ;
+            sh:path prov:generatedAtTime ],
+        [ sh:description "노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001" ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 0 ;
+            sh:path eg:id ;
+            sh:pattern "^egid:FEED-[0-9a-f]{10}$" ],
+        [ sh:class eg:ToolUsage ;
+            sh:description "공급 측 툴사용 (from_io 의 io_owner)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 4 ;
+            sh:path eg:supplier ],
+        [ sh:description "겹친 확장자가 전부 범용(config rules.yaml generic_extensions)이면 낮음." ;
+            sh:in ( "낮음" "보통" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 8 ;
+            sh:path eg:confidence ],
+        [ sh:class eg:ToolUsage ;
+            sh:description "수요 측 툴사용 (to_io 의 io_owner)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 5 ;
+            sh:path eg:consumer ],
+        [ sh:class eg:DataCategory ;
+            sh:description "양쪽이 일치한 분류." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 6 ;
+            sh:path eg:matched_category ],
+        [ sh:class eg:IOSpec ;
+            sh:description "수요 측 입력 명세." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 3 ;
+            sh:path eg:to_io ] ;
+    sh:targetClass eg:Feed .
+
+eg:DataCategory a sh:NodeShape ;
+    rdfs:comment "데이터 분류 (SW입출력 '분류' 드롭다운 값). 연결 계산 키 ① (docs/02 7.1)." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:datatype rdf:langString ;
+            sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:description "노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001" ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 0 ;
+            sh:path eg:id ;
+            sh:pattern "^egid:CAT-\\d{3}$" ] ;
+    sh:targetClass eg:DataCategory .
+
+eg:Field a sh:NodeShape ;
+    rdfs:comment "연구소 분야 (조직 노드, RDF 클래스 eg:Field — docs/02 용어). SW기본정보 '담당 부서' 값에서 만든다. 개명은 label 갱신, 통폐합·분할은 새 노드 + succeeded_by (상위 스키마 v0.2 §9). ID 는 레지스트리로 고정. 스키마·파이썬 이름만 ResearchField — 'Field' 는 생성되는 Pydantic 코드에서 pydantic.Field 를 덮어써 모든 클래스가 깨진다 (M1 에서 실측)." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:description "노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001" ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 0 ;
+            sh:path eg:id ;
+            sh:pattern "^egid:FLD-\\d{3}$" ],
+        [ sh:datatype rdf:langString ;
+            sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:description "수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6)." ;
+            sh:in ( "활성" "통합됨" "폐기" ) ;
+            sh:maxCount 1 ;
+            sh:order 2 ;
+            sh:path eg:status ],
+        [ sh:class eg:Field ;
+            sh:description "통폐합·분할로 이 분야를 이어받은 분야." ;
+            sh:nodeKind sh:IRI ;
+            sh:order 3 ;
+            sh:path eg:succeeded_by ] ;
+    sh:targetClass eg:Field .
+
+eg:IOSpec a sh:NodeShape ;
+    rdfs:comment "SW입출력 1행. 한 툴사용이 받거나(입력) 내놓는(출력) 데이터 1종 — 에이전트 단계에서 MCP 함수의 입력·출력 정의가 된다 (docs/01 원칙 6)." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:description "보안등급 — 지금은 속성으로만 적재, 접근 통제는 M6 이후 MCP 게이트웨이 (docs/02 11장)." ;
+            sh:in ( "L1" "L2" "L3" "L4" "L5" "미정" ) ;
+            sh:maxCount 1 ;
+            sh:order 20 ;
+            sh:path eg:security_grade ],
+        [ sh:description "전달 방법. '메일·수기 전달'이면 수기 구간 (docs/02 7.3)." ;
+            sh:in ( "파일 저장" "PDM 등록" "DB 기록" "메일·수기 전달" "타 SW 직접 연동" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 15 ;
+            sh:path eg:transfer_method ],
+        [ sh:datatype xsd:string ;
+            sh:description "연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09)." ;
+            sh:nodeKind sh:Literal ;
+            sh:order 18 ;
+            sh:path eg:partner_unresolved ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "확장자 원문에 '(사내)'·'사내' 표기가 있었는지." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 12 ;
+            sh:path eg:inhouse_format ],
+        [ sh:datatype xsd:integer ;
+            sh:description "원천 엑셀 시트의 행 번호 (조사 보완 시 원본 행을 찾기 위한 추적 정보)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 2 ;
+            sh:path eg:source_row ],
+        [ sh:description "노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001" ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 0 ;
+            sh:path eg:id ;
+            sh:pattern "^egid:IO-[0-9a-f]{10}$" ],
+        [ sh:datatype xsd:string ;
+            sh:description "정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용). 연결 계산 키 ② (docs/02 6.2)." ;
+            sh:nodeKind sh:Literal ;
+            sh:order 11 ;
+            sh:path eg:extensions ;
+            sh:pattern "^[a-z0-9_+-]+$" ],
+        [ sh:datatype xsd:string ;
+            sh:description "파일 형식/확장자 원문." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 10 ;
+            sh:path eg:extensions_raw ],
+        [ sh:description "포맷 표준성." ;
+            sh:in ( "국제·업계 표준" "사내 표준 포맷" "SW 전용(바이너리)" "모름" ) ;
+            sh:maxCount 1 ;
+            sh:order 13 ;
+            sh:path eg:format_standard ],
+        [ sh:description "방향 — 이 SW 가 받는 것 = 입력(소비), 내놓는 것 = 출력(생산)." ;
+            sh:in ( "입력(소비)" "출력(생산)" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 7 ;
+            sh:path eg:direction ],
+        [ sh:datatype xsd:string ;
+            sh:description "연계 SW명 원문 — 신고된 연결." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 16 ;
+            sh:path eg:partner_raw ],
+        [ sh:class eg:Tool ;
+            sh:description "연계 SW명 중 Tool 로 해석된 것." ;
+            sh:nodeKind sh:IRI ;
+            sh:order 17 ;
+            sh:path eg:partner_tools ],
+        [ sh:datatype xsd:string ;
+            sh:description "비고 원문. 수작업 키워드 보조 신호 (docs/02 7.3)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 4 ;
+            sh:path eg:note ],
+        [ sh:class eg:ToolUsage ;
+            sh:description "이 입출력을 가진 툴사용 (owner_source_key 로 찾은 것)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 6 ;
+            sh:path eg:io_owner ],
+        [ sh:datatype xsd:string ;
+            sh:description "데이터/산출물 명칭 원문. 표기가 제각각이라 연결 키로 쓰지 않는다 (docs/01 원칙 3)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 8 ;
+            sh:path eg:data_name ],
+        [ sh:description "데이터 성격 — 서술형은 문서 RAG, 수치는 DB 적재 대상." ;
+            sh:in ( "서술형 문서" "수치·표" "3D·2D 형상" "이미지" "코드·스크립트" "혼합" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 14 ;
+            sh:path eg:data_nature ],
+        [ sh:class eg:SurveyLoad ;
+            sh:description "이 노드를 만든 적재 기록 (provenance)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 3 ;
+            sh:path eg:loaded_in ],
+        [ sh:datatype rdf:langString ;
+            sh:description "데이터/산출물 명칭 (data_name 과 같게 둔다)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:datatype xsd:string ;
+            sh:description "저장 위치/경로 원문 (공유폴더 경로, PDM 폴더명)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 19 ;
+            sh:path eg:storage_path ],
+        [ sh:datatype xsd:string ;
+            sh:description "SW ID 원문. SW기본정보에 없으면 고아 입출력 — io_owner 없이 적재하고 경고." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 5 ;
+            sh:path eg:owner_source_key ],
+        [ sh:class eg:DataCategory ;
+            sh:description "분류. 연결 계산 키 ①." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 9 ;
+            sh:path eg:io_category ] ;
+    sh:targetClass eg:IOSpec .
+
+eg:Tool a sh:NodeShape ;
+    rdfs:comment "제품 단위 툴 (표기 변형을 통합한 것). 예 ANSYS Fluent. 분야별 사용 기록은 ToolUsage. 통합은 정규화 키 일치일 때만 자동, 유사도 후보는 사람이 판정 (docs/02 6.1)." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:datatype rdf:langString ;
+            sh:description "조사에서 나온 변형 표기들 (CQ10)." ;
+            sh:nodeKind sh:Literal ;
+            sh:order 4 ;
+            sh:path skos:altLabel ],
+        [ sh:description "수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6)." ;
+            sh:in ( "활성" "통합됨" "폐기" ) ;
+            sh:maxCount 1 ;
+            sh:order 2 ;
+            sh:path eg:status ],
+        [ sh:datatype xsd:string ;
+            sh:description "제조사/개발주체 — 사용 기록들의 응답 중 다수값 (엇갈리면 검토표에 표시)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 5 ;
+            sh:path eg:vendor ],
+        [ sh:description "구분 — 사용 기록들의 응답 중 다수값." ;
+            sh:in ( "상용" "자체개발" "오픈소스" "프리웨어" ) ;
+            sh:maxCount 1 ;
+            sh:order 6 ;
+            sh:path eg:kind ],
+        [ sh:datatype rdf:langString ;
+            sh:description "대표 이름." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 3 ;
+            sh:path skos:prefLabel ],
+        [ sh:datatype rdf:langString ;
+            sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:description "노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001" ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 0 ;
+            sh:path eg:id ;
+            sh:pattern "^egid:TOOL-\\d{6}$" ],
+        [ sh:class eg:Tool ;
+            sh:description "사람 판정으로 다른 Tool 에 통합된 경우 그 대상 (status=통합됨과 함께)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 7 ;
+            sh:path eg:merged_into ] ;
+    sh:targetClass eg:Tool .
+
+eg:SurveyLoad a sh:NodeShape ;
+    rdfs:comment "적재 기록 1건 — 원천 조사 파일 1개를 한 번 적재한 것. 같은 실행(run_id)에서 여러 파일을 적재하면 파일마다 1건. 경로는 남기지 않는다 (파일명과 sha256 만)." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:datatype xsd:integer ;
+            sh:description "적재 중 경고 수 (내용은 실행 로그)." ;
+            sh:maxCount 1 ;
+            sh:minInclusive 0 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 8 ;
+            sh:path eg:warning_count ],
+        [ sh:datatype xsd:integer ;
+            sh:description "적재한 행 수 (두 시트 합)." ;
+            sh:maxCount 1 ;
+            sh:minInclusive 0 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 6 ;
+            sh:path eg:row_count ],
+        [ sh:datatype xsd:integer ;
+            sh:description "제외한 행 수 (예시 행·빈 행 등, 사유는 실행 로그)." ;
+            sh:maxCount 1 ;
+            sh:minInclusive 0 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 7 ;
+            sh:path eg:excluded_row_count ],
+        [ sh:datatype xsd:dateTime ;
+            sh:description "적재 일시." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 5 ;
+            sh:path eg:loaded_at ],
+        [ sh:description "노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001" ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 0 ;
+            sh:path eg:id ;
+            sh:pattern "^egid:LOAD-\\d{8}T\\d{6}-\\d{2}$" ],
+        [ sh:datatype rdf:langString ;
+            sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:datatype xsd:string ;
+            sh:description "원천 파일 SHA-256 (소문자 16진수)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 4 ;
+            sh:path eg:source_sha256 ;
+            sh:pattern "^[0-9a-f]{64}$" ],
+        [ sh:datatype xsd:string ;
+            sh:description "적재 실행 ID (output/<실행ID> 와 같다)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 2 ;
+            sh:path eg:run_id ],
+        [ sh:datatype xsd:string ;
+            sh:description "원천 파일명 (경로 제외)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 3 ;
+            sh:path eg:source_file_name ] ;
+    sh:targetClass eg:SurveyLoad .
+
+eg:ToolUsage a sh:NodeShape ;
+    rdfs:comment "분야별 SW 응답 1건 = SW기본정보 1행 = SW ID 1개. 같은 툴을 여러 분야가 적으면 여러 개. 입출력(IOSpec)은 분야마다 다르므로 여기에 붙는다." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [ sh:description "우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4)." ;
+            sh:in ( "상" "중" "하" ) ;
+            sh:maxCount 1 ;
+            sh:order 37 ;
+            sh:path eg:priority_opinion ],
+        [ sh:description "라이선스 형태." ;
+            sh:in ( "영구" "연간 구독" "플로팅(동시사용)" "노드락" "무료" "모름" ) ;
+            sh:maxCount 1 ;
+            sh:order 19 ;
+            sh:path eg:license_type ],
+        [ sh:description "자동화 인터페이스 (대표 1개). 착수 등급 규칙의 입력 (docs/02 7.4)." ;
+            sh:in ( "없음" "CLI 인자" "내장 스크립팅" "REST API" "COM·OLE" "SDK·라이브러리" "파일 폴링" "모름" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 27 ;
+            sh:path eg:automation_if ],
+        [ sh:description "용도 대분류." ;
+            sh:in ( "설계" "해석" "시험·계측" "데이터·형상관리" "문서·협업" "프로젝트관리" "기타" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 11 ;
+            sh:path eg:purpose_class ],
+        [ sh:datatype xsd:integer ;
+            sh:description "사용 인원수 (정수 변환 성공 시)." ;
+            sh:maxCount 1 ;
+            sh:minInclusive 0 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 16 ;
+            sh:path eg:user_count ],
+        [ sh:datatype xsd:string ;
+            sh:description "대체/업그레이드 계획 — 단종·버전업·전환 예정." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 38 ;
+            sh:path eg:roadmap_note ],
+        [ sh:description "사내 검증 상태 (해석 SW 의 V&V 등)." ;
+            sh:in ( "완료" "진행중" "미실시" "해당없음" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 32 ;
+            sh:path eg:validation_status ],
+        [ sh:datatype xsd:string ;
+            sh:description "현재 수작업·애로 구간 — 타 SW 와 데이터를 주고받을 때 수작업 구간 등." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 36 ;
+            sh:path eg:pain_points ],
+        [ sh:datatype xsd:string ;
+            sh:description "이 SW 로 실제 수행하는 업무 1~2문장." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 14 ;
+            sh:path eg:task_summary ],
+        [ sh:description "인증/로그인 방식 — MCP 연결 시 인증 설계용." ;
+            sh:in ( "없음" "사내 SSO" "자체 계정" "라이선스 서버" "모름" ) ;
+            sh:maxCount 1 ;
+            sh:order 30 ;
+            sh:path eg:auth_method ],
+        [ sh:datatype xsd:integer ;
+            sh:description "원천 엑셀 시트의 행 번호 (조사 보완 시 원본 행을 찾기 위한 추적 정보)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 2 ;
+            sh:path eg:source_row ],
+        [ sh:description "구분 원문. Tool.kind(다수값)의 입력." ;
+            sh:in ( "상용" "자체개발" "오픈소스" "프리웨어" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 10 ;
+            sh:path eg:reported_kind ],
+        [ sh:description "사용 빈도 — 착수 순위 정렬 키 (docs/02 7.4)." ;
+            sh:in ( "매일" "주 1회 이상" "월 1회 이상" "분기 이하" ) ;
+            sh:maxCount 1 ;
+            sh:order 18 ;
+            sh:path eg:frequency ],
+        [ sh:description "노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001" ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 0 ;
+            sh:path eg:id ;
+            sh:pattern "^egid:USE-\\d{6}$" ],
+        [ sh:datatype xsd:string ;
+            sh:description "사용 인원수 원문 — 정수 변환에 실패했을 때만 보존 (경고와 함께)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 17 ;
+            sh:path eg:user_count_raw ],
+        [ sh:datatype xsd:string ;
+            sh:description "SW명(정식) 원문. 툴 통합 정규화 키의 입력." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 6 ;
+            sh:path eg:reported_tool_name ],
+        [ sh:datatype xsd:string ;
+            sh:description "자동화 희망 작업 — 반복적이라 AI/에이전트가 대신하면 좋을 일." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 35 ;
+            sh:path eg:automation_wish ],
+        [ sh:datatype xsd:string ;
+            sh:description "검증 기준/문서번호 원문." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 33 ;
+            sh:path eg:validation_ref ],
+        [ sh:description "배치/스크립트 실행 — 사람이 클릭하지 않고 실행 가능한가." ;
+            sh:in ( "가능" "불가" "모름" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 26 ;
+            sh:path eg:batch_capable ],
+        [ sh:datatype xsd:string ;
+            sh:description "용도 상세 원문. 예) 이차유로 1D 유동 네트워크 해석" ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 12 ;
+            sh:path eg:purpose_detail ],
+        [ sh:datatype rdf:langString ;
+            sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:description "이 SW 를 주로 쓰는 개발 단계 (걸치면 범위로)." ;
+            sh:in ( "전 단계" "개념설계" "기본설계" "상세설계" "개념~기본" "기본~상세" "상세~시험" "시험·인증 이후" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 13 ;
+            sh:path eg:phase ],
+        [ sh:description "감항·인증 업무 사용 — 인증 근거 생산에 쓰이는가." ;
+            sh:in ( "예" "아니오" "모름" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 34 ;
+            sh:path eg:certification_use ],
+        [ sh:description "폐쇄망 구동. '불가'가 낀 수기 구간은 착수 등급 '제외' (docs/02 7.4)." ;
+            sh:in ( "가능" "부분 가능(비고 기재)" "불가" "모름" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 24 ;
+            sh:path eg:airgap_ok ],
+        [ sh:description "조작 방식. 착수 등급 규칙의 입력 (docs/02 7.4)." ;
+            sh:in ( "GUI 전용" "CLI 지원" "GUI+CLI" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 25 ;
+            sh:path eg:operation_mode ],
+        [ sh:datatype xsd:string ;
+            sh:description "비고 (원문)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 4 ;
+            sh:path eg:note ],
+        [ sh:datatype xsd:string ;
+            sh:description "제조사/개발주체 원문. Tool.vendor(다수값)의 입력." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 9 ;
+            sh:path eg:reported_vendor ],
+        [ sh:class eg:ToolUsage ;
+            sh:description "(파생) 이 툴사용이 데이터를 공급하는 툴사용 — Feed 의 지름길, 경로 질의(eg:feeds+)용. derived 그래프에만 있다." ;
+            sh:nodeKind sh:IRI ;
+            sh:order 39 ;
+            sh:path eg:feeds ],
+        [ sh:class eg:SurveyLoad ;
+            sh:description "이 노드를 만든 적재 기록 (provenance)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 3 ;
+            sh:path eg:loaded_in ],
+        [ sh:datatype xsd:integer ;
+            sh:description "보유 수량 (정수 변환 성공 시)." ;
+            sh:maxCount 1 ;
+            sh:minInclusive 0 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 20 ;
+            sh:path eg:license_count ],
+        [ sh:description "산출물 주 저장 위치 (상세 경로는 SW입출력 시트)." ;
+            sh:in ( "PDM(ENOVIA)" "공유폴더" "전용 DB" "개인 PC" "혼재" ) ;
+            sh:maxCount 1 ;
+            sh:order 31 ;
+            sh:path eg:output_storage ],
+        [ sh:datatype xsd:string ;
+            sh:description "보유 수량 원문 — 정수 변환에 실패했을 때만 보존 (경고와 함께)." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 21 ;
+            sh:path eg:license_count_raw ],
+        [ sh:description "헤드리스 실행 — 화면 없이(서버에서) 실행 가능한가." ;
+            sh:in ( "가능" "불가" "모름" ) ;
+            sh:maxCount 1 ;
+            sh:order 29 ;
+            sh:path eg:headless ],
+        [ sh:class eg:Field ;
+            sh:description "담당 부서 값으로 만든 Field (문자열이 아니라 노드)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 15 ;
+            sh:path eg:usage_field ],
+        [ sh:datatype xsd:string ;
+            sh:description "사용 중인 버전 전부 (원문)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 8 ;
+            sh:path eg:version ],
+        [ sh:datatype xsd:string ;
+            sh:description "만료 시기 YYYY-MM. 영구면 비움." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 22 ;
+            sh:path eg:license_expiry ;
+            sh:pattern "^\\d{4}-(0[1-9]|1[0-2])$" ],
+        [ sh:datatype xsd:string ;
+            sh:description "SW ID 원문 (분야 약칭이 들어 있어 URI 로 쓰지 않는다 — docs/02 4장)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 5 ;
+            sh:path eg:source_key ],
+        [ sh:datatype xsd:string ;
+            sh:description "자동화 상세 — 언어·모듈·예시 — Python API, journal 파일, TCL 등." ;
+            sh:maxCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 28 ;
+            sh:path eg:automation_detail ],
+        [ sh:class eg:Tool ;
+            sh:description "통합된 Tool (reported_tool_name 을 정규화해 결정)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 7 ;
+            sh:path eg:usage_tool ],
+        [ sh:description "실행 환경 (복수면 대표 1개 + 비고)." ;
+            sh:in ( "Windows PC" "Windows 서버" "Linux 서버" "HPC 클러스터" "사내 웹" "외부 클라우드(SaaS)" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 23 ;
+            sh:path eg:runtime_env ] ;
+    sh:targetClass eg:ToolUsage .
+

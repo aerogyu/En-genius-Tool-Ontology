@@ -108,6 +108,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_doctor)
     sp = sub.add_parser("licenses", help="설치 패키지 라이선스 표 (금지 항목 있으면 rc=1)")
     sp.set_defaults(func=cmd_licenses)
+    sp = sub.add_parser("schema", help="LinkML 스키마 점검(lint·양식 매핑·선택지) 후 OWL·SHACL·문서·Pydantic 생성")
+    sp.add_argument("--check", action="store_true", help="생성하지 않고 커밋된 생성물이 스키마와 일치하는지만 확인")
+    sp.set_defaults(func=lambda a: __import__("engenius_onto.schema_gen", fromlist=["run"]).run(check=a.check))
     return p
 
 
