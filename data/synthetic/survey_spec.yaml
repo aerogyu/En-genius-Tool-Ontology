@@ -5,11 +5,12 @@
 #
 # 키 → 양식 헤더: synth.py 의 USAGE_COLUMNS / IO_COLUMNS 참고. 비운 키는 defaults 값, defaults 에도 없으면 빈칸.
 # 셀 타입을 일부러 섞었다 (D5): version 2024 (정수), 5.1 (실수 — 응답자가 '5.10' 을 쳤을 때 엑셀이 바꾼 값),
-# expiry 날짜 객체, users '약 6명' (문자열).
+# expiry 날짜 객체·실수, users "약 4명" (문자열), 버전 칸 날짜. 그 밖의 사례 태그는 tests/golden/expected.yaml cases 참고.
 
 version: 1
 template: reference/SW조사양식_EnGenius_v1.0.xlsx
-file_name: "SW조사_{field}_20260924.xlsx"   # 작성안내 B26 규칙: SW조사_[부서]_[YYYYMMDD].xlsx
+file_name: "SW조사_{field}_{date}.xlsx"      # 작성안내 B26 규칙: SW조사_[부서]_[YYYYMMDD].xlsx
+file_date: "20260924"
 extra_categories: [설계-2D Layout]           # 사내 배포본처럼 '온톨로지분류' 선택지에 추가 (P22)
 
 defaults:
@@ -49,12 +50,13 @@ files:
          phase: 전 단계, users: 8, freq: 매일, qty: 10, op: CLI 지원, auto_if: CLI 인자, headless: 가능, vv: 완료, cert: 예,
          prio: 상, cases: [P1]}
       - {sw_id: PERF-02, name: MATLAB, version: R2023a, vendor: MathWorks, kind: 상용, detail: 성능 시험 데이터 후처리,
-         users: 4, license: 플로팅(동시사용), qty: 5, expiry: "2027-06", cases: [P7]}
+         users: 4, license: 플로팅(동시사용), qty: 5, expiry: 2027.1, cases: [P7, D5-expiry-float]}  # '2027.10' 이 실수로
       - {sw_id: PERF-03, name: Excel, version: "2019", vendor: Microsoft, kind: 상용, purpose: 문서·협업, detail: 성능 결과 정리,
          users: 10, freq: 매일, license: 연간 구독, qty: 20, expiry: 2027-03-31, op: GUI 전용, auto_if: COM·OLE, prio: 하,
          cases: [P7, D5-date]}
       - {sw_id: PERF-04, name: Python, version: "3.10", vendor: Python Software Foundation, kind: 오픈소스,
          detail: 성능 요약 자동화 스크립트, license: 무료, op: CLI 지원, auto_if: SDK·라이브러리}
+      - {example_copy: true, cases: [I15]}   # 예시 행을 응답 아래에 그대로 복사 — 위치와 무관하게 예시로 제외
     ios:
       - {sw_id: PERF-01, dir: out, name: 성능 경계조건 표, cat: 해석-결과, ext: csv, std: 국제·업계 표준,
          transfer: 메일·수기 전달, partner: Excel, note: 2차유로 분야에 메일로 전달, cases: [P1]}
@@ -63,6 +65,8 @@ files:
       - {blank: true, cases: [GAP]}          # 중간 빈 행 — 계속 읽어야 한다 (docs/02 5장 2)
       - {sw_id: PERF-02, dir: in, name: 시험 계측 데이터, cat: 시험-계측데이터, ext: csv, partner: LabVIEW, cases: [P7]}
       - {sw_id: PERF-02, dir: out, name: 성능 후처리 그림, cat: 보고서·문서, ext: png, nature: 이미지}
+      - {sw_id: PERF-02, dir: out, name: 성능 모델 계수, cat: 해석-결과, ext: mat, partner: "MATLAB，MATLAB Simulink",
+         cases: [SAME-TOOL, PARTNER-MULTI]}   # 같은 툴(MATLAB) 다른 분야로 연결 허용, 전각 쉼표로 연계 SW 두 개
       - {sw_id: PERF-03, dir: in, name: 해석 요약 표, cat: 보고서·문서, ext: xlsx, cases: [P7]}
       - {sw_id: PERF-04, dir: in, name: 성능 요약 데이터, cat: 보고서·문서, ext: json, partner: 가상-성능덱}
       - {sw_id: PERF-04, dir: out, name: 성능 대시보드, cat: 보고서·문서, ext: html, nature: 서술형 문서}
@@ -75,9 +79,10 @@ files:
          detail: 이차유로 유량·압력 네트워크 해석, users: 6, freq: 매일, qty: 10, auto_if: CLI 인자, headless: 가능,
          vv: 완료, cert: 예, prio: 상, cases: [P1, D2, P10-c]}
       - {sw_id: SAS-02, name: Microsoft Excel, version: "2021", vendor: Microsoft, kind: 상용, detail: 경계조건 보정 상관식,
-         op: GUI 전용, auto_if: COM·OLE, prio: 상, cases: [P1, P7]}
+         op: GUI+CLI, auto_if: 모름, auto_detail: VBA 매크로 배치 실행, prio: 상,
+         pain: "성능 결과를 OOO 선임(내선 0000)에게 받아 수기 입력", cases: [P1, P7, GRADE-OP, D6]}  # 조작 방식으로만 자동화 가능
       - {sw_id: SAS-03, name: 가상-열해석, version: "3.1", vendor: 자체개발, kind: 자체개발, detail: 금속 온도장 해석,
-         users: 4, op: GUI 전용, batch: 불가, auto_if: 없음, headless: 불가, prio: 상, cases: [P8, D2]}
+         users: 약 4명, op: GUI 전용, batch: 불가, auto_if: 없음, headless: 불가, prio: 상, cases: [P8, D2, D5-raw, I6]}
       - {sw_id: SAS-04, name: ANSYS FLUENT, version: 2023R2, vendor: ANSYS, kind: 상용, detail: 2차유로 3D 유동 해석,
          users: 2, freq: 월 1회 이상, cases: [P5]}
     ios:
@@ -96,12 +101,19 @@ files:
          partner: 가상-1D네트워크, cases: [P6, D2]}
       - {sw_id: SAS-03, dir: in, name: 벽면 온도 조건, cat: 해석-입력데이터, ext: txt, transfer: 메일·수기 전달,
          partner: ANSYS Fluent, cases: [P8]}
-      - {sw_id: SAS-03, dir: out, name: 금속 온도 결과, cat: 해석-결과, ext: tres, partner: ANSYS Mechanical}
+      - {sw_id: SAS-03, dir: in, name: 계측 온도 보정표, cat: 시험-계측데이터, ext: cal, partner: 가상-진동계측기,
+         cases: [GRADE-C]}
+      - {sw_id: SAS-03, dir: out, name: 금속 온도 결과, cat: 해석-결과, ext: tres, transfer: 메일·수기 전달,
+         partner: ANSYS Mechanical, cases: [GRADE-SUPPLIER-B]}
       - {sw_id: SAS-04, dir: in, name: 해석 메시, cat: 해석-입력데이터, ext: msh, partner: HyperMesh}
       - {sw_id: SAS-04, dir: out, name: 2차유로 유동장, cat: 해석-결과, ext: "cas.h5, dat.h5", partner: Tecplot, cases: [P23]}
 
   # ------------------------------------------------------------------ 터빈
   - field: 터빈
+    header_overrides:                        # 사내 배포본처럼 헤더 문구가 다르다 — 헤더 이름 매핑(공백·'*'·NFKC 무시)
+      SW입출력: {"파일 형식/확장자 *": "파일형식/확장자＊"}
+      SW기본정보: {"사용 빈도": "사용빈도"}
+    extra_headers: {SW입출력: [내부 메모]}      # 응답자가 덧붙인 열 — 매핑 안 된 헤더 경고
     usages:
       - {sw_id: TURB-01, name: CATIA V5, version: V5-6R2020, vendor: Dassault Systèmes, kind: 상용, purpose: 설계,
          detail: 터빈 블레이드 형상 설계, users: 5, freq: 매일, license: 플로팅(동시사용), qty: 8,
@@ -109,22 +121,26 @@ files:
       - {sw_id: TURB-02, name: ANSYS Fluent 2024R1, version: 2024, vendor: ANSYS, kind: 상용, detail: 터빈 냉각 유동 해석,
          users: 4, cases: [P5, P8, D5-int]}
       - {sw_id: TURB-03, name: Tecplot, version: 2023 R1, vendor: Tecplot, kind: 상용, detail: 유동장 후처리,
-         users: 약 6명, cases: [P3, D5-raw]}
+         users: 6, cases: [P3]}
       - {sw_id: TURB-04, name: MATLAB, version: R2022b, vendor: MathWorks, kind: 상용, detail: 터빈 시험 데이터 분석,
          users: 2, cases: [P7]}
       - {sw_id: TURB-05, name: Excel, version: "2019", vendor: Microsoft, kind: 상용, purpose: 문서·협업, detail: 결과 정리,
          users: 6, op: GUI 전용, auto_if: COM·OLE, cases: [P7]}
     ios:
       - {sw_id: TURB-01, dir: out, name: 터빈 블레이드 3D 모델, cat: 설계-3D형상, ext: catpart, std: SW 전용(바이너리),
-         nature: 3D·2D 형상, partner: ANSYS Mechanical, cases: [P2]}
+         nature: 3D·2D 형상, partner: ANSYS Mechanical, note: 모델 문의 OOO 책임(내선 0000), cases: [P2, D6]}
       - {sw_id: TURB-02, dir: in, name: 해석 메시, cat: 해석-입력데이터, ext: msh, partner: HyperMesh}
-      - {sw_id: TURB-02, dir: out, name: 벽면 온도 조건, cat: 해석-입력데이터, ext: txt, transfer: 메일·수기 전달,
-         partner: 가상-열해석, cases: [P8]}
+      - {sw_id: TURB-02, dir: out, name: 벽면 온도 조건, cat: 해석-입력데이터, ext: txt(ASCII), transfer: 메일·수기 전달,
+         partner: 가상-열해석, extra: {내부 메모: 합성 메모}, cases: [P8, EXT-PAREN]}
+      - {sw_id: TURB-02, dir: out, name: 해석 요약 표, cat: 보고서/문서, ext: xlsx,
+         cases: [CHOICE-OUT]}                # 분류 오기 — 선택지 밖 값 경고, 별도 분류가 되어 Excel 로 연결되지 않음
+                                             # (연계 SW 를 적으면 숨은변환 의심이 Excel 6개로 펼쳐져 사례가 흐려진다)
       - {sw_id: TURB-02, dir: out, name: 터빈 유동장, cat: 해석-결과, ext: "cas.h5, dat.h5", partner: Tecplot, cases: [P23]}
-      - {sw_id: TURB-03, dir: in, name: 유동장 결과, cat: 해석-결과, ext: "cas.h5, dat.h5", partner: ANSYS Fluent}
+      - {sw_id: TURB-03, dir: in, name: 유동장 결과, cat: 해석-결과, ext: "cas.h5, dat.h5", transfer: 메일,
+         partner: ANSYS Fluent, note: 결과 파일 복사 후 후처리, cases: [CHOICE-OUT, NOTE-INPUT]}  # '메일' 은 수기 값 아님
       - {sw_id: TURB-03, dir: in, name: 외부 유동장, cat: 해석-결과, ext: plt, cases: [P3]}
-      - {sw_id: TURB-3, dir: in, name: 냉각 공기 조건, cat: 해석-입력데이터, ext: csv, transfer: 메일·수기 전달,
-         cases: [P18]}                       # SW ID 오타 — SW기본정보에 없는 고아 입출력
+      - {sw_id: TURB-3, dir: in, name: 냉각 공기 조건, cat: 해석-결과, ext: csv, transfer: 메일·수기 전달,
+         cases: [P18, I9]}                   # SW ID 오타 — 고아. 분류·확장자는 PERF-01 출력과 맞지만 연결하지 않는다
       - {sw_id: TURB-04, dir: in, name: 시험 계측 데이터, cat: 시험-계측데이터, ext: csv, partner: LabVIEW, cases: [P7]}
       - {sw_id: TURB-05, dir: in, name: 해석 요약 표, cat: 보고서·문서, ext: xlsx, cases: [P7]}
 
@@ -137,6 +153,8 @@ files:
          users: 5, freq: 매일, cases: [D3, P3]}
       - {sw_id: COM-03, name: Excel, version: "2016", vendor: Microsoft, kind: 상용, purpose: 문서·협업, detail: 결과 정리,
          users: 4, op: GUI 전용, auto_if: COM·OLE, cases: [D3, P7]}
+      - {sw_id: COM-05, name: CATIA V5, version: V5-6R2021, vendor: Dassault Systèmes, kind: 상용, purpose: 설계,
+         detail: 압축기 케이싱 형상 설계, op: GUI 전용, auto_if: 없음, cases: [D1-2]}   # 등급이 다른 두 번째 CATIA 사용
     ios:
       - {sw_id: COM-01, dir: out, name: 익형 형상, cat: 해석-입력데이터, ext: .STEP, std: 국제·업계 표준,
          nature: 3D·2D 형상, partner: HyperMesh, cases: [P6]}
@@ -145,6 +163,10 @@ files:
       - {sw_id: COM-02, dir: out, name: 압축기 유동장, cat: 해석-결과, ext: plt, cases: [P3]}
       - {sw_id: COM-02, dir: out, name: 압축기 요약 표, cat: 보고서·문서, ext: xlsx, partner: Excel, cases: [P7]}
       - {sw_id: COM-03, dir: in, name: 해석 요약 표, cat: 보고서·문서, ext: xlsx, cases: [P7]}
+      - {sw_id: COM-05, dir: out, name: 압축기 케이싱 3D 모델, cat: 설계-3D형상, ext: catpart, std: SW 전용(바이너리),
+         nature: 3D·2D 형상, partner: ANSYS Mechanical, cases: [D1-2]}
+      - {sw_id: null, dir: in, name: 형상 검토 메모, cat: 보고서·문서, ext: docx, nature: 서술형 문서,
+         cases: [I22]}                       # SW ID 없는 내용 행 — 건너뛰고 경고
 
   # ------------------------------------------------------------------ 연소기
   - field: 연소기
@@ -156,26 +178,29 @@ files:
       - {sw_id: COM-03, name: MATLAB, version: R2021a, vendor: MathWorks, kind: 상용, detail: 연소 시험 데이터 분석,
          users: 2, cases: [D3, P7]}
       - {sw_id: COM-04, name: 가상-연소계측기, version: "1.0", vendor: 자체개발, kind: 자체개발, purpose: 시험·계측,
-         detail: 연소 시험 계측, op: GUI 전용, auto_if: 파일 폴링}
+         detail: 연소 시험 계측, users: 2, freq: 매일, op: GUI 전용, auto_if: 파일 폴링, cases: [I5]}  # TEST-02 와 정렬 키 동률
     ios:
-      - {sw_id: COM-01, dir: in, name: 연소 조건, cat: 해석-입력데이터, ext: cmb(사내), std: 사내 표준 포맷,
-         cases: [P4-unlinked, P6]}
+      - {sw_id: COM-01, dir: in, name: 연소 조건, cat: 해석-입력데이터, ext: cmb 사내, std: 사내 표준 포맷,
+         partner: 가상-외부해석툴, cases: [P4-unlinked, P6, I11]}   # 해석 못 한 연계 SW 만 있음 — 여전히 무연결
       - {sw_id: COM-01, dir: out, name: 연소 결과, cat: 해석-결과, ext: cmbres, cases: [P4-unlinked, P24]}
       - {sw_id: COM-01, dir: out, name: 연소 결과, cat: 해석-결과, ext: cmbres, cases: [P24]}   # 완전 중복 행
       - {sw_id: COM-02, dir: in, name: 해석 메시, cat: 해석-입력데이터, ext: msh, partner: HyperMesh}
       - {sw_id: COM-02, dir: out, name: 연소실 유동장, cat: 해석-결과, ext: "cas.h5, dat.h5", partner: Tecplot, cases: [P23]}
       - {sw_id: COM-03, dir: in, name: 연소 계측 데이터, cat: 시험-계측데이터, ext: csv, partner: 가상-연소계측기, cases: [P7]}
       - {sw_id: COM-04, dir: out, name: 연소 계측 데이터, cat: 시험-계측데이터, ext: csv, partner: MATLAB, cases: [P7]}
+      - {sw_id: COM-04, dir: out, name: 연소 계측 원시 데이터, cat: 시험-계측데이터, ext: bin(사내), std: 사내 표준 포맷,
+         partner: LabVIEW, cases: [I5]}
 
   # ------------------------------------------------------------------ 구조
   - field: 구조
+    extra_categories: false                  # 이 파일의 선택지에는 '설계-2D Layout' 이 없다 — 파일별 선택지 판정
     usages:
       - {sw_id: STR-01, name: HyperMesh, version: 5.1, vendor: Altair, kind: 상용, detail: 해석 메시 생성, users: 5,
          freq: 매일, auto_detail: TCL 스크립트, cases: [P6, D5-float]}
       - {sw_id: STR-02, name: ANSYS Mechanical, version: 2024R1, vendor: ANSYS, kind: 상용, detail: 블레이드 구조 해석,
          users: 6, cases: [P2]}
-      - {sw_id: STR-03, name: NASTRAN, version: "2023.1", vendor: MSC Software, kind: 상용, detail: 디스크 구조 해석,
-         op: CLI 지원, auto_if: CLI 인자, cases: [P12]}
+      - {sw_id: STR-03, name: NASTRAN, version: 2023-01-01, vendor: MSC Software, kind: 상용, detail: 디스크 구조 해석,
+         op: CLI 지원, auto_if: CLI 인자, cases: [P12, D5-date-in-string]}   # 버전 칸이 날짜 셀
       - {sw_id: STR-03, name: Abaqus, version: "2023", vendor: Dassault Systèmes, kind: 상용, detail: 비선형 구조 해석,
          cases: [P19]}                       # 같은 파일 안 SW ID 중복 — 경고 후 먼저 나온 행 사용
       - {sw_id: STR-04, name: 가상-수명평가툴, version: "1.2", vendor: 가상-수명평가사, kind: 상용, detail: 저주기 피로 수명 평가,
@@ -184,17 +209,24 @@ files:
       - {sw_id: STR-05, name: Excel, version: "2019", vendor: Microsoft, kind: 상용, purpose: 문서·협업, detail: 결과 정리,
          field_cell: 시험, op: GUI 전용, auto_if: COM·OLE, cases: [P7, P17]}   # 파일은 구조인데 담당 부서는 시험
     ios:
-      - {sw_id: STR-01, dir: in, name: 익형 형상, cat: 해석-입력데이터, ext: "*.stp", partner: 가상-공력설계툴, cases: [P6]}
+      - {sw_id: STR-01, dir: in, name: 익형 형상, cat: 해석-입력데이터, ext: stp, partner: 가상-공력설계툴, cases: [P6]}
       - {sw_id: STR-01, dir: out, name: 해석 메시, cat: 해석-입력데이터, ext: msh, partner: ANSYS Fluent}
       - {sw_id: STR-01, dir: out, name: 구조 메시, cat: 해석-입력데이터, ext: bdf, partner: NASTRAN}
+      - {sw_id: STR-01, dir: out, name: 메시 배치도, cat: 설계-2D Layout, ext: dwg, nature: 3D·2D 형상,
+         cases: [CHOICE-FILE]}               # 이 파일 선택지에 없는 분류 — 경고 (압축기 파일에서는 경고 없음)
       - {sw_id: STR-02, dir: in, name: 블레이드 형상, cat: 설계-3D형상, ext: stp, nature: 3D·2D 형상, partner: CATIA,
          cases: [P2]}
       - {sw_id: STR-02, dir: in, name: 금속 온도 결과, cat: 해석-결과, ext: tres, partner: 가상-열해석}
+      - {sw_id: STR-02, dir: in, name: 익형 형상, cat: 해석-입력데이터, ext: "*.stp", partner: 가상-공력설계툴, cases: [P6]}
+      - {sw_id: STR-02, dir: in, name: 수명 평가 결과, cat: 해석-결과, ext: json, partner: 가상-수명평가툴,
+         cases: [GRADE-SUPPLIER-X]}
       - {sw_id: STR-02, dir: out, name: 구조 요약 표, cat: 보고서·문서, ext: xlsx, partner: Excel, cases: [P7]}
       - {sw_id: STR-03, dir: in, name: 구조 메시, cat: 해석-입력데이터, ext: bdf, partner: HyperMesh}
       - {sw_id: STR-03, dir: out, name: 구조 해석 결과, cat: 해석-결과, ext: op2, partner: 가상-수명평가툴, cases: [P12]}
       - {sw_id: STR-04, dir: in, name: 구조 해석 결과, cat: 해석-결과, ext: op2, transfer: 메일·수기 전달,
          partner: NASTRAN, cases: [P12]}
+      - {sw_id: STR-04, dir: out, name: 수명 평가 결과, cat: 해석-결과, ext: json, transfer: 메일·수기 전달,
+         partner: ANSYS Mechanical, cases: [GRADE-SUPPLIER-X]}   # 공급 측이 폐쇄망 구동 불가 → 제외
       - {sw_id: STR-05, dir: in, name: 해석 요약 표, cat: 보고서·문서, ext: xlsx, cases: [P7]}
 
   # ------------------------------------------------------------------ 제어 (SW ID 를 SW명으로 적은 분야 — P21)
@@ -210,17 +242,22 @@ files:
          detail: 제어 로직 코드 생성, op: GUI 전용, auto_if: 모름, cases: [P21, P4-no-io]}
     ios:
       - {sw_id: MATLAB, dir: in, name: 시험 계측 데이터, cat: 시험-계측데이터, ext: csv, partner: LabVIEW, cases: [P7]}
-      - {sw_id: MATLAB, dir: in, name: 제어 요구 사양, cat: 요구도, ext: 모름, nature: 서술형 문서, cases: [EXT-EMPTY]}
+      - {sw_id: MATLAB, dir: in, name: 제어 요구 사양, cat: 요구도, ext: 모름, nature: 서술형 문서,
+         partner: MATLAB Simulink, cases: [EXT-EMPTY, I13]}   # 같은 분류 생산자(Simulink docx)가 있어도 연결 안 함
+      - {sw_id: MATLAB, dir: in, name: 성능 모델 계수, cat: 해석-결과, ext: mat, partner: MATLAB,
+         cases: [SAME-TOOL, SAME-USAGE]}     # 자기 출력(mat)과는 연결하지 않는다
       - {sw_id: MATLAB, dir: out, name: 제어 게인 표, cat: 해석-결과, ext: mat, partner: MATLAB Simulink}
       - {sw_id: Simulink, dir: in, name: 제어 게인 표, cat: 해석-결과, ext: mat, partner: MATLAB}
       - {sw_id: Simulink, dir: out, name: 제어 모델, cat: 해석-결과, ext: slx, partner: 가상-미조사툴, cases: [P9]}
+      - {sw_id: Simulink, dir: out, name: 제어 요구 사양 검토본, cat: 요구도, ext: docx, nature: 서술형 문서, cases: [I13]}
 
   # ------------------------------------------------------------------ 시험
   - field: 시험
+    guide: {C21: OOO, C22: 내선 9998}       # 작성안내 작성자·연락처 — 가명. 어떤 출력에도 나오면 안 된다
     usages:
       - {sw_id: TEST-01, name: LabVIEW, version: "2021", vendor: NI, kind: 상용, purpose: 시험·계측, detail: 시험 데이터 수집 제어,
          users: 5, freq: 매일, op: GUI 전용, auto_if: SDK·라이브러리,
-         contact: OOO 책임(내선 0000), cases: [P7, PERSON-COL]}     # 실무 문의처 열 — 읽지도 저장하지도 않아야 한다
+         contact: OOO 수석(내선 9999), cases: [P7, PERSON-COL]}     # 실무 문의처 열 — 읽지도 저장하지도 않아야 한다
       - {sw_id: TEST-02, name: 가상-데이터수집기, version: "2.1", vendor: 자체개발, kind: 자체개발, purpose: 시험·계측,
          detail: 고속 계측 데이터 수집, users: 2, freq: 매일, op: CLI 지원, auto_if: 파일 폴링,
          note: "문의: OOO 책임(내선 0000)", cases: [P11, D6]}        # 자유 텍스트 인명 유사 패턴 — 경고
@@ -228,7 +265,7 @@ files:
       - {sw_id: TEST-04, name: Excel, version: 365, vendor: Microsoft, kind: 상용, purpose: 문서·협업, detail: 시험 결과 정리,
          users: 8, op: GUI 전용, auto_if: COM·OLE, cases: [P7]}
       - {sw_id: TEST-05, name: 가상-진동계측기, version: "1.4", vendor: 자체개발, kind: 자체개발, purpose: 시험·계측,
-         detail: 진동 계측, op: GUI 전용, auto_if: 없음}
+         detail: 진동 계측, op: null, auto_if: null, cases: [REQUIRED-MISSING, GRADE-C]}  # 필수값 두 칸이 빔
     ios:
       - {sw_id: TEST-01, dir: in, name: 고속 계측 원시 데이터, cat: 시험-계측데이터, ext: bin(사내), std: 사내 표준 포맷,
          transfer: 메일·수기 전달, partner: 가상-데이터수집기, cases: [P6]}
@@ -240,5 +277,7 @@ files:
       - {sw_id: TEST-03, dir: in, name: 시험 계측 데이터, cat: 시험-계측데이터, ext: csv, partner: LabVIEW, cases: [P7]}
       - {sw_id: TEST-03, dir: in, name: 시험 조건 기록, cat: 시험-계측데이터, ext: txt, partner: 가상-데이터수집기, cases: [P11]}
       - {sw_id: TEST-04, dir: in, name: 해석 요약 표, cat: 보고서·문서, ext: xlsx, cases: [P7]}
+      - {sw_id: TEST-05, dir: out, name: 계측 온도 보정표, cat: 시험-계측데이터, ext: cal, transfer: 메일·수기 전달,
+         partner: 가상-열해석, cases: [GRADE-C]}
       - {sw_id: TEST-05, dir: out, name: 진동 계측 데이터, cat: 시험-계측데이터, ext: csv 또는 엑셀, partner: MATLAB,
          cases: [EXT-UNMAPPED]}              # '또는' 은 확장자가 아니다 — 원문 보존 + 경고, 나머지는 매칭

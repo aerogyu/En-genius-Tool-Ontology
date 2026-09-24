@@ -43,29 +43,43 @@ IO_COLUMNS = {
 DIRECTION = {"in": "입력(소비)", "out": "출력(생산)"}
 USAGE_START_ROW = 5   # 작성안내 ④ '5행부터 작성'
 IO_START_ROW = 7      # 예시 4~6행 다음
-META_KEYS = {"cases", "blank"}
+META_KEYS = {"cases", "blank", "extra", "example_copy"}
+EXAMPLE_ROW = 4       # 템플릿 예시 행 (SW기본정보 4행, SW입출력 4~6행의 첫 행)
 
 
 def load_spec(path: Path = SPEC) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def file_name(spec: dict, field: str) -> str:
-    return spec["file_name"].format(field=field)
+def file_name(spec: dict, entry: dict | str) -> str:
+    """entry(파일 명세) 또는 분야 이름. 파일별 file_date 가 없으면 명세 기본값."""
+    if isinstance(entry, str):
+        entry = next(e for e in spec["files"] if e["field"] == entry and "file_date" not in e)
+    return spec["file_name"].format(field=entry["field"], date=entry.get("file_date", spec["file_date"]))
 
 
 def _header_columns(ws) -> dict[str, int]:
     return {str(c.value): c.column for c in ws[2] if c.value}
 
 
-def _fill_rows(ws, rows: list[dict], columns: dict[str, str], defaults: dict, start: int, extra=None) -> None:
+def _fill_rows(ws, rows: list[dict], columns: dict[str, str], defaults: dict, start: int, extra=None,
+               extra_headers: list[str] | None = None) -> None:
     cols = _header_columns(ws)
     missing = [h for h in columns.values() if h not in cols]
     if missing:
         raise ValueError(f"{ws.title}: 양식에 없는 헤더 {missing}")
+    for h in extra_headers or []:          # 응답자가 덧붙인 열 — 매핑 안 되는 헤더 (경고 대상)
+        c = ws.max_column + 1
+        ws.cell(2, c).value = h
+        cols[h] = c
     r = start
     for row in rows:
         if row.get("blank"):
+            r += 1
+            continue
+        if row.get("example_copy"):        # 템플릿 예시 행(4행)을 다른 위치에 그대로 복사 (I15)
+            for c in range(1, ws.max_column + 1):
+                ws.cell(r, c).value = ws.cell(EXAMPLE_ROW, c).value
             r += 1
             continue
         unknown = set(row) - set(columns) - META_KEYS
@@ -77,7 +91,16 @@ def _fill_rows(ws, rows: list[dict], columns: dict[str, str], defaults: dict, st
             if key == "dir" and v is not None:
                 v = DIRECTION[v]
             ws.cell(r, cols[header]).value = v
+        for h, v in (row.get("extra") or {}).items():
+            ws.cell(r, cols[h]).value = v
         r += 1
+
+
+def _rename_headers(ws, overrides: dict[str, str]) -> None:
+    """사내 배포본처럼 헤더 문구를 바꾼다 (값은 이미 채운 뒤) — 적재기는 헤더 이름으로 매핑해야 한다."""
+    cols = _header_columns(ws)
+    for old, new in overrides.items():
+        ws.cell(2, cols[old]).value = new
 
 
 def _add_choice_values(wb, list_name: str, values: list[str]) -> None:
@@ -108,11 +131,17 @@ def build_workbook_bytes(spec: dict, entry: dict) -> bytes:
     wb = openpyxl.load_workbook(REPO_ROOT / spec["template"])
     field = entry["field"]
     du, di = spec["defaults"]["usage"], spec["defaults"]["io"]
+    xh = entry.get("extra_headers", {})
     _fill_rows(wb["SW기본정보"], entry["usages"], USAGE_COLUMNS, du, USAGE_START_ROW,
-               extra=lambda row: {"field_cell": field})
-    _fill_rows(wb["SW입출력"], entry["ios"], IO_COLUMNS, di, entry.get("io_start_row", IO_START_ROW))
-    if spec.get("extra_categories"):
+               extra=lambda row: {"field_cell": field}, extra_headers=xh.get("SW기본정보"))
+    _fill_rows(wb["SW입출력"], entry["ios"], IO_COLUMNS, di, entry.get("io_start_row", IO_START_ROW),
+               extra_headers=xh.get("SW입출력"))
+    if spec.get("extra_categories") and entry.get("extra_categories", True):
         _add_choice_values(wb, "온톨로지분류", spec["extra_categories"])
+    for sheet, overrides in entry.get("header_overrides", {}).items():
+        _rename_headers(wb[sheet], overrides)
+    for cell, v in entry.get("guide", {}).items():   # 작성안내 시트 입력칸 (적재 대상 아님 — 가명만)
+        wb["작성안내"][cell].value = v
 
     p = wb.properties
     p.creator = p.lastModifiedBy = "engenius_onto synth (합성 데이터)"
@@ -149,7 +178,7 @@ def _normalize_zip(data: bytes) -> bytes:
 
 def outputs(spec: dict | None = None, out_dir: Path = OUT_DIR) -> dict[Path, bytes]:
     spec = spec or load_spec()
-    return {out_dir / file_name(spec, e["field"]): build_workbook_bytes(spec, e) for e in spec["files"]}
+    return {out_dir / file_name(spec, e): build_workbook_bytes(spec, e) for e in spec["files"]}
 
 
 def run(check: bool = False, out_dir: Path = OUT_DIR) -> int:

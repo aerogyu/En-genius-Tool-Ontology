@@ -1,86 +1,149 @@
-# 골든 기대값 (M2) — 합성 조사 파일(data/synthetic/survey/)로 M3 적재·M4 도출이 내야 할 결과.
-# 손으로 쓴 부분: interpretations, loader, cases.  자동 부분: aggregates (tests/golden/oracle.py 가
-# 명세에서 계산 — test_golden 이 명세·참조 계산과 이 값이 같은지 검사한다. 명세를 바꾸면 다시 만든다).
+# 골든 기대값 (M2 v2) — 합성 조사 파일(data/synthetic/survey/)로 M3 적재·M4 도출이 내야 할 결과.
+# 손으로 쓴 부분: interpretations, open_questions, loader, cases.
+# 자동 부분: aggregates — tests/golden/oracle.py 가 명세에서 계산한다. test_golden 이 명세·참조 계산과 이 값이 같은지 검사한다.
+# 명세를 바꾸면 python tests/golden/make_expected.py 로 다시 만든다 (손으로 쓴 부분은 이 머리말 파일에서 유지).
 #
 # 키 규칙 (골든 전용 표기)
-#   툴사용  = "<분야>/<SW ID>"             분야 = 행의 '담당 부서' (파일 분야와 다를 수 있음 — P17)
-#   입출력  = "<툴사용>/<in|out>/<명칭>"   같은 명칭이 전달·연계만 다르면 "[전달|연계]", 완전 중복이면 "#순번"
+#   툴사용  = "<분야>/<SW ID>"            분야 = 행의 '담당 부서' (파일 분야와 다를 수 있음 — P17)
+#   입출력  = "<툴사용>/<in|out>/<명칭>"  같은 파일에서 이 키가 겹치면 달라지는 필드(분류|확장자|전달|연계)를 [..] 로, 완전히 같으면 #순번
 #   고아    = "<파일 분야>/<SW ID>(고아)/..."
 #   툴      = 정규화 키 (docs/02 6.1) — 대표 이름(prefLabel)은 M3 가 정하므로 골든에서 검사하지 않는다
 
-version: 1
+version: 2
 spec: data/synthetic/survey_spec.yaml
 
-# docs/02 가 정하지 않아 M2 에서 정한 해석 — M3·M4 는 이대로 구현한다 (바꾸려면 여기와 oracle.py 를 함께)
+# docs/02 가 정하지 않아 M2 에서 정한 해석 — M3·M4 는 이대로 구현한다. 바꾸려면 여기와 oracle.py 를 함께 고친다.
 interpretations:
   I1-연계SW해석: >-
-    연계 SW명에는 제조사 열이 없다. 정규화 키가 툴 키와 같거나, 조사에 나온 제조사명(정규화)을 앞에서 떼어낸
-    키가 같으면 그 툴로 해석한다 (예: 'ANSYS Fluent' → fluent, 'Microsoft Excel' → excel).
-  I2-버전토큰: "공백으로 나눈 토큰 중 ^(v\\d+(\\.\\d+)*|\\d{4}r\\d+|r\\d+[a-z]?|sp\\d+|\\d+(\\.\\d+)+)$ 는 버리고 이어 붙인다 (예: 'CATIA V5' → catia, 'ANSYS Fluent 2024R1' → fluent)."
-  I3-비고신호: 전달 방법은 수기가 아니고 비고에만 수작업 키워드가 있는 Feed 는 manual=false·manual_basis=비고·등급 없음. 착수 순위에서 빼고 CQ02 보조 목록에만 둔다.
+    연계 SW명에는 제조사 열이 없다. 정규화 키가 툴 키와 같거나, 조사에 나온 제조사명(정규화)을 앞에서 떼어낸 키가
+    같으면 그 툴로 해석한다 (예 'ANSYS Fluent' → fluent, 'Microsoft Excel' → excel). 떼고 남는 것이 없으면 떼지 않는다 (I14).
+  I2-버전토큰: "공백으로 나눈 토큰 중 ^(v\\d+(\\.\\d+)*|\\d{4}r\\d+|r\\d+[a-z]?|sp\\d+|\\d+(\\.\\d+)+)$ 는 버린다 (예 'CATIA V5' → catia)."
+  I3-비고신호: >-
+    전달 방법은 수기가 아니고 입력·출력 어느 한쪽 비고에 수작업 키워드가 있는 Feed 는 manual=false·manual_basis=비고·등급 없음.
+    착수 순위에서 빼고 CQ02 보조 목록에만 둔다. (Leo 확인 Q-I3)
   I4-변환구간: >-
     '숨은변환 의심' (입출력 x, 상대 툴 T) 는 T 의 툴사용 각각과 쌍으로 펼친다 (D1-2). x 가 입력이면 (T 의 툴사용 → x 소유),
     출력이면 (x 소유 → T 의 툴사용). 같은 (공급, 수요, 종류) 쌍은 한 행으로 합치고 근거 입출력을 모두 적는다.
-  I5-정렬동률: 착수 순위 정렬(등급 → 수요 빈도·인원·우선순위 → 공급 같은 순서) 뒤에도 같으면 공급 키, 수요 키 문자열 순.
+  I5-정렬동률: 정렬 키가 모두 같으면 공급 툴사용 키, 수요 툴사용 키 문자열 순 (파이썬 문자열 비교).
   I6-인원수없음: 사용 인원수가 정수가 아니면(원문만 보존) 정렬에서 가장 작은 값으로 본다.
-  I7-허브지표: 툴별로 Feed(방향 무관)로 이어진 서로 다른 상대 툴 수. 자기 자신 제외. 순위에는 쓰지 않는다.
-  I8-영향범위: CQ06 결과는 주어진 (분류, 확장자)를 소비하는 툴사용 자신 + eg:feeds+ 로 도달하는 하류.
-  I9-고아대조: 고아 입출력(io_owner 없음)은 Feed·CQ04 대조 대상이 아니다.
-  I10-누락후보키: CQ09 는 해석 못 한 연계 SW명을 정규화 키로 묶어 언급 횟수·언급 분야를 센다.
-  I11-무연결판정: CQ05 ② 는 입출력이 있으나 소유 입출력 어디에도 Feed 가 없고 해석된 신고 상대도 없는 툴사용.
-  I12-확장자: 괄호 주석 '(사내)'·'사내' 는 떼고 inhouse_format=true. 그 밖의 토큰이 확장자 패턴이 아니면 버리고 원문 보존 + 경고.
+  I7-허브지표: >-
+    툴별 = Feed(방향 무관)로 이어진 서로 다른 상대 툴 수 (자기 자신 제외). 툴사용별 = 서로 다른 상대 툴사용 수.
+    둘 다 보고만 하고 착수 순위에는 쓰지 않는다.
+  I8-영향범위: CQ06 결과 = 주어진 (분류, 확장자)를 소비하는 툴사용 자신 + eg:feeds+ 로 도달하는 하류.
+  I9-고아: 고아 입출력(io_owner 없음)은 Feed·CQ04 대조·착수 순위 대상이 아니다.
+  I10-누락후보키: CQ09 는 해석 못 한 연계 SW명을 정규화 키로 묶어 언급 횟수·언급 분야(소유 툴사용의 분야)를 센다.
+  I11-무연결판정: CQ05 ② 는 입출력이 있으나 소유 입출력 어디에도 Feed 가 없고, 해석된 신고 상대도 없는 툴사용 (해석 못 한 연계 SW 만 있어도 무연결).
+  I12-확장자: >-
+    괄호 주석은 떼고(괄호 안에 '사내' 가 있으면 inhouse_format=true), 토큰 '사내' 도 inhouse_format=true.
+    나머지 토큰이 확장자 패턴(소문자·숫자·_+-, 점으로 이은 다중 확장자 허용)이 아니면 버리고 원문 보존 + 경고.
+  I13-확장자미기재: >-
+    확장자가 비면(빈 값 토큰) 그 입출력은 Feed 를 만들지 않고, 도출 단계 경고를 입출력마다 1건 낸다.
+    CQ04 에서는 신고 상대마다 '확장자 미기재' 로 판정한다 — '숨은변환 의심' 이 아니며 변환 구간도 만들지 않는다.
+  I14-툴명제조사명: 툴 정규화 키에서 제조사 접두를 떼고 남는 것이 없으면 떼지 않는다 (예 Tecplot/Tecplot → tecplot).
+  I15-예시행판별: >-
+    적재 열 전체(B 'SW명(자동)' 수식·K '실무 문의처' 제외)가 템플릿 예시 행과 같으면 행 위치와 무관하게 제외한다.
+    예시의 비고 문구('(예시 행 — 참고 후 그대로 두셔도 됩니다)')까지 같아야 하므로, SAS-01=SANTA 같은 실제 응답은 제외되지 않는다.
+    일부만 같은 행은 응답으로 적재한다.
+  I16-빈값토큰: "확장자·연계 SW명 공통. 셀 전체를 먼저 본다: '', 없음, 모름, -, —, –, n/a, na, 해당없음, 해당 없음."
+  I17-연계SW구분자: "NFKC 후 , ; / · ㆍ ・ 줄바꿈으로 나눈다 ('/' 가 든 제품명은 쪼개진다 — 필요하면 tool_aliases 로 보완)."
+  I18-정렬방향: 등급 A → B → C → 제외, 수요 측 사용 빈도·인원수·우선순위 내림차순, 다음 공급 측 같은 순서.
+  I19-CQ01시작점: 상류·하류 탐색 결과에 시작 툴사용 자신은 넣지 않는다 (순환으로 돌아와도).
+  I20-분류분야생성: DataCategory·Field 는 적재 행에 나온 값만 만든다 (선택지에만 있는 값은 만들지 않음). 분야 매트릭스는 대각(같은 분야) 포함.
+  I21-수기판정: 전달 방법이 수기 값('메일·수기 전달')과 정확히 같을 때만 수기. 목록 밖 값('메일')은 수기가 아니고 선택지 밖 경고.
+  I22-SWID없는행: SW ID 칸이 비었지만 내용이 있는 행은 건너뛰고 경고한다 (docs/02 5장 2 '건너뛴다' + 6 '조용히 버리지 않는다').
+  I23-동률과유사도: 속성 다수값이 동률이면 사전순 첫 값. 통합 후보 유사도는 difflib 비율의 양방향 최댓값 ≥ 0.85, 또는 한쪽이 다른 쪽을 포함.
+  I24-허브상위N: 상위 N(10) 은 N 번째 값과 같은 동률을 모두 포함한다.
+  I25-수기근거: 같은 (공급, 수요) 쌍의 수기 Feed 가 여럿이면 착수 행 1개, 근거 입출력을 모두 적는다.
+  I26-자기쌍금지: 변환 구간을 펼칠 때 입출력 소유 툴사용 자신과의 쌍은 만들지 않는다.
+  I27-셀값규칙: >-
+    문자열 슬롯의 정수 셀은 그대로 문자열(경고 없음 — '01'→1 같은 선행 0 소실은 탐지할 수 없는 한계), 정수값 실수도 소수점 없이(경고 없음),
+    그 밖의 실수는 문자열 + '엑셀 숫자 변환 가능성' 경고. 날짜 셀은 만료 시기면 YYYY-MM, 그 밖의 문자열 슬롯이면 ISO 문자열 + 경고.
+  I28-선택지검사: 선택지 목록은 그 파일의 선택지 시트 기준 (파일마다 다를 수 있음). 필수(*) 빈칸은 '필수값 누락' 경고.
+  I29-인명패턴: >-
+    자유 텍스트 슬롯(용도 상세·업무 요약·자동화 상세·희망 작업·애로 구간·대체 계획·비고)에서 직급어 + '(내선' 이 보이면 경고하고 값은 보존.
+    '실무 문의처' 열과 작성안내 시트는 읽지 않으므로 검사 대상도 아니다.
+  I30-헤더매핑: NFKC 후 공백·'*' 를 무시하고 비교. 매핑 안 된 헤더는 경고. B 수식 열·K 문의처 열은 의도적 무시(경고 아님).
+  I31-파일명분야: "파일명 'SW조사_<분야>_<YYYYMMDD>.xlsx' 의 두 번째 조각을 파일 분야로 본다 (작성안내 B26 규칙)."
 
-# M3 적재기 기대값 — 참조 계산은 명세 데이터 기준이라 엑셀 층 사례는 여기서 손으로 적는다
+# Leo 확인이 필요한 규칙 — 결정 전까지 골든은 '현재안' 으로 계산돼 있다
+open_questions:
+  Q-R1-재발송: >-
+    같은 분야 파일이 두 개(재발송) 오면 어떻게 할까. 권장: 파일명 날짜가 가장 늦은 파일을 그 분야의 유효 응답으로 적재하고
+    이전 파일은 적재하지 않고 '재발송으로 대체' 경고. (현재 합성 데이터에는 이 사례가 없다 — 결정 후 추가)
+  Q-D2-수기번짐: >-
+    SAS-01 '유량 분배 결과' 수기 행은 연계 SW 로 가상-미조사툴만 적었는데, 분류·확장자가 맞는 SAS-03 입력에도 수기 Feed(B)가 된다.
+    현재안: docs/02 7.3 문자 그대로 (i 또는 o 의 전달 방법) — 수기. 대안: 연계 SW 를 적은 행이면 그 상대에게만 수기 적용.
+  Q-I3-비고신호: >-
+    비고에만 수작업이 적힌 구간(P11 등)을 착수 순위에 '비고 근거' 로 따로 올릴까. 현재안은 올리지 않음 (I3).
+
+# M3 적재기 기대값 중 참조 계산이 엑셀 층이라 직접 못 세는 것 (나머지는 aggregates.loader_per_file·warnings)
 loader:
   files: 8
-  file_field_from_name: "SW조사_<분야>_<YYYYMMDD>.xlsx 의 두 번째 조각"
-  template_example_rows_excluded:
-    total: 30                    # SW기본정보 8 (파일마다 4행) + SW입출력 22 (7개 파일 × 4~6행 3줄 + 제어 파일 4행 1줄)
-    note: 내용 일치로 판별. 행 번호로 판별하면 제어 파일(P10-b)에서 실제 응답 2행을 잘못 버린다.
-  loaded:
-    usages: 33                   # 구조 파일 STR-03 중복 1행 제외 (P19)
-    io_rows: 65                  # 고아 1행 포함, 완전 중복 2행 모두 포함 (순번으로 구분)
-    fields: 8
-    categories: 7                # 설계-2D Layout 포함 (P22)
+  template_example_rows_excluded: 31     # 템플릿 위치 30 (SW기본정보 8 + SW입출력 22) + 성능 파일의 예시 복사본 1 (I15)
+  excluded_total: 33                     # 예시 31 + 중복 SW ID 1 (구조 STR-03 Abaqus) + SW ID 없는 내용 행 1 (압축기)
+  loaded: {usages: 34, io_rows: 77, fields: 8, categories: 8}
+  person_tokens_absent: >-
+    다음 문자열은 어떤 출력(TTL·보고서·로그)에도 나오면 안 된다 — 실무 문의처 열과 작성안내 시트 값:
+    '홍OO 책임(내선 1234)', 'OOO 수석(내선 9999)', '내선 9998'.
+    (D6 사례의 'OOO 책임(내선 0000)'·'OOO 선임(내선 0000)' 은 자유 텍스트라 값이 보존되고 경고만 난다 — 다른 토큰이다)
+  excel_layer_notes: >-
+    합성 파일은 openpyxl 로 만들어 B 열 수식의 캐시값이 없고 데이터 유효성도 openpyxl 형식이다. 실제 회신 파일(Excel 저장본)에는
+    B 열 캐시값('SANTA', 'ID 확인' 등)이 있고 유효성이 확장 형식이라 openpyxl 이 못 읽을 수 있다. 적재기는 B 열 값과 데이터
+    유효성을 쓰지 않고, 헤더 이름·선택지 시트 값만 쓴다.
   cases:
-    P10-b: 제어 파일 SW입출력 5·6행(예시 위치)의 MATLAB 행 2개는 응답이다 — 적재한다.
-    P10-c: >-
-      2차유로(SAS) 파일에는 예시 행(SAS-01 SANTA)과 실제 SAS-01(가상-1D네트워크)이 둘 다 있다. 예시만 제외하고
-      중복 SW ID 경고를 내지 않는다. (실제 조사에서 SAS-01=SANTA 로 예시와 똑같은 응답이 올 수 있으므로,
-      예시와 내용이 같지만 예시 위치가 아닌 행은 제외하지 않고 '예시와 동일' 경고를 낸다 — M3 규칙.)
-    GAP: 성능 파일 SW입출력 중간의 빈 행 1개 다음 행들(PERF-02~04)도 적재한다.
-    PERSON-COL: >-
-      '실무 문의처' 열 값(예시 행의 '홍OO 책임(내선 1234)', 시험 파일 TEST-01 의 'OOO 책임(내선 0000)')은
-      어떤 출력(TTL·보고서·로그)에도 나타나지 않는다.
-    D5-int: 터빈 TURB-02 버전 셀 정수 2024 → "2024" (경고 없음). 압축기 COM-02 2210, 시험 TEST-04 365 도 같다.
-    D5-float: 구조 STR-01 버전 셀 실수 5.1 → "5.1" + '엑셀 숫자 변환으로 값이 바뀌었을 수 있음' 경고.
-    D5-date: 성능 PERF-03 만료 시기 날짜 셀 2027-03-31 → "2027-03" (license_expiry 패턴 통과).
-    D5-raw: 터빈 TURB-03 사용 인원수 '약 6명' → user_count 없음, user_count_raw='약 6명', 경고.
-    D6: "시험 TEST-02 비고 '문의: OOO 책임(내선 0000)' → 인명 유사 패턴 경고 (값은 삭제하지 않음)."
-    P20: 제어 MATLAB 조작 방식 'GUI+CLI(일부)' → 원문 그대로 적재, SHACL sh:in 위반 = 경고.
-    P22: 압축기 COM-01 분류 '설계-2D Layout' → 그 파일의 선택지 시트에 있으므로 경고 없음, DataCategory 생성.
-    EXT-EMPTY: 제어 MATLAB '제어 요구 사양' 확장자 '모름' → extensions 없음, 도출 단계 '확장자 미기재' 경고.
-    D3: 압축기·연소기가 같은 SW ID(COM-01~03)를 쓴다 — 충돌 아님. 입출력 소유는 같은 파일 안에서 해석.
-    P21: 제어 파일은 SW ID 를 SW명으로 적었다(MATLAB, Simulink, 가상-제어로직툴) — 두 시트가 일치하므로 경고 없음.
-  warnings_expected_in_addition_to_aggregates:
-    - 구조/STR-01 버전 실수 셀 경고 (D5-float)
-    - 시험/TEST-02 비고 인명 유사 패턴 경고 (D6)
-    - 제어/MATLAB 조작 방식 목록 밖 값 (P20, SHACL)
-    - 제어/MATLAB/in/제어 요구 사양 확장자 미기재 (EXT-EMPTY, 도출 단계)
+    P10-b: 제어 파일 SW입출력 5·6행(예시 위치)의 MATLAB 행 2개는 응답이다 — 적재한다 (내용이 예시와 다름).
+    P10-c: 2차유로(SAS) 파일의 예시 행(SAS-01 SANTA)과 실제 SAS-01(가상-1D네트워크)은 SW ID 가 같지만 내용이 다르다 — 예시만 제외, 중복 SW ID 경고 없음.
+    I15: 성능 파일 SW기본정보 9행에 예시 행 복사본 — 위치와 무관하게 예시로 제외 (경고 아님, 제외 로그에 사유).
+    GAP: 성능 파일 SW입출력 중간의 빈 행 다음 행들(PERF-02~04)도 적재한다.
+    HEADER: 터빈 파일은 헤더 '파일형식/확장자＊'·'사용빈도' 로 바뀌었지만 같은 슬롯으로 매핑되고, 덧붙인 '내부 메모' 열만 경고, 그 값은 적재하지 않는다.
+    D5-int: 터빈 TURB-02 버전 정수 2024 → "2024", 압축기 COM-02 2210, 시험 TEST-04 365 — 경고 없음.
+    D5-float: 구조 STR-01 버전 실수 5.1 → "5.1" + 경고.
+    D5-expiry-float: 성능 PERF-02 만료 시기 실수 2027.1 → "2027.1" + 경고, license_expiry 패턴(YYYY-MM) 위반 → SHACL 경고.
+    D5-date: 성능 PERF-03 만료 시기 날짜 → "2027-03" (경고 없음).
+    D5-date-in-string: 구조 STR-03 버전 날짜 셀 → "2023-01-01" + 경고.
+    D5-raw: 2차유로 SAS-03 사용 인원수 '약 4명' → user_count 없음, user_count_raw 보존 + 경고.
+    D6: 인명 유사 패턴 3곳 — 시험 TEST-02 비고, 2차유로 SAS-02 애로 구간, 터빈 TURB-01 출력 비고 (SW입출력). 값은 보존.
+    P20: 제어 MATLAB 조작 방식 'GUI+CLI(일부)' → 원문 적재, 선택지 밖 경고. 등급은 자동화 IF(내장 스크립팅)로 자동화 가능.
+    P22: 압축기 COM-01 분류 '설계-2D Layout' → 그 파일 선택지에 있으므로 경고 없음, DataCategory 생성.
+    CHOICE-FILE: 구조 STR-01 분류 '설계-2D Layout' → 구조 파일 선택지에는 없으므로 경고 (같은 값인데 파일에 따라 다름 — I28).
+    CHOICE-OUT: 터빈 TURB-02 분류 '보고서/문서'(오기)·TURB-03 전달 방법 '메일' → 선택지 밖 경고, 원문 적재.
+    REQUIRED-MISSING: 시험 TEST-05 조작 방식·자동화 인터페이스 빈칸 → 필수값 누락 경고 2건, 자동화 불가로 판정.
+    I22: 압축기 파일 SW입출력의 SW ID 없는 '형상 검토 메모' 행 → 건너뛰고 경고.
+    P21: 제어 파일은 SW ID 를 SW명으로 적었다 (MATLAB, Simulink, 가상-제어로직툴) — 두 시트가 일치하므로 경고 없음.
+    D3: 압축기·연소기가 같은 SW ID(COM-01~03)를 쓴다 — 충돌 아님, 입출력 소유는 같은 파일 안에서 해석.
 
-# 심어 둔 사례별 기대값 (docs/03 M2 표 P1~P12 + 결정 D2·D3 등) — test_golden 이 참조 계산과 일치하는지 검사
+# 심어 둔 사례별 기대값 — test_golden 이 참조 계산과 일치하는지 검사한다
 cases:
   P1:
-    title: 3단 수기 체인 가상-성능덱 → Excel 상관식 → 가상-1D네트워크
+    title: 3단 수기 체인 가상-성능덱 → Excel 상관식 → 가상-1D네트워크 (첫 구간은 양쪽 CLI 가능)
     manual_feeds:
       - {from: 성능/PERF-01/out/성능 경계조건 표, to: 2차유로(SAS)/SAS-02/in/성능 경계조건, grade: A, confidence: 낮음, declared: true}
       - {from: 2차유로(SAS)/SAS-02/out/보정 경계조건, to: 2차유로(SAS)/SAS-01/in/보정 경계조건, grade: A, confidence: 낮음, declared: true}
+    both_cli_hop: {supplier: 성능/PERF-01, consumer: 2차유로(SAS)/SAS-02}
+  GRADE-OP:
+    title: 조작 방식만으로 자동화 가능 (자동화 IF 는 '모름') — 7.4 OR 의 조작 방식 분기
+    usage: 2차유로(SAS)/SAS-02
+    automatable: true
+  GRADE-C:
+    title: 양쪽 다 자동화 불가인 수기 구간 → C
+    manual_feed: {from: 시험/TEST-05/out/계측 온도 보정표, to: 2차유로(SAS)/SAS-03/in/계측 온도 보정표, grade: C}
+  GRADE-SUPPLIER-B:
+    title: 공급 측만 자동화 불가 → B
+    manual_feed: {from: 2차유로(SAS)/SAS-03/out/금속 온도 결과, to: 구조/STR-02/in/금속 온도 결과, grade: B}
+  GRADE-SUPPLIER-X:
+    title: 공급 측이 폐쇄망 구동 불가 → 제외
+    manual_feed: {from: 구조/STR-04/out/수명 평가 결과, to: 구조/STR-02/in/수명 평가 결과, grade: 제외}
   P2:
     title: 숨은 변환 — 입력은 연계 SW=CATIA·stp 인데 CATIA 출력은 catpart 뿐
     reconciliation:
       - {io: 구조/STR-02/in/블레이드 형상, tool: catia, verdict: 숨은변환 의심}
       - {io: 터빈/TURB-01/out/터빈 블레이드 3D 모델, tool: mechanical, verdict: 숨은변환 의심}
-    conversion_handoff: {supplier: 터빈/TURB-01, consumer: 구조/STR-02, grade: A}
+      - {io: 압축기/COM-05/out/압축기 케이싱 3D 모델, tool: mechanical, verdict: 숨은변환 의심}
+  D1-2:
+    title: 변환 구간을 상대 툴의 툴사용 각각으로 펼침 — CATIA 두 사용이 등급이 다르다
+    conversion_handoffs:
+      - {supplier: 터빈/TURB-01, consumer: 구조/STR-02, grade: A}
+      - {supplier: 압축기/COM-05, consumer: 구조/STR-02, grade: B}
   P3:
     title: 신고 없는 잠재 연결 (분류·확장자 일치, 연계 SW명 공란)
     feed: {from: 압축기/COM-02/out/압축기 유동장, to: 터빈/TURB-03/in/외부 유동장, declared: false, manual: false}
@@ -88,43 +151,52 @@ cases:
       - {io: 터빈/TURB-03/in/외부 유동장, tool: starccm, verdict: 잠재(연계 미기재)}
       - {io: 압축기/COM-02/out/압축기 유동장, tool: tecplot, verdict: 잠재(연계 미기재)}
   P4:
-    title: 고립 2종
+    title: 고립 2종 (I11 — 연소기 COM-01 은 해석 못 한 연계 SW 만 있어 여전히 무연결)
     no_io: [제어/가상-제어로직툴]
     unlinked: [연소기/COM-01]
   P5:
     title: 툴 표기 변형 통합 + 통합 후보 + 속성 엇갈림
-    merged: {fluent: [ANSYS FLUENT, ANSYS Fluent 2024R1, Fluent], excel: [Excel, Microsoft Excel]}
+    merged: {fluent: [ANSYS FLUENT, ANSYS Fluent 2024R1, Fluent], excel: [Excel, Microsoft Excel], catia: [CATIA V5]}
     candidates_only: [[matlab, matlabsimulink]]
     attribute_conflict: {tool: matlab, attr: kind, majority: 상용}
   P6:
-    title: 확장자 변형 정규화
+    title: 확장자 표기 변형 정규화 (.STEP, stp, *.stp, 엑셀, .dat(사내), 괄호 없는 사내, 사내 아닌 괄호 주석)
     extensions:
       - {io: 압축기/COM-01/out/익형 형상, raw: .STEP, normalized: [stp]}
-      - {io: 구조/STR-01/in/익형 형상, raw: "*.stp", normalized: [stp]}
+      - {io: 구조/STR-01/in/익형 형상, raw: stp, normalized: [stp]}
+      - {io: 구조/STR-02/in/익형 형상, raw: "*.stp", normalized: [stp]}
       - {io: 2차유로(SAS)/SAS-02/out/보정 경계조건, raw: 엑셀, normalized: [xlsx]}
       - {io: "2차유로(SAS)/SAS-03/in/유량 분배 결과", raw: .dat(사내), normalized: [dat], inhouse: true}
-      - {io: 연소기/COM-01/in/연소 조건, raw: cmb(사내), normalized: [cmb], inhouse: true}
-    feed_via_normalization: {from: 압축기/COM-01/out/익형 형상, to: 구조/STR-01/in/익형 형상, matched: [stp]}
+      - {io: 연소기/COM-01/in/연소 조건, raw: cmb 사내, normalized: [cmb], inhouse: true}
+      - {io: 터빈/TURB-02/out/벽면 온도 조건, raw: txt(ASCII), normalized: [txt]}
+    feeds_via_normalization:
+      - {from: 압축기/COM-01/out/익형 형상, to: 구조/STR-01/in/익형 형상, matched: [stp]}
+      - {from: 압축기/COM-01/out/익형 형상, to: 구조/STR-02/in/익형 형상, matched: [stp]}
   P7:
-    title: 허브 — Excel·MATLAB 5개 분야 사용, 연결 상대 수 최상위, 착수 순위에는 영향 없음
+    title: 허브 — Excel·MATLAB 5개 분야 사용, 연결 상대 툴 수 최상위, 착수 순위에는 영향 없음
     top_hubs: [excel, matlab]
     fields_using: {excel: 5, matlab: 5}
+    ranking_independent_of_hub: 착수 순위는 aggregates.handoff_ranking 과 같고, 정렬 키(I18)에 허브 값이 없다
   P8:
     title: GUI 전용 끝단의 수기 구간
     manual_feed: {from: 터빈/TURB-02/out/벽면 온도 조건, to: 2차유로(SAS)/SAS-03/in/벽면 온도 조건, grade: B}
   P9:
     title: 조사에 없는 연계 툴
-    missing: {key: 가상미조사툴, mentions: 2, fields: [2차유로(SAS), 제어]}
+    missing:
+      가상미조사툴: {mentions: 2, fields: [2차유로(SAS), 제어]}
+      가상외부해석툴: {mentions: 1, fields: [연소기]}
   P10:
-    title: 템플릿 예시 행 잔존 — loader.template_example_rows_excluded 참고
+    title: 템플릿 예시 행 잔존 — loader 참고
   P11:
-    title: 비고에만 적힌 수작업
-    feed: {from: 시험/TEST-02/out/시험 조건 기록, to: 시험/TEST-03/in/시험 조건 기록, manual: false, manual_basis: 비고, grade: null}
+    title: 비고에만 적힌 수작업 (출력 쪽 비고, 입력 쪽 비고 둘 다)
+    feeds:
+      - {from: 시험/TEST-02/out/시험 조건 기록, to: 시험/TEST-03/in/시험 조건 기록, manual: false, manual_basis: 비고, grade: null}
+      - {from: 터빈/TURB-02/out/터빈 유동장, to: 터빈/TURB-03/in/유동장 결과, manual: false, manual_basis: 비고, grade: null}
   P12:
     title: 폐쇄망 구동 불가 툴이 낀 수기 구간
     manual_feed: {from: 구조/STR-03/out/구조 해석 결과, to: 구조/STR-04/in/구조 해석 결과, grade: 제외}
   D2:
-    title: 같은 데이터를 상대별로 두 행 — 두 입출력으로 유지
+    title: 같은 데이터를 상대별로 두 행 — 두 입출력으로 유지 (Leo 확인 Q-D2)
     io_keys:
       - "2차유로(SAS)/SAS-01/out/유량 분배 결과[파일 저장|가상-열해석]"
       - "2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]"
@@ -137,55 +209,178 @@ cases:
   P24:
     title: 완전 중복 입출력 행 — 경고 후 순번
     io_keys: ["연소기/COM-01/out/연소 결과", "연소기/COM-01/out/연소 결과#1"]
+  SAME-TOOL:
+    title: 같은 툴(MATLAB)의 다른 분야 사용끼리는 연결한다 (7.1)
+    feed: {from: 성능/PERF-02/out/성능 모델 계수, to: 제어/MATLAB/in/성능 모델 계수, matched: [mat]}
+  SAME-USAGE:
+    title: 같은 툴사용의 출력과 입력은 분류·확장자가 맞아도 연결하지 않는다 (7.1)
+    no_feed: {from: 제어/MATLAB/out/제어 게인 표, to: 제어/MATLAB/in/성능 모델 계수}
+  PARTNER-MULTI:
+    title: 연계 SW 두 개를 전각 쉼표로 적음 — NFKC 후 분리 (I17)
+    io: 성능/PERF-02/out/성능 모델 계수
+    partner_tools: [matlab, matlabsimulink]
+  I13:
+    title: 확장자 미기재 — 같은 분류 생산자가 있어도 연결하지 않고, CQ04 는 '확장자 미기재'
+    no_feed: {from: 제어/Simulink/out/제어 요구 사양 검토본, to: 제어/MATLAB/in/제어 요구 사양}
+    reconciliation:
+      - {io: 제어/MATLAB/in/제어 요구 사양, tool: matlabsimulink, verdict: 확장자 미기재}
+  I9:
+    title: 고아 입출력은 분류·확장자가 맞아도 연결하지 않는다
+    orphan: "터빈/TURB-3(고아)/in/냉각 공기 조건"
+  I5:
+    title: 정렬 키 동률 — 공급 키 문자열 순
+    order: [[시험/TEST-02, 시험/TEST-01], [연소기/COM-04, 시험/TEST-01]]
+  I6:
+    title: 수요 측 인원수가 원문뿐('약 4명')이면 가장 작게 — 같은 B 등급에서 STR-02 수요 행이 SAS-03 수요 행보다 앞
+    before: [2차유로(SAS)/SAS-03, 구조/STR-02]
+    after: [2차유로(SAS)/SAS-01, 2차유로(SAS)/SAS-03]
 
-# ---- 아래는 tests/golden/oracle.py 가 명세에서 계산한 값 (손으로 고치지 말 것 — 명세를 고치고 다시 만든다)
+# ---- 아래는 tests/golden/oracle.py 가 명세에서 계산한 값 (손으로 고치지 말 것 — make_expected.py)
 aggregates:
   counts:
-    usages: 33
+    usages: 34
     tools: 22
-    io_specs: 65
+    io_specs: 77
     orphan_io_specs: 1
     fields: 8
-    categories: 7
-    feeds: 65
-    feeds_manual: 6
-    feeds_note_signal: 1
+    categories: 8
+    feeds: 71
+    feeds_manual: 10
+    feeds_note_signal: 4
     feeds_low_confidence: 49
-    feeds_declared: 64
+    feeds_declared: 70
+  loader_per_file:
+    SW조사_성능_20260924.xlsx:
+      usage_rows: 4
+      io_rows: 9
+      excluded: 5
+      warnings: 1
+    SW조사_2차유로(SAS)_20260924.xlsx:
+      usage_rows: 4
+      io_rows: 13
+      excluded: 4
+      warnings: 2
+    SW조사_터빈_20260924.xlsx:
+      usage_rows: 5
+      io_rows: 10
+      excluded: 4
+      warnings: 5
+    SW조사_압축기_20260924.xlsx:
+      usage_rows: 4
+      io_rows: 7
+      excluded: 5
+      warnings: 1
+    SW조사_연소기_20260924.xlsx:
+      usage_rows: 4
+      io_rows: 8
+      excluded: 4
+      warnings: 1
+    SW조사_구조_20260924.xlsx:
+      usage_rows: 5
+      io_rows: 14
+      excluded: 5
+      warnings: 5
+    SW조사_제어_20260924.xlsx:
+      usage_rows: 3
+      io_rows: 7
+      excluded: 2
+      warnings: 1
+    SW조사_시험_20260924.xlsx:
+      usage_rows: 5
+      io_rows: 9
+      excluded: 4
+      warnings: 4
   reconciliation_counts:
-    숨은변환 의심: 2
-    잠재(신고와 다름): 11
+    숨은변환 의심: 3
+    잠재(신고와 다름): 13
     잠재(연계 미기재): 32
-    확정: 45
+    확장자 미기재: 1
+    확정: 54
   handoff_ranking:
   - supplier: 2차유로(SAS)/SAS-02
     consumer: 2차유로(SAS)/SAS-01
     kind: 수기
     grade: A
+    evidence:
+    - 2차유로(SAS)/SAS-01/in/보정 경계조건
+    - 2차유로(SAS)/SAS-02/out/보정 경계조건
   - supplier: 시험/TEST-02
     consumer: 시험/TEST-01
     kind: 수기
     grade: A
+    evidence:
+    - 시험/TEST-01/in/고속 계측 원시 데이터
+    - 시험/TEST-02/out/고속 계측 원시 데이터
+  - supplier: 연소기/COM-04
+    consumer: 시험/TEST-01
+    kind: 수기
+    grade: A
+    evidence:
+    - 시험/TEST-01/in/고속 계측 원시 데이터
+    - 연소기/COM-04/out/연소 계측 원시 데이터
   - supplier: 터빈/TURB-01
     consumer: 구조/STR-02
     kind: 변환
     grade: A
+    evidence:
+    - 구조/STR-02/in/블레이드 형상
+    - 터빈/TURB-01/out/터빈 블레이드 3D 모델
   - supplier: 성능/PERF-01
     consumer: 2차유로(SAS)/SAS-02
     kind: 수기
     grade: A
+    evidence:
+    - 2차유로(SAS)/SAS-02/in/성능 경계조건
+    - 성능/PERF-01/out/성능 경계조건 표
+  - supplier: 압축기/COM-05
+    consumer: 구조/STR-02
+    kind: 변환
+    grade: B
+    evidence:
+    - 구조/STR-02/in/블레이드 형상
+    - 압축기/COM-05/out/압축기 케이싱 3D 모델
+  - supplier: 2차유로(SAS)/SAS-03
+    consumer: 구조/STR-02
+    kind: 수기
+    grade: B
+    evidence:
+    - 2차유로(SAS)/SAS-03/out/금속 온도 결과
+    - 구조/STR-02/in/금속 온도 결과
   - supplier: 2차유로(SAS)/SAS-01
     consumer: 2차유로(SAS)/SAS-03
     kind: 수기
     grade: B
+    evidence:
+    - 2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]
+    - 2차유로(SAS)/SAS-03/in/유량 분배 결과
   - supplier: 터빈/TURB-02
     consumer: 2차유로(SAS)/SAS-03
     kind: 수기
     grade: B
+    evidence:
+    - 2차유로(SAS)/SAS-03/in/벽면 온도 조건
+    - 터빈/TURB-02/out/벽면 온도 조건
+  - supplier: 시험/TEST-05
+    consumer: 2차유로(SAS)/SAS-03
+    kind: 수기
+    grade: C
+    evidence:
+    - 2차유로(SAS)/SAS-03/in/계측 온도 보정표
+    - 시험/TEST-05/out/계측 온도 보정표
+  - supplier: 구조/STR-04
+    consumer: 구조/STR-02
+    kind: 수기
+    grade: 제외
+    evidence:
+    - 구조/STR-02/in/수명 평가 결과
+    - 구조/STR-04/out/수명 평가 결과
   - supplier: 구조/STR-03
     consumer: 구조/STR-04
     kind: 수기
     grade: 제외
+    evidence:
+    - 구조/STR-03/out/구조 해석 결과
+    - 구조/STR-04/in/구조 해석 결과
   isolated:
     no_io:
     - 제어/가상-제어로직툴
@@ -194,29 +389,100 @@ aggregates:
   hub_partner_counts:
     excel: 5
     matlab: 5
+    mechanical: 4
+    가상열해석: 4
     fluent: 3
     hypermesh: 3
-    가상열해석: 3
-    labview: 2
-    mechanical: 2
+    labview: 3
+    가상공력설계툴: 3
     nastran: 2
     starccm: 2
     tecplot: 2
     가상1d네트워크: 2
-    가상공력설계툴: 2
     가상데이터수집기: 2
     가상성능덱: 2
+    가상수명평가툴: 2
+    가상연소계측기: 2
+    가상진동계측기: 2
     matlabsimulink: 1
     python: 1
-    가상수명평가툴: 1
-    가상연소계측기: 1
-    가상진동계측기: 1
+  hub_top10_tools:
+  - excel
+  - matlab
+  - mechanical
+  - 가상열해석
+  - fluent
+  - hypermesh
+  - labview
+  - 가상공력설계툴
+  - nastran
+  - starccm
+  - tecplot
+  - 가상1d네트워크
+  - 가상데이터수집기
+  - 가상성능덱
+  - 가상수명평가툴
+  - 가상연소계측기
+  - 가상진동계측기
+  hub_partner_counts_usage:
+    구조/STR-02: 9
+    압축기/COM-01: 8
+    2차유로(SAS)/SAS-01: 7
+    성능/PERF-01: 7
+    시험/TEST-01: 7
+    압축기/COM-02: 7
+    시험/TEST-05: 6
+    연소기/COM-04: 6
+    2차유로(SAS)/SAS-02: 5
+    구조/STR-01: 5
+    성능/PERF-02: 5
+    성능/PERF-03: 5
+    시험/STR-05: 5
+    시험/TEST-04: 5
+    압축기/COM-03: 5
+    제어/MATLAB: 5
+    터빈/TURB-05: 5
+    2차유로(SAS)/SAS-03: 4
+    시험/TEST-03: 4
+    터빈/TURB-03: 4
+    연소기/COM-03: 3
+    터빈/TURB-02: 3
+    터빈/TURB-04: 3
+    2차유로(SAS)/SAS-04: 2
+    구조/STR-03: 2
+    구조/STR-04: 2
+    시험/TEST-02: 2
+    연소기/COM-02: 2
+    제어/Simulink: 2
+    성능/PERF-04: 1
+  hub_top10_usages:
+  - 구조/STR-02
+  - 압축기/COM-01
+  - 2차유로(SAS)/SAS-01
+  - 성능/PERF-01
+  - 시험/TEST-01
+  - 압축기/COM-02
+  - 시험/TEST-05
+  - 연소기/COM-04
+  - 2차유로(SAS)/SAS-02
+  - 구조/STR-01
+  - 성능/PERF-02
+  - 성능/PERF-03
+  - 시험/STR-05
+  - 시험/TEST-04
+  - 압축기/COM-03
+  - 제어/MATLAB
+  - 터빈/TURB-05
   missing_tools:
     가상미조사툴:
       mentions: 2
       fields:
       - 2차유로(SAS)
       - 제어
+    가상외부해석툴:
+      mentions: 1
+      fields:
+      - 연소기
   tools:
     catia:
     - CATIA V5
@@ -283,7 +549,7 @@ aggregates:
     2차유로(SAS) → 압축기: 1
     2차유로(SAS) → 터빈: 2
     구조 → 2차유로(SAS): 2
-    구조 → 구조: 2
+    구조 → 구조: 3
     구조 → 성능: 1
     구조 → 시험: 2
     구조 → 압축기: 1
@@ -293,20 +559,22 @@ aggregates:
     성능 → 성능: 2
     성능 → 시험: 2
     성능 → 압축기: 1
+    성능 → 제어: 2
     성능 → 터빈: 1
+    시험 → 2차유로(SAS): 1
     시험 → 성능: 2
     시험 → 시험: 4
     시험 → 연소기: 2
     시험 → 제어: 2
     시험 → 터빈: 2
     압축기 → 2차유로(SAS): 2
-    압축기 → 구조: 1
+    압축기 → 구조: 2
     압축기 → 성능: 2
     압축기 → 시험: 4
     압축기 → 압축기: 2
     압축기 → 터빈: 3
     연소기 → 성능: 1
-    연소기 → 시험: 1
+    연소기 → 시험: 2
     연소기 → 연소기: 1
     연소기 → 제어: 1
     연소기 → 터빈: 2
@@ -315,9 +583,12 @@ aggregates:
     터빈 → 터빈: 1
   field_matrix_manual:
     2차유로(SAS) → 2차유로(SAS): 2
-    구조 → 구조: 1
+    2차유로(SAS) → 구조: 1
+    구조 → 구조: 2
     성능 → 2차유로(SAS): 1
+    시험 → 2차유로(SAS): 1
     시험 → 시험: 1
+    연소기 → 시험: 1
     터빈 → 2차유로(SAS): 1
   impact_해석결과_csv:
   - 2차유로(SAS)/SAS-01
@@ -329,21 +600,1011 @@ aggregates:
   - 시험/TEST-04
   - 압축기/COM-03
   - 터빈/TURB-05
-  downstream_of_성능_PERF-01:
-  - 2차유로(SAS)/SAS-01
-  - 2차유로(SAS)/SAS-02
-  - 2차유로(SAS)/SAS-03
-  - 구조/STR-02
-  - 성능/PERF-03
-  - 성능/PERF-04
-  - 시험/STR-05
-  - 시험/TEST-04
-  - 압축기/COM-03
-  - 터빈/TURB-05
+  cq01_2차유로(SAS)/SAS-01:
+    upstream_1:
+    - 2차유로(SAS)/SAS-02
+    downstream_1:
+    - 2차유로(SAS)/SAS-02
+    - 2차유로(SAS)/SAS-03
+    - 성능/PERF-03
+    - 시험/STR-05
+    - 시험/TEST-04
+    - 압축기/COM-03
+    - 터빈/TURB-05
+    upstream_all:
+    - 2차유로(SAS)/SAS-02
+    - 2차유로(SAS)/SAS-03
+    - 구조/STR-01
+    - 구조/STR-02
+    - 구조/STR-03
+    - 구조/STR-04
+    - 성능/PERF-01
+    - 시험/TEST-05
+    - 압축기/COM-01
+    - 압축기/COM-02
+    - 터빈/TURB-02
+    downstream_all:
+    - 2차유로(SAS)/SAS-02
+    - 2차유로(SAS)/SAS-03
+    - 구조/STR-02
+    - 성능/PERF-03
+    - 시험/STR-05
+    - 시험/TEST-04
+    - 압축기/COM-03
+    - 터빈/TURB-05
+  feeds:
+  - from: 2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]
+    to: 2차유로(SAS)/SAS-03/in/유량 분배 결과
+    matched:
+    - dat
+    confidence: 보통
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: B
+  - from: 2차유로(SAS)/SAS-01/out/유량 분배 결과[파일 저장|가상-열해석]
+    to: 2차유로(SAS)/SAS-03/in/유량 분배 결과
+    matched:
+    - dat
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 2차유로(SAS)/SAS-01/out/유량 요약 표
+    to: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 2차유로(SAS)/SAS-01/out/유량 요약 표
+    to: 성능/PERF-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 2차유로(SAS)/SAS-01/out/유량 요약 표
+    to: 시험/STR-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 2차유로(SAS)/SAS-01/out/유량 요약 표
+    to: 시험/TEST-04/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 2차유로(SAS)/SAS-01/out/유량 요약 표
+    to: 압축기/COM-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 2차유로(SAS)/SAS-01/out/유량 요약 표
+    to: 터빈/TURB-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 2차유로(SAS)/SAS-02/out/보정 경계조건
+    to: 2차유로(SAS)/SAS-01/in/보정 경계조건
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: A
+  - from: 2차유로(SAS)/SAS-03/out/금속 온도 결과
+    to: 구조/STR-02/in/금속 온도 결과
+    matched:
+    - tres
+    confidence: 보통
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: B
+  - from: 2차유로(SAS)/SAS-04/out/2차유로 유동장
+    to: 터빈/TURB-03/in/유동장 결과
+    matched:
+    - cas.h5
+    - dat.h5
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: 비고
+    grade: null
+  - from: 구조/STR-01/out/구조 메시
+    to: 구조/STR-03/in/구조 메시
+    matched:
+    - bdf
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-01/out/해석 메시
+    to: 2차유로(SAS)/SAS-04/in/해석 메시
+    matched:
+    - msh
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-01/out/해석 메시
+    to: 연소기/COM-02/in/해석 메시
+    matched:
+    - msh
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-01/out/해석 메시
+    to: 터빈/TURB-02/in/해석 메시
+    matched:
+    - msh
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-02/out/구조 요약 표
+    to: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-02/out/구조 요약 표
+    to: 성능/PERF-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-02/out/구조 요약 표
+    to: 시험/STR-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-02/out/구조 요약 표
+    to: 시험/TEST-04/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-02/out/구조 요약 표
+    to: 압축기/COM-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-02/out/구조 요약 표
+    to: 터빈/TURB-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 구조/STR-03/out/구조 해석 결과
+    to: 구조/STR-04/in/구조 해석 결과
+    matched:
+    - op2
+    confidence: 보통
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: 제외
+  - from: 구조/STR-04/out/수명 평가 결과
+    to: 구조/STR-02/in/수명 평가 결과
+    matched:
+    - json
+    confidence: 보통
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: 제외
+  - from: 성능/PERF-01/out/성능 경계조건 표
+    to: 2차유로(SAS)/SAS-02/in/성능 경계조건
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: A
+  - from: 성능/PERF-01/out/성능 요약
+    to: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 성능/PERF-01/out/성능 요약
+    to: 성능/PERF-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 성능/PERF-01/out/성능 요약
+    to: 시험/STR-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 성능/PERF-01/out/성능 요약
+    to: 시험/TEST-04/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 성능/PERF-01/out/성능 요약
+    to: 압축기/COM-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 성능/PERF-01/out/성능 요약
+    to: 터빈/TURB-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 성능/PERF-01/out/성능 요약 데이터
+    to: 성능/PERF-04/in/성능 요약 데이터
+    matched:
+    - json
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 성능/PERF-02/out/성능 모델 계수
+    to: 제어/MATLAB/in/성능 모델 계수
+    matched:
+    - mat
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 성능/PERF-02/out/성능 모델 계수
+    to: 제어/Simulink/in/제어 게인 표
+    matched:
+    - mat
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-01/out/시험 계측 데이터
+    to: 성능/PERF-02/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-01/out/시험 계측 데이터
+    to: 시험/TEST-03/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-01/out/시험 계측 데이터
+    to: 연소기/COM-03/in/연소 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-01/out/시험 계측 데이터
+    to: 제어/MATLAB/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-01/out/시험 계측 데이터
+    to: 터빈/TURB-04/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-02/out/고속 계측 원시 데이터
+    to: 시험/TEST-01/in/고속 계측 원시 데이터
+    matched:
+    - bin
+    confidence: 보통
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: A
+  - from: 시험/TEST-02/out/시험 조건 기록
+    to: 시험/TEST-03/in/시험 조건 기록
+    matched:
+    - txt
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: 비고
+    grade: null
+  - from: 시험/TEST-05/out/계측 온도 보정표
+    to: 2차유로(SAS)/SAS-03/in/계측 온도 보정표
+    matched:
+    - cal
+    confidence: 보통
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: C
+  - from: 시험/TEST-05/out/진동 계측 데이터
+    to: 성능/PERF-02/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-05/out/진동 계측 데이터
+    to: 시험/TEST-03/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-05/out/진동 계측 데이터
+    to: 연소기/COM-03/in/연소 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-05/out/진동 계측 데이터
+    to: 제어/MATLAB/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 시험/TEST-05/out/진동 계측 데이터
+    to: 터빈/TURB-04/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-01/out/설계 요약 표
+    to: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-01/out/설계 요약 표
+    to: 성능/PERF-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-01/out/설계 요약 표
+    to: 시험/STR-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-01/out/설계 요약 표
+    to: 시험/TEST-04/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-01/out/설계 요약 표
+    to: 압축기/COM-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-01/out/설계 요약 표
+    to: 터빈/TURB-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-01/out/익형 형상
+    to: 구조/STR-01/in/익형 형상
+    matched:
+    - stp
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-01/out/익형 형상
+    to: 구조/STR-02/in/익형 형상
+    matched:
+    - stp
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-02/out/압축기 요약 표
+    to: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-02/out/압축기 요약 표
+    to: 성능/PERF-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-02/out/압축기 요약 표
+    to: 시험/STR-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-02/out/압축기 요약 표
+    to: 시험/TEST-04/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-02/out/압축기 요약 표
+    to: 압축기/COM-03/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-02/out/압축기 요약 표
+    to: 터빈/TURB-05/in/해석 요약 표
+    matched:
+    - xlsx
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 압축기/COM-02/out/압축기 유동장
+    to: 터빈/TURB-03/in/외부 유동장
+    matched:
+    - plt
+    confidence: 보통
+    declared: false
+    manual: false
+    basis: null
+    grade: null
+  - from: 연소기/COM-02/out/연소실 유동장
+    to: 터빈/TURB-03/in/유동장 결과
+    matched:
+    - cas.h5
+    - dat.h5
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: 비고
+    grade: null
+  - from: 연소기/COM-04/out/연소 계측 데이터
+    to: 성능/PERF-02/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 연소기/COM-04/out/연소 계측 데이터
+    to: 시험/TEST-03/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 연소기/COM-04/out/연소 계측 데이터
+    to: 연소기/COM-03/in/연소 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 연소기/COM-04/out/연소 계측 데이터
+    to: 제어/MATLAB/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 연소기/COM-04/out/연소 계측 데이터
+    to: 터빈/TURB-04/in/시험 계측 데이터
+    matched:
+    - csv
+    confidence: 낮음
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 연소기/COM-04/out/연소 계측 원시 데이터
+    to: 시험/TEST-01/in/고속 계측 원시 데이터
+    matched:
+    - bin
+    confidence: 보통
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: A
+  - from: 제어/MATLAB/out/제어 게인 표
+    to: 제어/Simulink/in/제어 게인 표
+    matched:
+    - mat
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: null
+    grade: null
+  - from: 터빈/TURB-02/out/벽면 온도 조건
+    to: 2차유로(SAS)/SAS-03/in/벽면 온도 조건
+    matched:
+    - txt
+    confidence: 낮음
+    declared: true
+    manual: true
+    basis: 전달방법
+    grade: B
+  - from: 터빈/TURB-02/out/터빈 유동장
+    to: 터빈/TURB-03/in/유동장 결과
+    matched:
+    - cas.h5
+    - dat.h5
+    confidence: 보통
+    declared: true
+    manual: false
+    basis: 비고
+    grade: null
+  reconciliation:
+  - io: 2차유로(SAS)/SAS-01/in/보정 경계조건
+    tool: excel
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-01/out/유량 분배 결과[메일·수기 전달|가상-미조사툴]
+    tool: 가상열해석
+    verdict: 잠재(신고와 다름)
+  - io: 2차유로(SAS)/SAS-01/out/유량 분배 결과[파일 저장|가상-열해석]
+    tool: 가상열해석
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-01/out/유량 요약 표
+    tool: excel
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-02/in/성능 경계조건
+    tool: 가상성능덱
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    tool: mechanical
+    verdict: 잠재(연계 미기재)
+  - io: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    tool: starccm
+    verdict: 잠재(연계 미기재)
+  - io: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    tool: 가상1d네트워크
+    verdict: 잠재(연계 미기재)
+  - io: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    tool: 가상공력설계툴
+    verdict: 잠재(연계 미기재)
+  - io: 2차유로(SAS)/SAS-02/in/해석 요약 표
+    tool: 가상성능덱
+    verdict: 잠재(연계 미기재)
+  - io: 2차유로(SAS)/SAS-02/out/보정 경계조건
+    tool: 가상1d네트워크
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-03/in/계측 온도 보정표
+    tool: 가상진동계측기
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-03/in/벽면 온도 조건
+    tool: fluent
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-03/in/유량 분배 결과
+    tool: 가상1d네트워크
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-03/out/금속 온도 결과
+    tool: mechanical
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-04/in/해석 메시
+    tool: hypermesh
+    verdict: 확정
+  - io: 2차유로(SAS)/SAS-04/out/2차유로 유동장
+    tool: tecplot
+    verdict: 확정
+  - io: 구조/STR-01/in/익형 형상
+    tool: 가상공력설계툴
+    verdict: 확정
+  - io: 구조/STR-01/out/구조 메시
+    tool: nastran
+    verdict: 확정
+  - io: 구조/STR-01/out/해석 메시
+    tool: fluent
+    verdict: 확정
+  - io: 구조/STR-02/in/금속 온도 결과
+    tool: 가상열해석
+    verdict: 확정
+  - io: 구조/STR-02/in/블레이드 형상
+    tool: catia
+    verdict: 숨은변환 의심
+  - io: 구조/STR-02/in/수명 평가 결과
+    tool: 가상수명평가툴
+    verdict: 확정
+  - io: 구조/STR-02/in/익형 형상
+    tool: 가상공력설계툴
+    verdict: 확정
+  - io: 구조/STR-02/out/구조 요약 표
+    tool: excel
+    verdict: 확정
+  - io: 구조/STR-03/in/구조 메시
+    tool: hypermesh
+    verdict: 확정
+  - io: 구조/STR-03/out/구조 해석 결과
+    tool: 가상수명평가툴
+    verdict: 확정
+  - io: 구조/STR-04/in/구조 해석 결과
+    tool: nastran
+    verdict: 확정
+  - io: 구조/STR-04/out/수명 평가 결과
+    tool: mechanical
+    verdict: 확정
+  - io: 성능/PERF-01/out/성능 경계조건 표
+    tool: excel
+    verdict: 확정
+  - io: 성능/PERF-01/out/성능 요약
+    tool: excel
+    verdict: 확정
+  - io: 성능/PERF-01/out/성능 요약 데이터
+    tool: python
+    verdict: 확정
+  - io: 성능/PERF-02/in/시험 계측 데이터
+    tool: labview
+    verdict: 확정
+  - io: 성능/PERF-02/in/시험 계측 데이터
+    tool: 가상연소계측기
+    verdict: 잠재(신고와 다름)
+  - io: 성능/PERF-02/in/시험 계측 데이터
+    tool: 가상진동계측기
+    verdict: 잠재(신고와 다름)
+  - io: 성능/PERF-02/out/성능 모델 계수
+    tool: matlab
+    verdict: 확정
+  - io: 성능/PERF-02/out/성능 모델 계수
+    tool: matlabsimulink
+    verdict: 확정
+  - io: 성능/PERF-03/in/해석 요약 표
+    tool: mechanical
+    verdict: 잠재(연계 미기재)
+  - io: 성능/PERF-03/in/해석 요약 표
+    tool: starccm
+    verdict: 잠재(연계 미기재)
+  - io: 성능/PERF-03/in/해석 요약 표
+    tool: 가상1d네트워크
+    verdict: 잠재(연계 미기재)
+  - io: 성능/PERF-03/in/해석 요약 표
+    tool: 가상공력설계툴
+    verdict: 잠재(연계 미기재)
+  - io: 성능/PERF-03/in/해석 요약 표
+    tool: 가상성능덱
+    verdict: 잠재(연계 미기재)
+  - io: 성능/PERF-04/in/성능 요약 데이터
+    tool: 가상성능덱
+    verdict: 확정
+  - io: 시험/STR-05/in/해석 요약 표
+    tool: mechanical
+    verdict: 잠재(연계 미기재)
+  - io: 시험/STR-05/in/해석 요약 표
+    tool: starccm
+    verdict: 잠재(연계 미기재)
+  - io: 시험/STR-05/in/해석 요약 표
+    tool: 가상1d네트워크
+    verdict: 잠재(연계 미기재)
+  - io: 시험/STR-05/in/해석 요약 표
+    tool: 가상공력설계툴
+    verdict: 잠재(연계 미기재)
+  - io: 시험/STR-05/in/해석 요약 표
+    tool: 가상성능덱
+    verdict: 잠재(연계 미기재)
+  - io: 시험/TEST-01/in/고속 계측 원시 데이터
+    tool: 가상데이터수집기
+    verdict: 확정
+  - io: 시험/TEST-01/in/고속 계측 원시 데이터
+    tool: 가상연소계측기
+    verdict: 잠재(신고와 다름)
+  - io: 시험/TEST-01/out/시험 계측 데이터
+    tool: matlab
+    verdict: 확정
+  - io: 시험/TEST-02/out/고속 계측 원시 데이터
+    tool: labview
+    verdict: 확정
+  - io: 시험/TEST-02/out/시험 조건 기록
+    tool: matlab
+    verdict: 확정
+  - io: 시험/TEST-03/in/시험 계측 데이터
+    tool: labview
+    verdict: 확정
+  - io: 시험/TEST-03/in/시험 계측 데이터
+    tool: 가상연소계측기
+    verdict: 잠재(신고와 다름)
+  - io: 시험/TEST-03/in/시험 계측 데이터
+    tool: 가상진동계측기
+    verdict: 잠재(신고와 다름)
+  - io: 시험/TEST-03/in/시험 조건 기록
+    tool: 가상데이터수집기
+    verdict: 확정
+  - io: 시험/TEST-04/in/해석 요약 표
+    tool: mechanical
+    verdict: 잠재(연계 미기재)
+  - io: 시험/TEST-04/in/해석 요약 표
+    tool: starccm
+    verdict: 잠재(연계 미기재)
+  - io: 시험/TEST-04/in/해석 요약 표
+    tool: 가상1d네트워크
+    verdict: 잠재(연계 미기재)
+  - io: 시험/TEST-04/in/해석 요약 표
+    tool: 가상공력설계툴
+    verdict: 잠재(연계 미기재)
+  - io: 시험/TEST-04/in/해석 요약 표
+    tool: 가상성능덱
+    verdict: 잠재(연계 미기재)
+  - io: 시험/TEST-05/out/계측 온도 보정표
+    tool: 가상열해석
+    verdict: 확정
+  - io: 시험/TEST-05/out/진동 계측 데이터
+    tool: matlab
+    verdict: 확정
+  - io: 압축기/COM-01/out/설계 요약 표
+    tool: excel
+    verdict: 확정
+  - io: 압축기/COM-01/out/익형 형상
+    tool: hypermesh
+    verdict: 확정
+  - io: 압축기/COM-01/out/익형 형상
+    tool: mechanical
+    verdict: 잠재(신고와 다름)
+  - io: 압축기/COM-02/out/압축기 요약 표
+    tool: excel
+    verdict: 확정
+  - io: 압축기/COM-02/out/압축기 유동장
+    tool: tecplot
+    verdict: 잠재(연계 미기재)
+  - io: 압축기/COM-03/in/해석 요약 표
+    tool: mechanical
+    verdict: 잠재(연계 미기재)
+  - io: 압축기/COM-03/in/해석 요약 표
+    tool: starccm
+    verdict: 잠재(연계 미기재)
+  - io: 압축기/COM-03/in/해석 요약 표
+    tool: 가상1d네트워크
+    verdict: 잠재(연계 미기재)
+  - io: 압축기/COM-03/in/해석 요약 표
+    tool: 가상공력설계툴
+    verdict: 잠재(연계 미기재)
+  - io: 압축기/COM-03/in/해석 요약 표
+    tool: 가상성능덱
+    verdict: 잠재(연계 미기재)
+  - io: 압축기/COM-05/out/압축기 케이싱 3D 모델
+    tool: mechanical
+    verdict: 숨은변환 의심
+  - io: 연소기/COM-02/in/해석 메시
+    tool: hypermesh
+    verdict: 확정
+  - io: 연소기/COM-02/out/연소실 유동장
+    tool: tecplot
+    verdict: 확정
+  - io: 연소기/COM-03/in/연소 계측 데이터
+    tool: labview
+    verdict: 잠재(신고와 다름)
+  - io: 연소기/COM-03/in/연소 계측 데이터
+    tool: 가상연소계측기
+    verdict: 확정
+  - io: 연소기/COM-03/in/연소 계측 데이터
+    tool: 가상진동계측기
+    verdict: 잠재(신고와 다름)
+  - io: 연소기/COM-04/out/연소 계측 데이터
+    tool: matlab
+    verdict: 확정
+  - io: 연소기/COM-04/out/연소 계측 원시 데이터
+    tool: labview
+    verdict: 확정
+  - io: 제어/MATLAB/in/성능 모델 계수
+    tool: matlab
+    verdict: 확정
+  - io: 제어/MATLAB/in/시험 계측 데이터
+    tool: labview
+    verdict: 확정
+  - io: 제어/MATLAB/in/시험 계측 데이터
+    tool: 가상연소계측기
+    verdict: 잠재(신고와 다름)
+  - io: 제어/MATLAB/in/시험 계측 데이터
+    tool: 가상진동계측기
+    verdict: 잠재(신고와 다름)
+  - io: 제어/MATLAB/in/제어 요구 사양
+    tool: matlabsimulink
+    verdict: 확장자 미기재
+  - io: 제어/MATLAB/out/제어 게인 표
+    tool: matlabsimulink
+    verdict: 확정
+  - io: 제어/Simulink/in/제어 게인 표
+    tool: matlab
+    verdict: 확정
+  - io: 터빈/TURB-01/out/터빈 블레이드 3D 모델
+    tool: mechanical
+    verdict: 숨은변환 의심
+  - io: 터빈/TURB-02/in/해석 메시
+    tool: hypermesh
+    verdict: 확정
+  - io: 터빈/TURB-02/out/벽면 온도 조건
+    tool: 가상열해석
+    verdict: 확정
+  - io: 터빈/TURB-02/out/터빈 유동장
+    tool: tecplot
+    verdict: 확정
+  - io: 터빈/TURB-03/in/외부 유동장
+    tool: starccm
+    verdict: 잠재(연계 미기재)
+  - io: 터빈/TURB-03/in/유동장 결과
+    tool: fluent
+    verdict: 확정
+  - io: 터빈/TURB-04/in/시험 계측 데이터
+    tool: labview
+    verdict: 확정
+  - io: 터빈/TURB-04/in/시험 계측 데이터
+    tool: 가상연소계측기
+    verdict: 잠재(신고와 다름)
+  - io: 터빈/TURB-04/in/시험 계측 데이터
+    tool: 가상진동계측기
+    verdict: 잠재(신고와 다름)
+  - io: 터빈/TURB-05/in/해석 요약 표
+    tool: mechanical
+    verdict: 잠재(연계 미기재)
+  - io: 터빈/TURB-05/in/해석 요약 표
+    tool: starccm
+    verdict: 잠재(연계 미기재)
+  - io: 터빈/TURB-05/in/해석 요약 표
+    tool: 가상1d네트워크
+    verdict: 잠재(연계 미기재)
+  - io: 터빈/TURB-05/in/해석 요약 표
+    tool: 가상공력설계툴
+    verdict: 잠재(연계 미기재)
+  - io: 터빈/TURB-05/in/해석 요약 표
+    tool: 가상성능덱
+    verdict: 잠재(연계 미기재)
   warnings:
-  - '고아 입출력: 터빈 파일 SW ID ''TURB-3'' (냉각 공기 조건) — SW기본정보에 없음'
-  - '사용 인원수 정수 변환 실패: 터빈/TURB-03 ''약 6명'' — 원문 보존'
+  - 'SW ID 없는 내용 행: SW조사_압축기_20260924.xlsx SW입출력 ''형상 검토 메모'' — 건너뜀'
+  - '고아 입출력: SW조사_터빈_20260924.xlsx SW ID ''TURB-3'' (냉각 공기 조건) — SW기본정보에 없음'
+  - '날짜 셀: SW조사_구조_20260924.xlsx SW기본정보 STR-03 버전 * → 2023-01-01'
+  - '매핑 안 된 헤더: SW조사_터빈_20260924.xlsx SW입출력 ''내부 메모'''
+  - '사용 인원수 정수 변환 실패: SW조사_2차유로(SAS)_20260924.xlsx SAS-03 ''약 4명'' — 원문 보존'
+  - '선택지 밖 값: SW조사_구조_20260924.xlsx SW입출력 STR-01 ''메시 배치도'' ''분류 *'' = ''설계-2D Layout'''
+  - '선택지 밖 값: SW조사_제어_20260924.xlsx SW기본정보 MATLAB ''조작 방식 *'' = ''GUI+CLI(일부)'''
+  - '선택지 밖 값: SW조사_터빈_20260924.xlsx SW입출력 TURB-02 ''해석 요약 표'' ''분류 *'' = ''보고서/문서'''
+  - '선택지 밖 값: SW조사_터빈_20260924.xlsx SW입출력 TURB-03 ''유동장 결과'' ''전달 방법 *'' = ''메일'''
+  - '엑셀 숫자 변환 가능성: SW조사_구조_20260924.xlsx SW기본정보 STR-01 버전 * = 5.1'
+  - '엑셀 숫자 변환 가능성: SW조사_성능_20260924.xlsx SW기본정보 PERF-02 만료 시기 = 2027.1'
   - '완전 중복 입출력 행: 연소기/COM-01/out/연소 결과#1 — 경고 후 순번'
-  - '중복 SW ID: 구조 파일 STR-03 — 먼저 나온 행 사용, ''Abaqus'' 행 제외'
-  - '파일 분야 ≠ 담당 부서: 구조 파일 STR-05 → 담당 부서 ''시험'''
-  - '확장자 매핑 실패: 시험/TEST-05/out/진동 계측 데이터 토큰 [''또는''] — 원문 보존'
+  - '인명 유사 패턴: SW조사_2차유로(SAS)_20260924.xlsx SW기본정보 SAS-02 ''현재 수작업·애로 구간'''
+  - '인명 유사 패턴: SW조사_시험_20260924.xlsx SW기본정보 TEST-02 ''비고'''
+  - '인명 유사 패턴: SW조사_터빈_20260924.xlsx SW입출력 TURB-01 ''터빈 블레이드 3D 모델'' ''비고'''
+  - '중복 SW ID: SW조사_구조_20260924.xlsx STR-03 — 먼저 나온 행 사용, ''Abaqus'' 행 제외'
+  - '파일 분야 ≠ 담당 부서: SW조사_구조_20260924.xlsx STR-05 → ''시험'''
+  - '필수값 누락: SW조사_시험_20260924.xlsx SW기본정보 TEST-05 ''자동화 인터페이스 *'''
+  - '필수값 누락: SW조사_시험_20260924.xlsx SW기본정보 TEST-05 ''조작 방식 *'''
+  - '확장자 매핑 실패: SW조사_시험_20260924.xlsx TEST-05 ''진동 계측 데이터'' 토큰 [''또는''] — 원문 보존'
+  derive_warnings:
+  - '확장자 미기재: 제어/MATLAB/in/제어 요구 사양'
