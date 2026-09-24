@@ -1,0 +1,39 @@
+# 적재·도출 규칙 값 (docs/02 9장). 실제 사내 양식의 값이 다르면 여기만 고친다 — 코드에 박지 않는다.
+# 세부 해석의 정본은 tests/golden/expected.yaml interpretations (I번호).
+rule_version: feed_v1
+
+# --- 적재 (docs/02 5장) ---------------------------------------------------------
+loader:
+  file_pattern: "*.xlsx"
+  # 파일명 규칙 (작성안내 B26, I31) — field·date 이름 그룹 필수. 맞지 않으면 경고 후 분야 미상으로 적재
+  file_name_regex: '^SW조사_(?P<field>[^_]+)_(?P<date>\d{8})\.xlsx$'
+  header_row: 2               # 1행 섹션 밴드, 2행 헤더
+  data_start_row: 4           # 3행 작성 안내(회색), 4행부터 예시·응답 — 예시는 내용으로 판별 (I15)
+  blank_rows_end: 10          # 연속 빈 행이 이만큼이면 시트 끝으로 본다 (5장 2)
+  choices_sheet: 선택지        # 2행 목록 이름, 3행부터 값 (I28 — 파일마다 따로 읽는다)
+  sheets: {usage: SW기본정보, io: SW입출력}
+
+# 자유 텍스트 인명 유사 패턴 경고 (D6, I29) — 값은 보존하고 경고만
+person_pattern: '(책임|선임|수석|연구원|과장|차장|부장|대리|사원|팀장)\s*\(\s*내선'
+free_text_slots: [purpose_detail, task_summary, automation_detail, automation_wish, pain_points, roadmap_note, note]
+
+# --- 정규화 (docs/02 6장) --------------------------------------------------------
+empty_tokens: ["", "없음", "모름", "-", "—", "–", "n/a", "na", "해당없음", "해당 없음"]   # I16, 소문자 비교
+# 버전 토큰 (I2) — 툴 정규화 키에서 버린다
+version_token_regex: '^(v\d+(\.\d+)*|\d{4}r\d+|r\d+[a-z]?|sp\d+|\d+(\.\d+)+)$'
+# 연계 SW명 구분자 (I17). 'ㆍ'(U+318D) 는 NFKC 에서 U+119E 로 바뀌므로 둘 다 둔다
+partner_separators: ",;/·ㆍᆞ・\n"
+
+# --- 도출 (docs/02 7장, M4) -------------------------------------------------------
+direction: {consume: ["입력(소비)"], produce: ["출력(생산)"]}
+manual_transfer_values: ["메일·수기 전달"]
+manual_note_keywords: ["수기", "수작업", "손으로", "복사", "재입력"]
+automatable:
+  operation_modes: ["CLI 지원", "GUI+CLI"]
+  non_automation_if: ["없음", "모름"]
+airgap_excluded: ["불가"]
+generic_extensions: [xlsx, xls, csv, txt, pdf, docx, pptx, hwp]
+frequency_rank: {"매일": 4, "주 1회 이상": 3, "월 1회 이상": 2, "분기 이하": 1}
+priority_rank: {"상": 3, "중": 2, "하": 1}
+hub_top_n: 10
+fuzzy_threshold: 0.85

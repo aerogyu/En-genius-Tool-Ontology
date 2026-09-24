@@ -74,6 +74,7 @@ URI: [eg:io_category](http://en-genius.local/onto/io_category)
 | form_sheet | SW입출력 |
 | form_header | 분류 * |
 | form_column | E |
+| form_list | 온톨로지분류 |
 
 
 
@@ -111,6 +112,9 @@ annotations:
   form_column:
     tag: form_column
     value: E
+  form_list:
+    tag: form_list
+    value: 온톨로지분류
 description: 분류. 연결 계산 키 ①.
 from_schema: http://en-genius.local/onto/
 rank: 1000

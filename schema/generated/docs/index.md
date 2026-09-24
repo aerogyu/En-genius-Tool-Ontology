@@ -1,6 +1,6 @@
 # En-Genius 툴 온톨로지
 
-연구소 분야별 SW 조사(SW기본정보·SW입출력)를 담아 툴 간 데이터 연결을 계산하기 위한 스키마. 설계 기준은 docs/02_툴온톨로지_설계.md (3·4·7장). 클래스 7종: Field, Tool, ToolUsage, IOSpec, DataCategory, Feed(파생), SurveyLoad. ID 는 의미 없는 일련번호·해시(egid:TOOL-000001 등), 사람이 읽는 이름은 rdfs:label(@ko). 언어 태그(@ko)는 LinkML 이 데이터로 표현하지 못하므로 적재기(M3)가 RDF 를 만들 때 이름 속성(rdfs:label·skos:prefLabel·skos:altLabel)에만 붙인다 — 선택지 값은 태그 없는 문자열. 식별자는 노드 IRI 자체다(eg:id 트리플 없음). ID 규칙은 SHACL 노드 모양이 IRI 패턴으로 검사한다. 네임스페이스 정본은 이 파일의 prefixes (eg·egid) — 코드는 여기서 읽는다 (config.namespaces()). 예약(미구현): WbsTask —uses_tool→ ToolUsage/Tool (지멘스 PoC 의 WBS Lv.6 연결).
+연구소 분야별 SW 조사(SW기본정보·SW입출력)를 담아 툴 간 데이터 연결을 계산하기 위한 스키마. 설계 기준은 docs/02_툴온톨로지_설계.md (3·4·7장). 클래스 10종: Field, Tool, ToolUsage, IOSpec, DataCategory, SurveyLoad (survey 그래프) + Feed, Reconciliation, IsolationFinding, Handoff (파생 — derived 그래프, v0.2 에서 뒤의 셋 추가: docs/05 D1). ID 는 의미 없는 일련번호·해시(egid:TOOL-000001 등), 사람이 읽는 이름은 rdfs:label(@ko). 언어 태그(@ko)는 LinkML 이 데이터로 표현하지 못하므로 적재기(M3)가 RDF 를 만들 때 이름 속성(rdfs:label·skos:prefLabel·skos:altLabel)에만 붙인다 — 선택지 값은 태그 없는 문자열. 식별자는 노드 IRI 자체다(eg:id 트리플 없음). ID 규칙은 SHACL 노드 모양이 IRI 패턴으로 검사한다. 네임스페이스 정본은 이 파일의 prefixes (eg·egid) — 코드는 여기서 읽는다 (config.namespaces()). 예약(미구현): WbsTask —uses_tool→ ToolUsage/Tool (지멘스 PoC 의 WBS Lv.6 연결).
 
 URI: http://en-genius.local/onto/
 
@@ -15,7 +15,10 @@ Name: engenius_tool
 | [DataCategory](DataCategory.md) | 데이터 분류 (SW입출력 '분류' 드롭다운 값) |
 | [Derived](Derived.md) | 규칙으로 계산한 파생 노드의 provenance 묶음 (docs/02 8장) |
 | [Feed](Feed.md) | (파생) 규칙으로 계산한 공급 연결 — 출력 명세 from_io 와 입력 명세 to_io 의 분류가 같고 정규화 확장자가 겹칠 때 (doc... |
+| [Handoff](Handoff.md) | (파생) 착수 구간 1행 (CQ03, docs/02 7 |
 | [IOSpec](IOSpec.md) | SW입출력 1행 |
+| [IsolationFinding](IsolationFinding.md) | (파생) 고립 툴사용 1건 (CQ05, docs/02 7 |
+| [Reconciliation](Reconciliation.md) | (파생) 계산 vs 신고 대조 1건 (CQ04, docs/02 7 |
 | [ResearchField](ResearchField.md) | 연구소 분야 (조직 노드, RDF 클래스 eg:Field — docs/02 용어) |
 | [SurveyLoad](SurveyLoad.md) | 적재 기록 1건 — 원천 조사 파일 1개를 한 번 적재한 것 |
 | [Tool](Tool.md) | 제품 단위 툴 (표기 변형을 통합한 것) |
@@ -36,12 +39,13 @@ Name: engenius_tool
 | [batch_capable](batch_capable.md) | 배치/스크립트 실행 — 사람이 클릭하지 않고 실행 가능한가 |
 | [certification_use](certification_use.md) | 감항·인증 업무 사용 — 인증 근거 생산에 쓰이는가 |
 | [confidence](confidence.md) | 겹친 확장자가 전부 범용(config rules |
-| [consumer](consumer.md) | 수요 측 툴사용 (to_io 의 io_owner) |
+| [consumer](consumer.md) | 수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측) |
 | [data_name](data_name.md) | 데이터/산출물 명칭 원문 |
 | [data_nature](data_nature.md) | 데이터 성격 — 서술형은 문서 RAG, 수치는 DB 적재 대상 |
 | [declared](declared.md) | 어느 한쪽의 신고(연계 SW명)와 일치하는지 (docs/02 7 |
 | [derived_from](derived_from.md) | 파생의 근거가 된 적재 기록 (provenance) |
 | [direction](direction.md) | 방향 — 이 SW 가 받는 것 = 입력(소비), 내놓는 것 = 출력(생산) |
+| [evidence_io](evidence_io.md) | 근거 입출력 명세 (수기·비고는 Feed 양쪽, 변환은 숨은변환 의심 입출력) |
 | [excluded_row_count](excluded_row_count.md) | 제외한 행 수 (예시 행·빈 행 등, 사유는 실행 로그) |
 | [extensions](extensions.md) | 정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar |
 | [extensions_raw](extensions_raw.md) | 파일 형식/확장자 원문 |
@@ -51,11 +55,14 @@ Name: engenius_tool
 | [from_io](from_io.md) | 공급 측 출력 명세 |
 | [generated_at](generated_at.md) | 파생 노드 생성 일시 (provenance) |
 | [grade](grade.md) | 착수 등급 (docs/02 7 |
+| [handoff_kind](handoff_kind.md) | 착수 구간 종류 |
 | [headless](headless.md) | 헤드리스 실행 — 화면 없이(서버에서) 실행 가능한가 |
 | [id](id.md) | 노드 식별자 |
 | [inhouse_format](inhouse_format.md) | 확장자 원문에 '(사내)'·'사내' 표기가 있었는지 |
 | [io_category](io_category.md) | 분류 |
 | [io_owner](io_owner.md) | 이 입출력을 가진 툴사용 (owner_source_key 로 찾은 것) |
+| [isolated_usage](isolated_usage.md) | 고립된 툴사용 |
+| [isolation_kind](isolation_kind.md) | 고립 유형 (골든 I11) |
 | [kind](kind.md) | 구분 — 사용 기록들의 응답 중 다수값 |
 | [label](label.md) | 사람이 읽는 이름 |
 | [license_count](license_count.md) | 보유 수량 (정수 변환 성공 시) |
@@ -82,6 +89,9 @@ Name: engenius_tool
 | [priority_opinion](priority_opinion.md) | 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7 |
 | [purpose_class](purpose_class.md) | 용도 대분류 |
 | [purpose_detail](purpose_detail.md) | 용도 상세 원문 |
+| [rank](rank.md) | 착수 순위 (1부터 — docs/02 7 |
+| [recon_io](recon_io.md) | 대조한 입출력 명세 (고아 입출력은 대상 아님 — 골든 I9) |
+| [recon_partner](recon_partner.md) | 대조한 상대 툴 |
 | [reported_kind](reported_kind.md) | 구분 원문 |
 | [reported_tool_name](reported_tool_name.md) | SW명(정식) 원문 |
 | [reported_vendor](reported_vendor.md) | 제조사/개발주체 원문 |
@@ -98,7 +108,7 @@ Name: engenius_tool
 | [status](status.md) | 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9) |
 | [storage_path](storage_path.md) | 저장 위치/경로 원문 (공유폴더 경로, PDM 폴더명) |
 | [succeeded_by](succeeded_by.md) | 통폐합·분할로 이 분야를 이어받은 분야 |
-| [supplier](supplier.md) | 공급 측 툴사용 (from_io 의 io_owner) |
+| [supplier](supplier.md) | 공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측) |
 | [task_summary](task_summary.md) | 이 SW 로 실제 수행하는 업무 1~2문장 |
 | [to_io](to_io.md) | 수요 측 입력 명세 |
 | [transfer](transfer.md) | 양쪽 명세의 전달 방법 |
@@ -110,6 +120,7 @@ Name: engenius_tool
 | [validation_ref](validation_ref.md) | 검증 기준/문서번호 원문 |
 | [validation_status](validation_status.md) | 사내 검증 상태 (해석 SW 의 V&V 등) |
 | [vendor](vendor.md) | 제조사/개발주체 — 사용 기록들의 응답 중 다수값 (엇갈리면 검토표에 표시) |
+| [verdict](verdict.md) | 판정 (docs/02 7 |
 | [version](version.md) | 사용 중인 버전 전부 (원문) |
 | [warning_count](warning_count.md) | 적재 중 경고 수 (내용은 실행 로그) |
 
@@ -127,13 +138,16 @@ Name: engenius_tool
 | [EntityStatus](EntityStatus.md) | 레지스트리 노드(분야·툴)의 수명주기 — 삭제 대신 전이 (docs/01 원칙 9) |
 | [FeedConfidence](FeedConfidence.md) | 공급 연결 신뢰도 (docs/02 7 |
 | [FormatStandard](FormatStandard.md) | 원본 양식 '선택지' 시트의 '포맷표준성' 목록 |
+| [HandoffKind](HandoffKind.md) | 착수 구간 종류 (docs/02 7 |
 | [HeadlessCapability](HeadlessCapability.md) | 원본 양식 '선택지' 시트의 '가능불가모름' 목록 |
 | [IODirection](IODirection.md) | 원본 양식 '선택지' 시트의 '방향' 목록 |
+| [IsolationKind](IsolationKind.md) | 고립 유형 (docs/02 7 |
 | [LicenseType](LicenseType.md) | 원본 양식 '선택지' 시트의 '라이선스형태' 목록 |
 | [ManualBasis](ManualBasis.md) | 수기 구간 판정 근거 (docs/02 7 |
 | [OperationMode](OperationMode.md) | 원본 양식 '선택지' 시트의 '조작방식' 목록 |
 | [Priority](Priority.md) | 원본 양식 '선택지' 시트의 '우선순위' 목록 |
 | [PurposeClass](PurposeClass.md) | 원본 양식 '선택지' 시트의 '용도대분류' 목록 |
+| [ReconVerdict](ReconVerdict.md) | 계산 vs 신고 대조 판정 (docs/02 7 |
 | [RuntimeEnv](RuntimeEnv.md) | 원본 양식 '선택지' 시트의 '실행환경' 목록 |
 | [SecurityGrade](SecurityGrade.md) | 원본 양식 '선택지' 시트의 '보안등급' 목록 |
 | [StartGrade](StartGrade.md) | 착수 등급 (docs/02 7 |

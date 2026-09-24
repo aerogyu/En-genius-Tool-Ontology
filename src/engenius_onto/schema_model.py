@@ -31,7 +31,7 @@ from pydantic import (
 
 
 metamodel_version = "1.11.0"
-version = "0.1.0"
+version = "0.2.0"
 
 
 class ConfiguredBaseModel(BaseModel):
@@ -368,6 +368,64 @@ class ManualBasis(str, Enum):
     """
 
 
+class ReconVerdict(str, Enum):
+    """
+    계산 vs 신고 대조 판정 (docs/02 7.2, 골든 I13).
+    """
+    확정 = "확정"
+    """
+    계산된 연결이 있고 신고와도 일치
+    """
+    숨은변환_의심 = "숨은변환 의심"
+    """
+    신고는 있는데 분류·확장자가 맞지 않음 — 중간에 수작업 변환이 있을 가능성
+    """
+    잠재LEFT_PARENTHESIS신고와_다름RIGHT_PARENTHESIS = "잠재(신고와 다름)"
+    """
+    계산된 연결이 있으나 신고한 상대와 다름
+    """
+    잠재LEFT_PARENTHESIS연계_미기재RIGHT_PARENTHESIS = "잠재(연계 미기재)"
+    """
+    계산된 연결이 있고 연계 SW명이 비어 있음
+    """
+    확장자_미기재 = "확장자 미기재"
+    """
+    입출력의 확장자가 비어 계산할 수 없음 — 신고 상대마다
+    """
+
+
+class IsolationKind(str, Enum):
+    """
+    고립 유형 (docs/02 7.5, 골든 I11).
+    """
+    입출력_없음 = "입출력 없음"
+    """
+    SW입출력 행이 하나도 없는 툴사용
+    """
+    무연결 = "무연결"
+    """
+    입출력은 있으나 계산된 연결도, 해석된 신고 상대도 없음
+    """
+
+
+class HandoffKind(str, Enum):
+    """
+    착수 구간 종류 (docs/02 7.3·7.4, 골든 I3·I4).
+    """
+    수기 = "수기"
+    """
+    전달 방법이 수기인 계산된 연결 (골든 I32 범위)
+    """
+    변환 = "변환"
+    """
+    숨은변환 의심 — 상대 툴의 사용마다 펼침
+    """
+    비고 = "비고"
+    """
+    비고에만 수작업 키워드가 있는 계산된 연결 — 같은 등급 안에서 수기·변환 뒤
+    """
+
+
 class StartGrade(str, Enum):
     """
     착수 등급 (docs/02 7.4).
@@ -420,6 +478,9 @@ class ResearchField(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad']} })
     label: str = Field(default=..., description="""사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -427,9 +488,13 @@ class ResearchField(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
-    status: Optional[EntityStatus] = Field(default=EntityStatus.활성, description="""수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField', 'Tool'], 'ifabsent': 'string(활성)'} })
+    status: Optional[EntityStatus] = Field(default=EntityStatus.활성, description="""수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField', 'Tool', 'DataCategory'],
+         'ifabsent': 'string(활성)'} })
     succeeded_by: Optional[list[str]] = Field(default=None, description="""통폐합·분할로 이 분야를 이어받은 분야.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField']} })
 
     @field_validator('id')
@@ -459,6 +524,9 @@ class Tool(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad']} })
     label: str = Field(default=..., description="""사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -466,9 +534,13 @@ class Tool(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
-    status: Optional[EntityStatus] = Field(default=EntityStatus.활성, description="""수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField', 'Tool'], 'ifabsent': 'string(활성)'} })
+    status: Optional[EntityStatus] = Field(default=EntityStatus.활성, description="""수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField', 'Tool', 'DataCategory'],
+         'ifabsent': 'string(활성)'} })
     pref_label: str = Field(default=..., description="""대표 이름.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Tool'], 'slot_uri': 'skos:prefLabel'} })
     alt_labels: Optional[list[str]] = Field(default=None, description="""조사에서 나온 변형 표기들 (CQ10).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Tool'], 'slot_uri': 'skos:altLabel'} })
     vendor: Optional[str] = Field(default=None, description="""제조사/개발주체 — 사용 기록들의 응답 중 다수값 (엇갈리면 검토표에 표시).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Tool']} })
@@ -491,7 +563,7 @@ class Tool(ConfiguredBaseModel):
 
 class DataCategory(ConfiguredBaseModel):
     """
-    데이터 분류 (SW입출력 '분류' 드롭다운 값). 연결 계산 키 ① (docs/02 7.1).
+    데이터 분류 (SW입출력 '분류' 드롭다운 값). 연결 계산 키 ① (docs/02 7.1). ID 는 레지스트리로 고정하고 이번 적재에 없는 분류는 status=폐기 로 계속 낸다 (D7 — v0.2 에서 status 추가).
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/',
          'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:CAT-[0-9]{3}$'}}})
@@ -502,6 +574,9 @@ class DataCategory(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad']} })
     label: str = Field(default=..., description="""사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -509,8 +584,13 @@ class DataCategory(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
+    status: Optional[EntityStatus] = Field(default=EntityStatus.활성, description="""수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField', 'Tool', 'DataCategory'],
+         'ifabsent': 'string(활성)'} })
 
     @field_validator('id')
     def pattern_id(cls, v):
@@ -546,6 +626,9 @@ class ToolUsage(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad']} })
     label: str = Field(default=..., description="""사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -553,6 +636,9 @@ class ToolUsage(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
     source_row: Optional[int] = Field(default=None, description="""원천 엑셀 시트의 행 번호 (조사 보완 시 원본 행을 찾기 위한 추적 정보).""", json_schema_extra = { "linkml_meta": {'domain_of': ['ToolUsage', 'IOSpec']} })
@@ -601,6 +687,7 @@ class ToolUsage(ConfiguredBaseModel):
          'domain_of': ['ToolUsage']} })
     usage_field: str = Field(default=..., description="""담당 부서 값으로 만든 Field (문자열이 아니라 노드).""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'J'},
                          'form_header': {'tag': 'form_header', 'value': '담당 부서 *'},
+                         'form_list': {'tag': 'form_list', 'value': '담당부서'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW기본정보'}},
          'domain_of': ['ToolUsage']} })
     user_count: Optional[int] = Field(default=None, description="""사용 인원수 (정수 변환 성공 시).""", ge=0, json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'L'},
@@ -742,6 +829,9 @@ class IOSpec(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad']} })
     label: str = Field(default=..., description="""데이터/산출물 명칭 (data_name 과 같게 둔다).""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -749,6 +839,9 @@ class IOSpec(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
     source_row: Optional[int] = Field(default=None, description="""원천 엑셀 시트의 행 번호 (조사 보완 시 원본 행을 찾기 위한 추적 정보).""", json_schema_extra = { "linkml_meta": {'domain_of': ['ToolUsage', 'IOSpec']} })
@@ -772,6 +865,7 @@ class IOSpec(ConfiguredBaseModel):
          'domain_of': ['IOSpec']} })
     io_category: str = Field(default=..., description="""분류. 연결 계산 키 ①.""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'E'},
                          'form_header': {'tag': 'form_header', 'value': '분류 *'},
+                         'form_list': {'tag': 'form_list', 'value': '온톨로지분류'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW입출력'}},
          'domain_of': ['IOSpec']} })
     extensions_raw: str = Field(default=..., description="""파일 형식/확장자 원문.""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'F'},
@@ -840,7 +934,14 @@ class Feed(Derived):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/',
          'mixins': ['Derived'],
-         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:FEED-[0-9a-f]{10}$'}}})
+         'slot_usage': {'consumer': {'name': 'consumer', 'required': True},
+                        'grade': {'description': '수기 연결(manual=true)과 비고 '
+                                                 '신호(manual_basis=비고)인 Feed 에만 매긴다 (골든 '
+                                                 'I3). 변환 구간(숨은변환 의심)은 Feed 가 없으므로 등급은 '
+                                                 'Handoff 에 둔다.',
+                                  'name': 'grade'},
+                        'id': {'name': 'id', 'pattern': '^egid:FEED-[0-9a-f]{10}$'},
+                        'supplier': {'name': 'supplier', 'required': True}}})
 
     id: str = Field(default=..., description="""노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -848,6 +949,9 @@ class Feed(Derived):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad']} })
     label: str = Field(default=..., description="""사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -855,12 +959,16 @@ class Feed(Derived):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
+    supplier: str = Field(default=..., description="""공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed', 'Handoff']} })
+    consumer: str = Field(default=..., description="""수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed', 'Handoff']} })
+    grade: Optional[StartGrade] = Field(default=None, description="""수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에만 매긴다 (골든 I3). 변환 구간(숨은변환 의심)은 Feed 가 없으므로 등급은 Handoff 에 둔다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed', 'Handoff']} })
     from_io: str = Field(default=..., description="""공급 측 출력 명세.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     to_io: str = Field(default=..., description="""수요 측 입력 명세.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
-    supplier: str = Field(default=..., description="""공급 측 툴사용 (from_io 의 io_owner).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
-    consumer: str = Field(default=..., description="""수요 측 툴사용 (to_io 의 io_owner).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     matched_category: str = Field(default=..., description="""양쪽이 일치한 분류.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     matched_extensions: list[str] = Field(default=..., description="""양쪽이 겹친 정규화 확장자.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     confidence: FeedConfidence = Field(default=..., description="""겹친 확장자가 전부 범용(config rules.yaml generic_extensions)이면 낮음.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
@@ -868,7 +976,6 @@ class Feed(Derived):
     transfer: Optional[list[TransferMethod]] = Field(default=None, description="""양쪽 명세의 전달 방법.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     manual: bool = Field(default=..., description="""수기 구간 여부 (전달 방법 기준). 수기 행이 연계 SW 를 적었으면 그중 해석된 상대 툴과의 Feed 에만 적용한다 (골든 I32).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     manual_basis: Optional[ManualBasis] = Field(default=None, description="""수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
-    grade: Optional[StartGrade] = Field(default=None, description="""착수 등급 (docs/02 7.4) — 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에 매긴다 (비고 신호는 착수 순위에 종류 '비고' 로 따로 올린다 — 골든 I3). 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     rule_version: str = Field(default=..., description="""이 파생 노드를 만든 규칙 버전 (예 feed_v1).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived']} })
     derived_from: list[str] = Field(default=..., description="""파생의 근거가 된 적재 기록 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:wasDerivedFrom'} })
     generated_at: datetime  = Field(default=..., description="""파생 노드 생성 일시 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:generatedAtTime'} })
@@ -876,6 +983,161 @@ class Feed(Derived):
     @field_validator('id')
     def pattern_id(cls, v):
         pattern=re.compile(r"^egid:FEED-[0-9a-f]{10}$")
+        if isinstance(v, list):
+            for element in v:
+                if isinstance(element, str) and not pattern.match(element):
+                    err_msg = f"Invalid id format: {element}"
+                    raise ValueError(err_msg)
+        elif isinstance(v, str) and not pattern.match(v):
+            err_msg = f"Invalid id format: {v}"
+            raise ValueError(err_msg)
+        return v
+
+
+class Reconciliation(Derived):
+    """
+    (파생) 계산 vs 신고 대조 1건 (CQ04, docs/02 7.2) — 입출력 명세 1개와 상대 툴 1개의 판정. 상대 툴 = 계산된 연결의 상대 ∪ 신고(연계 SW명)에서 해석된 툴. 확장자가 빈 입출력은 신고 상대마다 '확장자 미기재' (골든 I13). 착수 등급은 두지 않는다 — 변환 구간은 상대 툴의 사용마다 펼쳐져 등급이 여럿일 수 있어 Handoff 에 둔다 (D1-2).
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/',
+         'mixins': ['Derived'],
+         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:RECON-[0-9a-f]{10}$'}}})
+
+    id: str = Field(default=..., description="""노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
+                       'Tool',
+                       'DataCategory',
+                       'ToolUsage',
+                       'IOSpec',
+                       'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
+                       'SurveyLoad']} })
+    label: str = Field(default=..., description="""사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
+                       'Tool',
+                       'DataCategory',
+                       'ToolUsage',
+                       'IOSpec',
+                       'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
+                       'SurveyLoad'],
+         'slot_uri': 'rdfs:label'} })
+    recon_io: str = Field(default=..., description="""대조한 입출력 명세 (고아 입출력은 대상 아님 — 골든 I9).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Reconciliation']} })
+    recon_partner: str = Field(default=..., description="""대조한 상대 툴.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Reconciliation']} })
+    verdict: ReconVerdict = Field(default=..., description="""판정 (docs/02 7.2).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Reconciliation']} })
+    rule_version: str = Field(default=..., description="""이 파생 노드를 만든 규칙 버전 (예 feed_v1).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived']} })
+    derived_from: list[str] = Field(default=..., description="""파생의 근거가 된 적재 기록 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:wasDerivedFrom'} })
+    generated_at: datetime  = Field(default=..., description="""파생 노드 생성 일시 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:generatedAtTime'} })
+
+    @field_validator('id')
+    def pattern_id(cls, v):
+        pattern=re.compile(r"^egid:RECON-[0-9a-f]{10}$")
+        if isinstance(v, list):
+            for element in v:
+                if isinstance(element, str) and not pattern.match(element):
+                    err_msg = f"Invalid id format: {element}"
+                    raise ValueError(err_msg)
+        elif isinstance(v, str) and not pattern.match(v):
+            err_msg = f"Invalid id format: {v}"
+            raise ValueError(err_msg)
+        return v
+
+
+class IsolationFinding(Derived):
+    """
+    (파생) 고립 툴사용 1건 (CQ05, docs/02 7.5) — 입출력이 없거나, 있어도 연결·해석된 신고 상대가 없음.
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/',
+         'mixins': ['Derived'],
+         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:ISO-[0-9a-f]{10}$'}}})
+
+    id: str = Field(default=..., description="""노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
+                       'Tool',
+                       'DataCategory',
+                       'ToolUsage',
+                       'IOSpec',
+                       'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
+                       'SurveyLoad']} })
+    label: str = Field(default=..., description="""사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
+                       'Tool',
+                       'DataCategory',
+                       'ToolUsage',
+                       'IOSpec',
+                       'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
+                       'SurveyLoad'],
+         'slot_uri': 'rdfs:label'} })
+    isolated_usage: str = Field(default=..., description="""고립된 툴사용.""", json_schema_extra = { "linkml_meta": {'domain_of': ['IsolationFinding']} })
+    isolation_kind: IsolationKind = Field(default=..., description="""고립 유형 (골든 I11).""", json_schema_extra = { "linkml_meta": {'domain_of': ['IsolationFinding']} })
+    rule_version: str = Field(default=..., description="""이 파생 노드를 만든 규칙 버전 (예 feed_v1).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived']} })
+    derived_from: list[str] = Field(default=..., description="""파생의 근거가 된 적재 기록 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:wasDerivedFrom'} })
+    generated_at: datetime  = Field(default=..., description="""파생 노드 생성 일시 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:generatedAtTime'} })
+
+    @field_validator('id')
+    def pattern_id(cls, v):
+        pattern=re.compile(r"^egid:ISO-[0-9a-f]{10}$")
+        if isinstance(v, list):
+            for element in v:
+                if isinstance(element, str) and not pattern.match(element):
+                    err_msg = f"Invalid id format: {element}"
+                    raise ValueError(err_msg)
+        elif isinstance(v, str) and not pattern.match(v):
+            err_msg = f"Invalid id format: {v}"
+            raise ValueError(err_msg)
+        return v
+
+
+class Handoff(Derived):
+    """
+    (파생) 착수 구간 1행 (CQ03, docs/02 7.4 — 보고서 '수기구간_착수순위' 시트와 M6 manual_handoffs 의 원천). (공급 툴사용, 수요 툴사용, 종류) 마다 하나이고 근거 입출력을 모두 단다 (골든 I4·I25). 종류: 수기 연결, 변환 구간(숨은변환 의심을 상대 툴의 사용마다 펼친 것 — D1-2), 비고 신호 (골든 I3). D1 은 등급을 Reconciliation 에 두기로 했으나, 펼친 변환 구간마다 등급이 달라(예: CATIA 두 사용이 A·B) 이 클래스로 옮겼다 (M3, docs/07).
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/',
+         'mixins': ['Derived'],
+         'slot_usage': {'consumer': {'name': 'consumer', 'required': True},
+                        'grade': {'name': 'grade', 'required': True},
+                        'id': {'name': 'id', 'pattern': '^egid:HANDOFF-[0-9a-f]{10}$'},
+                        'supplier': {'name': 'supplier', 'required': True}}})
+
+    id: str = Field(default=..., description="""노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
+                       'Tool',
+                       'DataCategory',
+                       'ToolUsage',
+                       'IOSpec',
+                       'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
+                       'SurveyLoad']} })
+    label: str = Field(default=..., description="""사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
+                       'Tool',
+                       'DataCategory',
+                       'ToolUsage',
+                       'IOSpec',
+                       'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
+                       'SurveyLoad'],
+         'slot_uri': 'rdfs:label'} })
+    supplier: str = Field(default=..., description="""공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed', 'Handoff']} })
+    consumer: str = Field(default=..., description="""수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed', 'Handoff']} })
+    grade: StartGrade = Field(default=..., description="""착수 등급 (docs/02 7.4) — 공급·수요 툴사용의 자동화 가능 여부와 폐쇄망 구동으로 정한다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed', 'Handoff']} })
+    handoff_kind: HandoffKind = Field(default=..., description="""착수 구간 종류.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Handoff']} })
+    evidence_io: list[str] = Field(default=..., description="""근거 입출력 명세 (수기·비고는 Feed 양쪽, 변환은 숨은변환 의심 입출력).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Handoff']} })
+    rank: int = Field(default=..., description="""착수 순위 (1부터 — docs/02 7.4 정렬, 골든 I5·I6·I18).""", ge=1, json_schema_extra = { "linkml_meta": {'domain_of': ['Handoff']} })
+    rule_version: str = Field(default=..., description="""이 파생 노드를 만든 규칙 버전 (예 feed_v1).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived']} })
+    derived_from: list[str] = Field(default=..., description="""파생의 근거가 된 적재 기록 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:wasDerivedFrom'} })
+    generated_at: datetime  = Field(default=..., description="""파생 노드 생성 일시 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:generatedAtTime'} })
+
+    @field_validator('id')
+    def pattern_id(cls, v):
+        pattern=re.compile(r"^egid:HANDOFF-[0-9a-f]{10}$")
         if isinstance(v, list):
             for element in v:
                 if isinstance(element, str) and not pattern.match(element):
@@ -901,6 +1163,9 @@ class SurveyLoad(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad']} })
     label: str = Field(default=..., description="""사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -908,6 +1173,9 @@ class SurveyLoad(ConfiguredBaseModel):
                        'ToolUsage',
                        'IOSpec',
                        'Feed',
+                       'Reconciliation',
+                       'IsolationFinding',
+                       'Handoff',
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
     run_id: str = Field(default=..., description="""적재 실행 ID (output/<실행ID> 와 같다).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SurveyLoad']} })
@@ -971,6 +1239,9 @@ class Dataset(ConfiguredBaseModel):
     io_specs: Optional[list[IOSpec]] = Field(default=None, description="""입출력 명세 노드 (SW입출력 행).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
     survey_loads: Optional[list[SurveyLoad]] = Field(default=None, description="""적재 기록 (원천 파일마다 1건).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
     derived_feeds: Optional[list[Feed]] = Field(default=None, description="""(파생) 공급 연결 노드. ToolUsage.feeds(eg:feeds, 툴사용→툴사용 지름길)와 다른 슬롯이다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
+    derived_reconciliations: Optional[list[Reconciliation]] = Field(default=None, description="""(파생) 계산 vs 신고 대조 노드 (CQ04).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
+    derived_isolations: Optional[list[IsolationFinding]] = Field(default=None, description="""(파생) 고립 툴사용 노드 (CQ05).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
+    derived_handoffs: Optional[list[Handoff]] = Field(default=None, description="""(파생) 착수 구간 노드 (CQ03).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
 
 
 # Model rebuild
@@ -982,5 +1253,8 @@ DataCategory.model_rebuild()
 ToolUsage.model_rebuild()
 IOSpec.model_rebuild()
 Feed.model_rebuild()
+Reconciliation.model_rebuild()
+IsolationFinding.model_rebuild()
+Handoff.model_rebuild()
 SurveyLoad.model_rebuild()
 Dataset.model_rebuild()

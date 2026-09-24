@@ -157,6 +157,9 @@ URI: [eg:SurveyLoad](http://en-genius.local/onto/SurveyLoad)
 | [ToolUsage](ToolUsage.md) | [loaded_in](loaded_in.md) | range | [SurveyLoad](SurveyLoad.md) |
 | [IOSpec](IOSpec.md) | [loaded_in](loaded_in.md) | range | [SurveyLoad](SurveyLoad.md) |
 | [Feed](Feed.md) | [derived_from](derived_from.md) | range | [SurveyLoad](SurveyLoad.md) |
+| [Reconciliation](Reconciliation.md) | [derived_from](derived_from.md) | range | [SurveyLoad](SurveyLoad.md) |
+| [IsolationFinding](IsolationFinding.md) | [derived_from](derived_from.md) | range | [SurveyLoad](SurveyLoad.md) |
+| [Handoff](Handoff.md) | [derived_from](derived_from.md) | range | [SurveyLoad](SurveyLoad.md) |
 
 
 
@@ -382,6 +385,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: uriorcurie
     required: true
@@ -400,6 +406,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: string
     required: true

@@ -27,6 +27,9 @@ URI: [prov:wasDerivedFrom](http://www.w3.org/ns/prov#wasDerivedFrom)
 | --- | --- | --- |
 | [Derived](Derived.md) | 규칙으로 계산한 파생 노드의 provenance 묶음 (docs/02 8장) |  yes  |
 | [Feed](Feed.md) | (파생) 규칙으로 계산한 공급 연결 — 출력 명세 from_io 와 입력 명세 to_io 의 분류가 같고 정규화 확장자가 겹칠 때 (doc... |  no  |
+| [Reconciliation](Reconciliation.md) | (파생) 계산 vs 신고 대조 1건 (CQ04, docs/02 7 |  no  |
+| [IsolationFinding](IsolationFinding.md) | (파생) 고립 툴사용 1건 (CQ05, docs/02 7 |  no  |
+| [Handoff](Handoff.md) | (파생) 착수 구간 1행 (CQ03, docs/02 7 |  no  |
 
 
 

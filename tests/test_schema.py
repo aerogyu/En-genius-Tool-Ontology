@@ -1,4 +1,4 @@
-"""M1 스키마 v0.1 — 완료 기준과 설계 결정을 잠근다.
+"""스키마 (M1 v0.1 → M3 v0.2) — 완료 기준과 설계 결정을 잠근다.
 
 - linkml lint 0건 / 양식 열 ↔ 슬롯 매핑 누락 0 / 선택지 = 원본 양식 (docs/03 M1 완료 기준)
 - 커밋된 생성물(OWL·SHACL·매핑표·문서·Pydantic)이 스키마와 일치 (드리프트 방지)
@@ -22,11 +22,13 @@ from engenius_onto.config import fuseki_config, namespaces
 
 EG = Namespace("http://en-genius.local/onto/")
 SH = Namespace("http://www.w3.org/ns/shacl#")
-CORE_CLASSES = {"Field", "Tool", "ToolUsage", "IOSpec", "DataCategory", "Feed", "SurveyLoad"}
+CORE_CLASSES = {"Field", "Tool", "ToolUsage", "IOSpec", "DataCategory", "Feed", "SurveyLoad",
+                "Reconciliation", "IsolationFinding", "Handoff"}   # v0.2: 파생 3종 추가 (docs/05 D1, docs/07)
 # 노드를 가리키는 관계만 ObjectProperty — 나머지는 전부 리터럴 (선택지 포함)
 OBJECT_PROPERTIES = {
     "usage_field", "usage_tool", "io_owner", "io_category", "partner_tools", "from_io", "to_io",
     "supplier", "consumer", "matched_category", "feeds", "loaded_in", "merged_into", "succeeded_by",
+    "recon_io", "recon_partner", "isolated_usage", "evidence_io",
 }
 
 
@@ -91,7 +93,7 @@ def test_owl_core_classes(owl):
     classes = {str(c)[len(EG):] for c in owl.subjects(RDF.type, OWL.Class)
                if isinstance(c, URIRef) and str(c).startswith(str(EG))}
     assert CORE_CLASSES <= classes
-    assert classes - CORE_CLASSES == {"Derived"}  # 파생 provenance 믹스인 (Feed 가 상속)
+    assert classes - CORE_CLASSES == {"Derived"}  # 파생 provenance 믹스인 (파생 4종이 상속)
 
 
 def test_owl_object_properties_are_only_node_links(owl):
@@ -109,7 +111,7 @@ def test_owl_reserved_vocab_not_redeclared(owl):
 
 def test_owl_enums_are_literal_datatypes(owl):
     enums = [e for e in owl.subjects(RDF.type, RDFS.Datatype) if isinstance(e, URIRef)]
-    assert len(enums) == 25  # 양식 선택지 21 + 스키마 정의 4
+    assert len(enums) == 28  # 양식 선택지 21 + 스키마 정의 7 (v0.2: 대조 판정·고립 유형·착수 종류)
     for e in enums:
         assert (e, RDF.type, OWL.Class) not in owl
         eq = owl.value(e, OWL.equivalentClass)
@@ -155,7 +157,7 @@ def test_owl_external_vocab_not_globally_constrained(owl):
     local = [r for r in owl.objects(EG.Derived, RDFS.subClassOf)
              if owl.value(r, OWL.onProperty) == prov.wasDerivedFrom and owl.value(r, OWL.allValuesFrom) == EG.SurveyLoad]
     assert local
-    assert str(owl.value(URIRef(str(EG)), OWL.versionInfo)) == "0.1.0"
+    assert str(owl.value(URIRef(str(EG)), OWL.versionInfo)) == yaml.safe_load(schema_gen.SCHEMA.read_text(encoding="utf-8"))["version"]
 
 
 # --- SHACL -------------------------------------------------------------------

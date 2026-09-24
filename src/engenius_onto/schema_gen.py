@@ -499,10 +499,16 @@ def check_enums_vs_form(sv=None) -> list[str]:
             problems.append(f"열거형 {ename}: 선택지 목록 '{fl}' 이 양식에 없음")
         elif list(e.permissible_values) != lists[fl]:
             problems.append(f"열거형 {ename}: 값 불일치 스키마 {list(e.permissible_values)} vs 양식 {lists[fl]}")
-    # 클래스 노드로 모델링한 목록 (열거형이 아님)
-    class_lists = {"담당부서": "Field", "온톨로지분류": "DataCategory"}
+    # 클래스 노드로 모델링한 목록 (열거형이 아님) — 슬롯의 form_list 주석 (예: usage_field → 담당부서)
+    for cname in sv.all_classes():
+        for s in sv.class_induced_slots(cname):
+            fl = _ann(s, "form_list")
+            if fl:
+                used.add(fl)
+                if fl not in lists:
+                    problems.append(f"슬롯 {cname}.{s.name}: 선택지 목록 '{fl}' 이 양식에 없음")
     for fl in lists:
-        if fl not in used and fl not in class_lists:
+        if fl not in used:
             problems.append(f"양식 선택지 목록 '{fl}' 에 대응하는 열거형·클래스가 없음")
     return problems
 

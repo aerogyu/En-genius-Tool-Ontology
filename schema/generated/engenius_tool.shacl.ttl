@@ -41,8 +41,20 @@ eg:Feed a sh:NodeShape ;
     sh:pattern "^http://en\\-genius\\.local/id/FEED-[0-9a-f]{10}$" ;
     sh:property [ sh:description "양쪽 명세의 전달 방법." ;
             sh:in ( "파일 저장" "PDM 등록" "DB 기록" "메일·수기 전달" "타 SW 직접 연동" ) ;
-            sh:order 10 ;
+            sh:order 11 ;
             sh:path eg:transfer ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "어느 한쪽의 신고(연계 SW명)와 일치하는지 (docs/02 7.2)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 10 ;
+            sh:path eg:declared ],
+        [ sh:description "수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에만 매긴다 (골든 I3). 변환 구간(숨은변환 의심)은 Feed 가 없으므로 등급은 Handoff 에 둔다." ;
+            sh:in ( "A" "B" "C" "제외" ) ;
+            sh:maxCount 1 ;
+            sh:order 4 ;
+            sh:path eg:grade ],
         [ sh:datatype xsd:string ;
             sh:description "이 파생 노드를 만든 규칙 버전 (예 feed_v1)." ;
             sh:maxCount 1 ;
@@ -50,26 +62,6 @@ eg:Feed a sh:NodeShape ;
             sh:nodeKind sh:Literal ;
             sh:order 14 ;
             sh:path eg:rule_version ],
-        [ sh:datatype xsd:string ;
-            sh:description "양쪽이 겹친 정규화 확장자." ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:Literal ;
-            sh:order 7 ;
-            sh:path eg:matched_extensions ],
-        [ sh:datatype xsd:boolean ;
-            sh:description "수기 구간 여부 (전달 방법 기준). 수기 행이 연계 SW 를 적었으면 그중 해석된 상대 툴과의 Feed 에만 적용한다 (골든 I32)." ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:Literal ;
-            sh:order 11 ;
-            sh:path eg:manual ],
-        [ sh:datatype xsd:boolean ;
-            sh:description "어느 한쪽의 신고(연계 SW명)와 일치하는지 (docs/02 7.2)." ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:Literal ;
-            sh:order 9 ;
-            sh:path eg:declared ],
         [ sh:class eg:SurveyLoad ;
             sh:description "파생의 근거가 된 적재 기록 (provenance)." ;
             sh:minCount 1 ;
@@ -79,20 +71,34 @@ eg:Feed a sh:NodeShape ;
         [ sh:description "수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false)." ;
             sh:in ( "전달방법" "비고" ) ;
             sh:maxCount 1 ;
-            sh:order 12 ;
-            sh:path eg:manual_basis ],
-        [ sh:description "착수 등급 (docs/02 7.4) — 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에 매긴다 (비고 신호는 착수 순위에 종류 '비고' 로 따로 올린다 — 골든 I3). 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항)." ;
-            sh:in ( "A" "B" "C" "제외" ) ;
-            sh:maxCount 1 ;
             sh:order 13 ;
-            sh:path eg:grade ],
-        [ sh:class eg:IOSpec ;
-            sh:description "공급 측 출력 명세." ;
+            sh:path eg:manual_basis ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "수기 구간 여부 (전달 방법 기준). 수기 행이 연계 SW 를 적었으면 그중 해석된 상대 툴과의 Feed 에만 적용한다 (골든 I32)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 12 ;
+            sh:path eg:manual ],
+        [ sh:datatype xsd:string ;
+            sh:description "양쪽이 겹친 정규화 확장자." ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 8 ;
+            sh:path eg:matched_extensions ],
+        [ sh:description "겹친 확장자가 전부 범용(config rules.yaml generic_extensions)이면 낮음." ;
+            sh:in ( "낮음" "보통" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 9 ;
+            sh:path eg:confidence ],
+        [ sh:class eg:ToolUsage ;
+            sh:description "공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측)." ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:nodeKind sh:IRI ;
             sh:order 2 ;
-            sh:path eg:from_io ],
+            sh:path eg:supplier ],
         [ sh:datatype xsd:dateTime ;
             sh:description "파생 노드 생성 일시 (provenance)." ;
             sh:maxCount 1 ;
@@ -100,33 +106,27 @@ eg:Feed a sh:NodeShape ;
             sh:nodeKind sh:Literal ;
             sh:order 16 ;
             sh:path prov:generatedAtTime ],
-        [ sh:class eg:ToolUsage ;
-            sh:description "공급 측 툴사용 (from_io 의 io_owner)." ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:IRI ;
-            sh:order 4 ;
-            sh:path eg:supplier ],
-        [ sh:description "겹친 확장자가 전부 범용(config rules.yaml generic_extensions)이면 낮음." ;
-            sh:in ( "낮음" "보통" ) ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:order 8 ;
-            sh:path eg:confidence ],
-        [ sh:class eg:ToolUsage ;
-            sh:description "수요 측 툴사용 (to_io 의 io_owner)." ;
-            sh:maxCount 1 ;
-            sh:minCount 1 ;
-            sh:nodeKind sh:IRI ;
-            sh:order 5 ;
-            sh:path eg:consumer ],
         [ sh:class eg:DataCategory ;
             sh:description "양쪽이 일치한 분류." ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:nodeKind sh:IRI ;
-            sh:order 6 ;
+            sh:order 7 ;
             sh:path eg:matched_category ],
+        [ sh:class eg:ToolUsage ;
+            sh:description "수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 3 ;
+            sh:path eg:consumer ],
+        [ sh:class eg:IOSpec ;
+            sh:description "공급 측 출력 명세." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 5 ;
+            sh:path eg:from_io ],
         [ sh:datatype rdf:langString ;
             sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
             sh:languageIn ( "ko" ) ;
@@ -140,17 +140,204 @@ eg:Feed a sh:NodeShape ;
             sh:maxCount 1 ;
             sh:minCount 1 ;
             sh:nodeKind sh:IRI ;
-            sh:order 3 ;
+            sh:order 6 ;
             sh:path eg:to_io ] ;
     sh:targetClass eg:Feed .
 
+eg:Handoff a sh:NodeShape ;
+    rdfs:comment "(파생) 착수 구간 1행 (CQ03, docs/02 7.4 — 보고서 '수기구간_착수순위' 시트와 M6 manual_handoffs 의 원천). (공급 툴사용, 수요 툴사용, 종류) 마다 하나이고 근거 입출력을 모두 단다 (골든 I4·I25). 종류: 수기 연결, 변환 구간(숨은변환 의심을 상대 툴의 사용마다 펼친 것 — D1-2), 비고 신호 (골든 I3). D1 은 등급을 Reconciliation 에 두기로 했으나, 펼친 변환 구간마다 등급이 달라(예: CATIA 두 사용이 A·B) 이 클래스로 옮겼다 (M3, docs/07)." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:nodeKind sh:IRI ;
+    sh:pattern "^http://en\\-genius\\.local/id/HANDOFF-[0-9a-f]{10}$" ;
+    sh:property [ sh:datatype xsd:dateTime ;
+            sh:description "파생 노드 생성 일시 (provenance)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 10 ;
+            sh:path prov:generatedAtTime ],
+        [ sh:datatype xsd:string ;
+            sh:description "이 파생 노드를 만든 규칙 버전 (예 feed_v1)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 8 ;
+            sh:path eg:rule_version ],
+        [ sh:class eg:IOSpec ;
+            sh:description "근거 입출력 명세 (수기·비고는 Feed 양쪽, 변환은 숨은변환 의심 입출력)." ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 6 ;
+            sh:path eg:evidence_io ],
+        [ sh:description "착수 등급 (docs/02 7.4) — 공급·수요 툴사용의 자동화 가능 여부와 폐쇄망 구동으로 정한다." ;
+            sh:in ( "A" "B" "C" "제외" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 4 ;
+            sh:path eg:grade ],
+        [ sh:class eg:ToolUsage ;
+            sh:description "공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 2 ;
+            sh:path eg:supplier ],
+        [ sh:datatype xsd:integer ;
+            sh:description "착수 순위 (1부터 — docs/02 7.4 정렬, 골든 I5·I6·I18)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:minInclusive 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 7 ;
+            sh:path eg:rank ],
+        [ sh:datatype rdf:langString ;
+            sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+            sh:languageIn ( "ko" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:description "착수 구간 종류." ;
+            sh:in ( "수기" "변환" "비고" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 5 ;
+            sh:path eg:handoff_kind ],
+        [ sh:class eg:SurveyLoad ;
+            sh:description "파생의 근거가 된 적재 기록 (provenance)." ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 9 ;
+            sh:path prov:wasDerivedFrom ],
+        [ sh:class eg:ToolUsage ;
+            sh:description "수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 3 ;
+            sh:path eg:consumer ] ;
+    sh:targetClass eg:Handoff .
+
+eg:IsolationFinding a sh:NodeShape ;
+    rdfs:comment "(파생) 고립 툴사용 1건 (CQ05, docs/02 7.5) — 입출력이 없거나, 있어도 연결·해석된 신고 상대가 없음." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:nodeKind sh:IRI ;
+    sh:pattern "^http://en\\-genius\\.local/id/ISO-[0-9a-f]{10}$" ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:description "이 파생 노드를 만든 규칙 버전 (예 feed_v1)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 4 ;
+            sh:path eg:rule_version ],
+        [ sh:datatype xsd:dateTime ;
+            sh:description "파생 노드 생성 일시 (provenance)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 6 ;
+            sh:path prov:generatedAtTime ],
+        [ sh:datatype rdf:langString ;
+            sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+            sh:languageIn ( "ko" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:class eg:SurveyLoad ;
+            sh:description "파생의 근거가 된 적재 기록 (provenance)." ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 5 ;
+            sh:path prov:wasDerivedFrom ],
+        [ sh:class eg:ToolUsage ;
+            sh:description "고립된 툴사용." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 2 ;
+            sh:path eg:isolated_usage ],
+        [ sh:description "고립 유형 (골든 I11)." ;
+            sh:in ( "입출력 없음" "무연결" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 3 ;
+            sh:path eg:isolation_kind ] ;
+    sh:targetClass eg:IsolationFinding .
+
+eg:Reconciliation a sh:NodeShape ;
+    rdfs:comment "(파생) 계산 vs 신고 대조 1건 (CQ04, docs/02 7.2) — 입출력 명세 1개와 상대 툴 1개의 판정. 상대 툴 = 계산된 연결의 상대 ∪ 신고(연계 SW명)에서 해석된 툴. 확장자가 빈 입출력은 신고 상대마다 '확장자 미기재' (골든 I13). 착수 등급은 두지 않는다 — 변환 구간은 상대 툴의 사용마다 펼쳐져 등급이 여럿일 수 있어 Handoff 에 둔다 (D1-2)." ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:nodeKind sh:IRI ;
+    sh:pattern "^http://en\\-genius\\.local/id/RECON-[0-9a-f]{10}$" ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:description "이 파생 노드를 만든 규칙 버전 (예 feed_v1)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 5 ;
+            sh:path eg:rule_version ],
+        [ sh:description "판정 (docs/02 7.2)." ;
+            sh:in ( "확정" "숨은변환 의심" "잠재(신고와 다름)" "잠재(연계 미기재)" "확장자 미기재" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:order 4 ;
+            sh:path eg:verdict ],
+        [ sh:datatype xsd:dateTime ;
+            sh:description "파생 노드 생성 일시 (provenance)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 7 ;
+            sh:path prov:generatedAtTime ],
+        [ sh:datatype rdf:langString ;
+            sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
+            sh:languageIn ( "ko" ) ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:Literal ;
+            sh:order 1 ;
+            sh:path rdfs:label ],
+        [ sh:class eg:IOSpec ;
+            sh:description "대조한 입출력 명세 (고아 입출력은 대상 아님 — 골든 I9)." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 2 ;
+            sh:path eg:recon_io ],
+        [ sh:class eg:SurveyLoad ;
+            sh:description "파생의 근거가 된 적재 기록 (provenance)." ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 6 ;
+            sh:path prov:wasDerivedFrom ],
+        [ sh:class eg:Tool ;
+            sh:description "대조한 상대 툴." ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:nodeKind sh:IRI ;
+            sh:order 3 ;
+            sh:path eg:recon_partner ] ;
+    sh:targetClass eg:Reconciliation .
+
 eg:DataCategory a sh:NodeShape ;
-    rdfs:comment "데이터 분류 (SW입출력 '분류' 드롭다운 값). 연결 계산 키 ① (docs/02 7.1)." ;
+    rdfs:comment "데이터 분류 (SW입출력 '분류' 드롭다운 값). 연결 계산 키 ① (docs/02 7.1). ID 는 레지스트리로 고정하고 이번 적재에 없는 분류는 status=폐기 로 계속 낸다 (D7 — v0.2 에서 status 추가)." ;
     sh:closed true ;
     sh:ignoredProperties ( rdf:type ) ;
     sh:nodeKind sh:IRI ;
     sh:pattern "^http://en\\-genius\\.local/id/CAT-[0-9]{3}$" ;
-    sh:property [ sh:datatype rdf:langString ;
+    sh:property [ sh:defaultValue "활성" ;
+            sh:description "수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성." ;
+            sh:in ( "활성" "통합됨" "폐기" ) ;
+            sh:maxCount 1 ;
+            sh:order 2 ;
+            sh:path eg:status ],
+        [ sh:datatype rdf:langString ;
             sh:description "사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다." ;
             sh:languageIn ( "ko" ) ;
             sh:maxCount 1 ;

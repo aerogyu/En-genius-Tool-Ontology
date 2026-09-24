@@ -1,6 +1,6 @@
 """명령행 진입점: python -m engenius_onto <명령>.
 
-M0 골격 — 각 명령은 해당 마일스톤에서 구현한다.
+M3: load·push·apply-review·template-examples 구현. derive·report·query·all 은 M4.
 """
 
 from __future__ import annotations
@@ -39,6 +39,72 @@ def _java_version() -> str | None:
         return None
     lines = (out.stderr or out.stdout).strip().splitlines()
     return lines[0] if lines else None
+
+
+def cmd_load(args: argparse.Namespace) -> int:
+    """조사 엑셀 → survey 그래프 TTL·적재 로그·툴 통합 검토표 (output/<실행ID>/), 레지스트리 갱신."""
+    from pathlib import Path
+
+    from engenius_onto.survey_load import run_load, summary_lines
+
+    out = run_load(data=args.data, input_dir=Path(args.input) if args.input else None,
+                   registry_dir=Path(args.registry) if args.registry else None,
+                   out_root=Path(args.out) if args.out else None, shacl=not args.no_shacl)
+    print("\n".join(summary_lines(out)))
+    for w in out.log["warnings"]:
+        print(f"  [경고] {w}")
+    return 0
+
+
+def cmd_push(args: argparse.Namespace) -> int:
+    """적재 결과(survey.ttl)와 스키마 OWL 을 Fuseki named graph 로 교체 (Graph Store Protocol PUT)."""
+    from pathlib import Path
+
+    from engenius_onto.backends import fuseki_alive, push_graph
+    from engenius_onto.config import REPO_ROOT, fuseki_config
+    from engenius_onto.schema_gen import GEN_DIR
+
+    cfg = fuseki_config()
+    if not fuseki_alive(cfg):
+        print(f"Fuseki {cfg.endpoint} 응답 없음 — scripts\\fuseki_start.bat 로 먼저 기동한다.", file=sys.stderr)
+        return 1
+    run_dir = Path(args.run) if args.run else _latest_run(REPO_ROOT / "output")
+    if run_dir is None or not (run_dir / "survey.ttl").is_file():
+        print("survey.ttl 이 있는 실행 폴더가 없다 — 먼저 load 를 실행한다.", file=sys.stderr)
+        return 1
+    for name, path in (("schema", GEN_DIR / "engenius_tool.owl.ttl"), ("survey", run_dir / "survey.ttl")):
+        n = push_graph(cfg, cfg.graphs[name], path.read_bytes())
+        print(f"[OK] {cfg.graphs[name]} ← {path.name} ({n} triples)")
+    if (run_dir / "derived.ttl").is_file():
+        n = push_graph(cfg, cfg.graphs["derived"], (run_dir / "derived.ttl").read_bytes())
+        print(f"[OK] {cfg.graphs['derived']} ← derived.ttl ({n} triples)")
+    return 0
+
+
+def _latest_run(root):
+    runs = sorted(p for p in root.glob("*T*") if p.is_dir()) if root.is_dir() else []
+    return runs[-1] if runs else None
+
+
+def cmd_apply_review(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from engenius_onto.survey_load import apply_review
+
+    merged, kept = apply_review(Path(args.csv))
+    print(f"config/tool_aliases.yaml 갱신 — 통합 {merged}건, 별개 {kept}건. 다시 load 하면 반영된다.")
+    return 0
+
+
+def cmd_template_examples(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from engenius_onto.config import REPO_ROOT
+    from engenius_onto.loader import write_template_examples
+
+    path = write_template_examples(Path(args.form) if args.form else REPO_ROOT / "reference" / "SW조사양식_EnGenius_v1.0.xlsx")
+    print(f"{path} 갱신")
+    return 0
 
 
 def cmd_doctor(_args: argparse.Namespace) -> int:
@@ -101,9 +167,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="command", metavar="<명령>")
+    impl = {"load": cmd_load, "push": cmd_push}
     for name, (desc, ms) in COMMANDS.items():
         sp = sub.add_parser(name, help=f"{desc} [{ms}]")
-        sp.set_defaults(func=lambda a, n=name: _not_yet(n))
+        sp.set_defaults(func=impl.get(name, lambda a, n=name: _not_yet(n)))
+        if name == "load":
+            sp.add_argument("--data", choices=["synthetic", "real"], default="synthetic",
+                            help="data/<synthetic|real>/survey 의 파일과 같은 곳의 registry 사용 (기본 synthetic)")
+            sp.add_argument("--input", help="조사 파일 폴더 (--data 대신)")
+            sp.add_argument("--registry", help="레지스트리 폴더 (--data 대신)")
+            sp.add_argument("--out", help="산출물 상위 폴더 (기본 output/)")
+            sp.add_argument("--no-shacl", action="store_true", help="SHACL 검증 생략")
+        if name == "push":
+            sp.add_argument("--run", help="올릴 실행 폴더 (기본 output/ 의 최신)")
+    sp = sub.add_parser("apply-review", help="툴 통합 검토표(tool_review.csv)의 판정을 config/tool_aliases.yaml 에 반영")
+    sp.add_argument("csv")
+    sp.set_defaults(func=cmd_apply_review)
+    sp = sub.add_parser("template-examples", help="양식 xlsx 의 예시 행을 config/template_examples.yaml 로 추출")
+    sp.add_argument("--form", help="양식 xlsx (기본 reference/SW조사양식_EnGenius_v1.0.xlsx)")
+    sp.set_defaults(func=cmd_template_examples)
     sp = sub.add_parser("doctor", help="실행 환경 점검 (Python·Java·패키지·Fuseki)")
     sp.set_defaults(func=cmd_doctor)
     sp = sub.add_parser("licenses", help="설치 패키지 라이선스 표 (금지 항목 있으면 rc=1)")

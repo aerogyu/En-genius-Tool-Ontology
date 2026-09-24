@@ -13,12 +13,6 @@
 eg:Feed a owl:Class ;
     rdfs:label "Feed" ;
     rdfs:subClassOf [ a owl:Restriction ;
-            owl:allValuesFrom eg:ToolUsage ;
-            owl:onProperty eg:consumer ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom eg:ToolUsage ;
-            owl:onProperty eg:supplier ],
-        [ a owl:Restriction ;
             owl:allValuesFrom eg:ManualBasis ;
             owl:onProperty eg:manual_basis ],
         [ a owl:Restriction ;
@@ -67,9 +61,6 @@ eg:Feed a owl:Class ;
             owl:maxCardinality 1 ;
             owl:onProperty eg:grade ],
         [ a owl:Restriction ;
-            owl:allValuesFrom eg:StartGrade ;
-            owl:onProperty eg:grade ],
-        [ a owl:Restriction ;
             owl:allValuesFrom xsd:boolean ;
             owl:onProperty eg:manual ],
         [ a owl:Restriction ;
@@ -83,6 +74,84 @@ eg:Feed a owl:Class ;
             owl:onProperty eg:declared ],
         eg:Derived ;
     skos:definition "(파생) 규칙으로 계산한 공급 연결 — 출력 명세 from_io 와 입력 명세 to_io 의 분류가 같고 정규화 확장자가 겹칠 때 (docs/02 7.1). 매번 전체 재계산하며 derived 그래프에만 있다." ;
+    skos:inScheme eg: .
+
+eg:Handoff a owl:Class ;
+    rdfs:label "Handoff" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:consumer ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:IOSpec ;
+            owl:onProperty eg:evidence_io ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:supplier ],
+        [ a owl:Restriction ;
+            owl:minCardinality 1 ;
+            owl:onProperty eg:evidence_io ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:intersectionOf ( xsd:integer [ a rdfs:Datatype ;
+                                owl:onDatatype xsd:integer ;
+                                owl:withRestrictions ( [ xsd:minInclusive 1 ] ) ] ) ] ;
+            owl:onProperty eg:rank ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:HandoffKind ;
+            owl:onProperty eg:handoff_kind ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:rank ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:grade ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:handoff_kind ],
+        eg:Derived ;
+    skos:definition "(파생) 착수 구간 1행 (CQ03, docs/02 7.4 — 보고서 '수기구간_착수순위' 시트와 M6 manual_handoffs 의 원천). (공급 툴사용, 수요 툴사용, 종류) 마다 하나이고 근거 입출력을 모두 단다 (골든 I4·I25). 종류: 수기 연결, 변환 구간(숨은변환 의심을 상대 툴의 사용마다 펼친 것 — D1-2), 비고 신호 (골든 I3). D1 은 등급을 Reconciliation 에 두기로 했으나, 펼친 변환 구간마다 등급이 달라(예: CATIA 두 사용이 A·B) 이 클래스로 옮겼다 (M3, docs/07)." ;
+    skos:inScheme eg: .
+
+eg:IsolationFinding a owl:Class ;
+    rdfs:label "IsolationFinding" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom eg:ToolUsage ;
+            owl:onProperty eg:isolated_usage ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:IsolationKind ;
+            owl:onProperty eg:isolation_kind ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:isolated_usage ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:isolation_kind ],
+        eg:Derived ;
+    skos:definition "(파생) 고립 툴사용 1건 (CQ05, docs/02 7.5) — 입출력이 없거나, 있어도 연결·해석된 신고 상대가 없음." ;
+    skos:inScheme eg: .
+
+eg:Reconciliation a owl:Class ;
+    rdfs:label "Reconciliation" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:verdict ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:recon_io ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:IOSpec ;
+            owl:onProperty eg:recon_io ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:Tool ;
+            owl:onProperty eg:recon_partner ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:ReconVerdict ;
+            owl:onProperty eg:verdict ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:recon_partner ],
+        eg:Derived ;
+    skos:definition "(파생) 계산 vs 신고 대조 1건 (CQ04, docs/02 7.2) — 입출력 명세 1개와 상대 툴 1개의 판정. 상대 툴 = 계산된 연결의 상대 ∪ 신고(연계 SW명)에서 해석된 툴. 확장자가 빈 입출력은 신고 상대마다 '확장자 미기재' (골든 I13). 착수 등급은 두지 않는다 — 변환 구간은 상대 툴의 사용마다 펼쳐져 등급이 여럿일 수 있어 Handoff 에 둔다 (D1-2)." ;
     skos:inScheme eg: .
 
 eg:form_column a owl:AnnotationProperty .
@@ -189,26 +258,6 @@ eg:DataNature a rdfs:Datatype ;
         "코드·스크립트",
         "혼합" .
 
-eg:Derived a owl:Class ;
-    rdfs:label "Derived" ;
-    rdfs:subClassOf [ a owl:Restriction ;
-            owl:allValuesFrom eg:SurveyLoad ;
-            owl:onProperty prov:wasDerivedFrom ],
-        [ a owl:Restriction ;
-            owl:minCardinality 1 ;
-            owl:onProperty prov:wasDerivedFrom ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty eg:rule_version ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom xsd:dateTime ;
-            owl:onProperty prov:generatedAtTime ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty prov:generatedAtTime ] ;
-    skos:definition "규칙으로 계산한 파생 노드의 provenance 묶음 (docs/02 8장). derived 그래프에만 있다." ;
-    skos:inScheme eg: .
-
 eg:DevPhase a rdfs:Datatype ;
     rdfs:label "DevPhase" ;
     eg:form_list "사용단계" ;
@@ -256,6 +305,16 @@ eg:FormatStandard a rdfs:Datatype ;
         "모름",
         "사내 표준 포맷" .
 
+eg:HandoffKind a rdfs:Datatype ;
+    rdfs:label "HandoffKind" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "수기" "변환" "비고" ) ] ;
+    skos:definition "착수 구간 종류 (docs/02 7.3·7.4, 골든 I3·I4)." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "변환",
+        "비고",
+        "수기" .
+
 eg:HeadlessCapability a rdfs:Datatype ;
     rdfs:label "HeadlessCapability" ;
     eg:form_list "가능불가모름" ;
@@ -276,6 +335,15 @@ eg:IODirection a rdfs:Datatype ;
     skos:inScheme eg: ;
     linkml:permissible_values "입력(소비)",
         "출력(생산)" .
+
+eg:IsolationKind a rdfs:Datatype ;
+    rdfs:label "IsolationKind" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "입출력 없음" "무연결" ) ] ;
+    skos:definition "고립 유형 (docs/02 7.5, 골든 I11)." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "무연결",
+        "입출력 없음" .
 
 eg:LicenseType a rdfs:Datatype ;
     rdfs:label "LicenseType" ;
@@ -336,6 +404,18 @@ eg:PurposeClass a rdfs:Datatype ;
         "시험·계측",
         "프로젝트관리",
         "해석" .
+
+eg:ReconVerdict a rdfs:Datatype ;
+    rdfs:label "ReconVerdict" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "확정" "숨은변환 의심" "잠재(신고와 다름)" "잠재(연계 미기재)" "확장자 미기재" ) ] ;
+    skos:definition "계산 vs 신고 대조 판정 (docs/02 7.2, 골든 I13)." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "숨은변환 의심",
+        "잠재(신고와 다름)",
+        "잠재(연계 미기재)",
+        "확장자 미기재",
+        "확정" .
 
 eg:RuntimeEnv a rdfs:Datatype ;
     rdfs:label "RuntimeEnv" ;
@@ -461,7 +541,10 @@ eg:transfer a owl:DatatypeProperty ;
 
 eg:DataCategory a owl:Class ;
     rdfs:label "DataCategory" ;
-    skos:definition "데이터 분류 (SW입출력 '분류' 드롭다운 값). 연결 계산 키 ① (docs/02 7.1)." ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:status ] ;
+    skos:definition "데이터 분류 (SW입출력 '분류' 드롭다운 값). 연결 계산 키 ① (docs/02 7.1). ID 는 레지스트리로 고정하고 이번 적재에 없는 분류는 status=폐기 로 계속 낸다 (D7 — v0.2 에서 status 추가)." ;
     skos:inScheme eg: .
 
 eg:Field a owl:Class ;
@@ -473,109 +556,6 @@ eg:Field a owl:Class ;
             owl:maxCardinality 1 ;
             owl:onProperty eg:status ] ;
     skos:definition "연구소 분야 (조직 노드, RDF 클래스 eg:Field — docs/02 용어). SW기본정보 '담당 부서' 값에서 만든다. 개명은 label 갱신, 통폐합·분할은 새 노드 + succeeded_by (상위 스키마 v0.2 §9). ID 는 레지스트리로 고정. 스키마·파이썬 이름만 ResearchField — 'Field' 는 생성되는 Pydantic 코드에서 pydantic.Field 를 덮어써 모든 클래스가 깨진다 (M1 에서 실측)." ;
-    skos:inScheme eg: .
-
-eg:IOSpec a owl:Class ;
-    rdfs:label "IOSpec" ;
-    rdfs:subClassOf [ a owl:Restriction ;
-            owl:allValuesFrom eg:ToolUsage ;
-            owl:onProperty eg:io_owner ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom eg:FormatStandard ;
-            owl:onProperty eg:format_standard ],
-        [ a owl:Restriction ;
-            owl:maxCardinality 1 ;
-            owl:onProperty eg:io_owner ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom eg:Tool ;
-            owl:onProperty eg:partner_tools ],
-        [ a owl:Restriction ;
-            owl:maxCardinality 1 ;
-            owl:onProperty eg:note ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom xsd:string ;
-            owl:onProperty eg:owner_source_key ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom [ a rdfs:Datatype ;
-                    owl:onDatatype xsd:string ;
-                    owl:withRestrictions ( [ xsd:pattern "[a-z0-9_+\\-]+(\\.[a-z0-9_+\\-]+)*" ] ) ] ;
-            owl:onProperty eg:extensions ],
-        [ a owl:Restriction ;
-            owl:maxCardinality 1 ;
-            owl:onProperty eg:format_standard ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom eg:TransferMethod ;
-            owl:onProperty eg:transfer_method ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty eg:direction ],
-        [ a owl:Restriction ;
-            owl:maxCardinality 1 ;
-            owl:onProperty eg:inhouse_format ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty eg:owner_source_key ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty eg:transfer_method ],
-        [ a owl:Restriction ;
-            owl:maxCardinality 1 ;
-            owl:onProperty eg:security_grade ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom eg:DataNature ;
-            owl:onProperty eg:data_nature ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom xsd:boolean ;
-            owl:onProperty eg:inhouse_format ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom eg:IODirection ;
-            owl:onProperty eg:direction ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty eg:data_nature ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom eg:SecurityGrade ;
-            owl:onProperty eg:security_grade ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom xsd:string ;
-            owl:onProperty eg:partner_unresolved ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom xsd:string ;
-            owl:onProperty eg:data_name ],
-        [ a owl:Restriction ;
-            owl:maxCardinality 1 ;
-            owl:onProperty eg:loaded_in ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom xsd:string ;
-            owl:onProperty eg:extensions_raw ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty eg:data_name ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom xsd:string ;
-            owl:onProperty eg:partner_raw ],
-        [ a owl:Restriction ;
-            owl:maxCardinality 1 ;
-            owl:onProperty eg:partner_raw ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom eg:DataCategory ;
-            owl:onProperty eg:io_category ],
-        [ a owl:Restriction ;
-            owl:maxCardinality 1 ;
-            owl:onProperty eg:source_row ],
-        [ a owl:Restriction ;
-            owl:allValuesFrom xsd:string ;
-            owl:onProperty eg:storage_path ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty eg:extensions_raw ],
-        [ a owl:Restriction ;
-            owl:maxCardinality 1 ;
-            owl:onProperty eg:storage_path ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty eg:io_category ] ;
-    skos:definition "SW입출력 1행. 한 툴사용이 받거나(입력) 내놓는(출력) 데이터 1종 — 에이전트 단계에서 MCP 함수의 입력·출력 정의가 된다 (docs/01 원칙 6)." ;
     skos:inScheme eg: .
 
 eg:SurveyLoad a owl:Class ;
@@ -726,7 +706,8 @@ eg:confidence a owl:DatatypeProperty ;
 
 eg:consumer a owl:ObjectProperty ;
     rdfs:label "consumer" ;
-    skos:definition "수요 측 툴사용 (to_io 의 io_owner)." ;
+    rdfs:range eg:ToolUsage ;
+    skos:definition "수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측)." ;
     skos:inScheme eg: .
 
 eg:data_name a owl:DatatypeProperty ;
@@ -756,6 +737,11 @@ eg:direction a owl:DatatypeProperty ;
     eg:form_header "방향 *" ;
     eg:form_sheet "SW입출력" ;
     skos:definition "방향 — 이 SW 가 받는 것 = 입력(소비), 내놓는 것 = 출력(생산)." ;
+    skos:inScheme eg: .
+
+eg:evidence_io a owl:ObjectProperty ;
+    rdfs:label "evidence_io" ;
+    skos:definition "근거 입출력 명세 (수기·비고는 Feed 양쪽, 변환은 숨은변환 의심 입출력)." ;
     skos:inScheme eg: .
 
 eg:excluded_row_count a owl:DatatypeProperty ;
@@ -794,7 +780,13 @@ eg:from_io a owl:ObjectProperty ;
 
 eg:grade a owl:DatatypeProperty ;
     rdfs:label "grade" ;
-    skos:definition "착수 등급 (docs/02 7.4) — 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에 매긴다 (비고 신호는 착수 순위에 종류 '비고' 로 따로 올린다 — 골든 I3). 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항)." ;
+    rdfs:range eg:StartGrade ;
+    skos:definition "착수 등급 (docs/02 7.4) — 공급·수요 툴사용의 자동화 가능 여부와 폐쇄망 구동으로 정한다." ;
+    skos:inScheme eg: .
+
+eg:handoff_kind a owl:DatatypeProperty ;
+    rdfs:label "handoff_kind" ;
+    skos:definition "착수 구간 종류." ;
     skos:inScheme eg: .
 
 eg:headless a owl:DatatypeProperty ;
@@ -814,6 +806,7 @@ eg:io_category a owl:ObjectProperty ;
     rdfs:label "io_category" ;
     eg:form_column "E" ;
     eg:form_header "분류 *" ;
+    eg:form_list "온톨로지분류" ;
     eg:form_sheet "SW입출력" ;
     skos:definition "분류. 연결 계산 키 ①." ;
     skos:inScheme eg: .
@@ -821,6 +814,16 @@ eg:io_category a owl:ObjectProperty ;
 eg:io_owner a owl:ObjectProperty ;
     rdfs:label "io_owner" ;
     skos:definition "이 입출력을 가진 툴사용 (owner_source_key 로 찾은 것)." ;
+    skos:inScheme eg: .
+
+eg:isolated_usage a owl:ObjectProperty ;
+    rdfs:label "isolated_usage" ;
+    skos:definition "고립된 툴사용." ;
+    skos:inScheme eg: .
+
+eg:isolation_kind a owl:DatatypeProperty ;
+    rdfs:label "isolation_kind" ;
+    skos:definition "고립 유형 (골든 I11)." ;
     skos:inScheme eg: .
 
 eg:kind a owl:DatatypeProperty ;
@@ -970,6 +973,21 @@ eg:purpose_detail a owl:DatatypeProperty ;
     skos:definition "용도 상세 원문. 예) 이차유로 1D 유동 네트워크 해석" ;
     skos:inScheme eg: .
 
+eg:rank a owl:DatatypeProperty ;
+    rdfs:label "rank" ;
+    skos:definition "착수 순위 (1부터 — docs/02 7.4 정렬, 골든 I5·I6·I18)." ;
+    skos:inScheme eg: .
+
+eg:recon_io a owl:ObjectProperty ;
+    rdfs:label "recon_io" ;
+    skos:definition "대조한 입출력 명세 (고아 입출력은 대상 아님 — 골든 I9)." ;
+    skos:inScheme eg: .
+
+eg:recon_partner a owl:ObjectProperty ;
+    rdfs:label "recon_partner" ;
+    skos:definition "대조한 상대 툴." ;
+    skos:inScheme eg: .
+
 eg:reported_kind a owl:DatatypeProperty ;
     rdfs:label "reported_kind" ;
     eg:form_column "E" ;
@@ -1052,12 +1070,6 @@ eg:source_sha256 a owl:DatatypeProperty ;
     skos:definition "원천 파일 SHA-256 (소문자 16진수)." ;
     skos:inScheme eg: .
 
-eg:status a owl:DatatypeProperty ;
-    rdfs:label "status" ;
-    rdfs:range eg:EntityStatus ;
-    skos:definition "수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성." ;
-    skos:inScheme eg: .
-
 eg:storage_path a owl:DatatypeProperty ;
     rdfs:label "storage_path" ;
     eg:form_column "K" ;
@@ -1068,7 +1080,8 @@ eg:storage_path a owl:DatatypeProperty ;
 
 eg:supplier a owl:ObjectProperty ;
     rdfs:label "supplier" ;
-    skos:definition "공급 측 툴사용 (from_io 의 io_owner)." ;
+    rdfs:range eg:ToolUsage ;
+    skos:definition "공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측)." ;
     skos:inScheme eg: .
 
 eg:task_summary a owl:DatatypeProperty ;
@@ -1096,6 +1109,7 @@ eg:usage_field a owl:ObjectProperty ;
     rdfs:label "usage_field" ;
     eg:form_column "J" ;
     eg:form_header "담당 부서 *" ;
+    eg:form_list "담당부서" ;
     eg:form_sheet "SW기본정보" ;
     skos:definition "담당 부서 값으로 만든 Field (문자열이 아니라 노드)." ;
     skos:inScheme eg: .
@@ -1139,6 +1153,11 @@ eg:vendor a owl:DatatypeProperty ;
     skos:definition "제조사/개발주체 — 사용 기록들의 응답 중 다수값 (엇갈리면 검토표에 표시)." ;
     skos:inScheme eg: .
 
+eg:verdict a owl:DatatypeProperty ;
+    rdfs:label "verdict" ;
+    skos:definition "판정 (docs/02 7.2)." ;
+    skos:inScheme eg: .
+
 eg:version a owl:DatatypeProperty ;
     rdfs:label "version" ;
     eg:form_column "C" ;
@@ -1160,6 +1179,135 @@ prov:generatedAtTime a owl:DatatypeProperty ;
 prov:wasDerivedFrom a owl:ObjectProperty ;
     rdfs:label "derived_from" ;
     skos:definition "파생의 근거가 된 적재 기록 (provenance)." ;
+    skos:inScheme eg: .
+
+eg:status a owl:DatatypeProperty ;
+    rdfs:label "status" ;
+    rdfs:range eg:EntityStatus ;
+    skos:definition "수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성." ;
+    skos:inScheme eg: .
+
+eg:Derived a owl:Class ;
+    rdfs:label "Derived" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom eg:SurveyLoad ;
+            owl:onProperty prov:wasDerivedFrom ],
+        [ a owl:Restriction ;
+            owl:minCardinality 1 ;
+            owl:onProperty prov:wasDerivedFrom ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:rule_version ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:dateTime ;
+            owl:onProperty prov:generatedAtTime ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty prov:generatedAtTime ] ;
+    skos:definition "규칙으로 계산한 파생 노드의 provenance 묶음 (docs/02 8장). derived 그래프에만 있다." ;
+    skos:inScheme eg: .
+
+eg:IOSpec a owl:Class ;
+    rdfs:label "IOSpec" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom eg:ToolUsage ;
+            owl:onProperty eg:io_owner ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:FormatStandard ;
+            owl:onProperty eg:format_standard ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:io_owner ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:Tool ;
+            owl:onProperty eg:partner_tools ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:note ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:owner_source_key ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom [ a rdfs:Datatype ;
+                    owl:onDatatype xsd:string ;
+                    owl:withRestrictions ( [ xsd:pattern "[a-z0-9_+\\-]+(\\.[a-z0-9_+\\-]+)*" ] ) ] ;
+            owl:onProperty eg:extensions ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:format_standard ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:TransferMethod ;
+            owl:onProperty eg:transfer_method ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:direction ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:inhouse_format ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:owner_source_key ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:transfer_method ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:security_grade ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:DataNature ;
+            owl:onProperty eg:data_nature ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:boolean ;
+            owl:onProperty eg:inhouse_format ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:IODirection ;
+            owl:onProperty eg:direction ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:data_nature ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:SecurityGrade ;
+            owl:onProperty eg:security_grade ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:partner_unresolved ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:data_name ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:loaded_in ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:extensions_raw ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:data_name ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:partner_raw ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:partner_raw ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom eg:DataCategory ;
+            owl:onProperty eg:io_category ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:source_row ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:storage_path ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:extensions_raw ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:storage_path ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:io_category ] ;
+    skos:definition "SW입출력 1행. 한 툴사용이 받거나(입력) 내놓는(출력) 데이터 1종 — 에이전트 단계에서 MCP 함수의 입력·출력 정의가 된다 (docs/01 원칙 6)." ;
     skos:inScheme eg: .
 
 eg:Tool a owl:Class ;
@@ -1423,7 +1571,7 @@ eg: a owl:Ontology ;
     eg:form_source "reference/SW조사양식_EnGenius_v1.0.xlsx (원본 양식 — 사내 배포본은 헤더·선택지가 다를 수 있음)" ;
     dcterms:license "사내 전용 — 개발은 합성 데이터로만" ;
     dcterms:title "En-Genius 툴 온톨로지" ;
-    pav:version "0.1.0" ;
-    owl:versionInfo "0.1.0" ;
-    skos:definition "연구소 분야별 SW 조사(SW기본정보·SW입출력)를 담아 툴 간 데이터 연결을 계산하기 위한 스키마. 설계 기준은 docs/02_툴온톨로지_설계.md (3·4·7장). 클래스 7종: Field, Tool, ToolUsage, IOSpec, DataCategory, Feed(파생), SurveyLoad. ID 는 의미 없는 일련번호·해시(egid:TOOL-000001 등), 사람이 읽는 이름은 rdfs:label(@ko). 언어 태그(@ko)는 LinkML 이 데이터로 표현하지 못하므로 적재기(M3)가 RDF 를 만들 때 이름 속성(rdfs:label·skos:prefLabel·skos:altLabel)에만 붙인다 — 선택지 값은 태그 없는 문자열. 식별자는 노드 IRI 자체다(eg:id 트리플 없음). ID 규칙은 SHACL 노드 모양이 IRI 패턴으로 검사한다. 네임스페이스 정본은 이 파일의 prefixes (eg·egid) — 코드는 여기서 읽는다 (config.namespaces()). 예약(미구현): WbsTask —uses_tool→ ToolUsage/Tool (지멘스 PoC 의 WBS Lv.6 연결)." .
+    pav:version "0.2.0" ;
+    owl:versionInfo "0.2.0" ;
+    skos:definition "연구소 분야별 SW 조사(SW기본정보·SW입출력)를 담아 툴 간 데이터 연결을 계산하기 위한 스키마. 설계 기준은 docs/02_툴온톨로지_설계.md (3·4·7장). 클래스 10종: Field, Tool, ToolUsage, IOSpec, DataCategory, SurveyLoad (survey 그래프) + Feed, Reconciliation, IsolationFinding, Handoff (파생 — derived 그래프, v0.2 에서 뒤의 셋 추가: docs/05 D1). ID 는 의미 없는 일련번호·해시(egid:TOOL-000001 등), 사람이 읽는 이름은 rdfs:label(@ko). 언어 태그(@ko)는 LinkML 이 데이터로 표현하지 못하므로 적재기(M3)가 RDF 를 만들 때 이름 속성(rdfs:label·skos:prefLabel·skos:altLabel)에만 붙인다 — 선택지 값은 태그 없는 문자열. 식별자는 노드 IRI 자체다(eg:id 트리플 없음). ID 규칙은 SHACL 노드 모양이 IRI 패턴으로 검사한다. 네임스페이스 정본은 이 파일의 prefixes (eg·egid) — 코드는 여기서 읽는다 (config.namespaces()). 예약(미구현): WbsTask —uses_tool→ ToolUsage/Tool (지멘스 PoC 의 WBS Lv.6 연결)." .
 

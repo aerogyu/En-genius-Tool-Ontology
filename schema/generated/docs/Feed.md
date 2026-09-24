@@ -231,10 +231,11 @@ URI: [eg:Feed](http://en-genius.local/onto/Feed)
 | ---  | --- | --- | --- |
 | [id](id.md) | 1 <br/> [xsd:anyURI](http://www.w3.org/2001/XMLSchema#anyURI) | 노드 식별자 | direct |
 | [label](label.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 사람이 읽는 이름 | direct |
+| [supplier](supplier.md) | 1 <br/> [ToolUsage](ToolUsage.md) | 공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측) | direct |
+| [consumer](consumer.md) | 1 <br/> [ToolUsage](ToolUsage.md) | 수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측) | direct |
+| [grade](grade.md) | 0..1 <br/> [StartGrade](StartGrade.md) | 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에만 매긴다 (골든 I3) | direct |
 | [from_io](from_io.md) | 1 <br/> [IOSpec](IOSpec.md) | 공급 측 출력 명세 | direct |
 | [to_io](to_io.md) | 1 <br/> [IOSpec](IOSpec.md) | 수요 측 입력 명세 | direct |
-| [supplier](supplier.md) | 1 <br/> [ToolUsage](ToolUsage.md) | 공급 측 툴사용 (from_io 의 io_owner) | direct |
-| [consumer](consumer.md) | 1 <br/> [ToolUsage](ToolUsage.md) | 수요 측 툴사용 (to_io 의 io_owner) | direct |
 | [matched_category](matched_category.md) | 1 <br/> [DataCategory](DataCategory.md) | 양쪽이 일치한 분류 | direct |
 | [matched_extensions](matched_extensions.md) | 1..* <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 양쪽이 겹친 정규화 확장자 | direct |
 | [confidence](confidence.md) | 1 <br/> [FeedConfidence](FeedConfidence.md) | 겹친 확장자가 전부 범용(config rules | direct |
@@ -242,7 +243,6 @@ URI: [eg:Feed](http://en-genius.local/onto/Feed)
 | [transfer](transfer.md) | * <br/> [TransferMethod](TransferMethod.md) | 양쪽 명세의 전달 방법 | direct |
 | [manual](manual.md) | 1 <br/> [xsd:boolean](http://www.w3.org/2001/XMLSchema#boolean) | 수기 구간 여부 (전달 방법 기준) | direct |
 | [manual_basis](manual_basis.md) | 0..1 <br/> [ManualBasis](ManualBasis.md) | 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false) | direct |
-| [grade](grade.md) | 0..1 <br/> [StartGrade](StartGrade.md) | 착수 등급 (docs/02 7 | direct |
 | [rule_version](rule_version.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 이 파생 노드를 만든 규칙 버전 (예 feed_v1) | [Derived](Derived.md) |
 | [derived_from](derived_from.md) | 1..* <br/> [SurveyLoad](SurveyLoad.md) | 파생의 근거가 된 적재 기록 (provenance) | [Derived](Derived.md) |
 | [generated_at](generated_at.md) | 1 <br/> [xsd:dateTime](http://www.w3.org/2001/XMLSchema#dateTime) | 파생 노드 생성 일시 (provenance) | [Derived](Derived.md) |
@@ -305,10 +305,23 @@ mixins:
 slots:
 - id
 - label
+- supplier
+- consumer
+- grade
 slot_usage:
   id:
     name: id
     pattern: ^egid:FEED-[0-9a-f]{10}$
+  supplier:
+    name: supplier
+    required: true
+  consumer:
+    name: consumer
+    required: true
+  grade:
+    name: grade
+    description: 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에만 매긴다 (골든 I3).
+      변환 구간(숨은변환 의심)은 Feed 가 없으므로 등급은 Handoff 에 둔다.
 attributes:
   from_io:
     name: from_io
@@ -327,24 +340,6 @@ attributes:
     domain_of:
     - Feed
     range: IOSpec
-    required: true
-  supplier:
-    name: supplier
-    description: 공급 측 툴사용 (from_io 의 io_owner).
-    from_schema: http://en-genius.local/onto/
-    rank: 1000
-    domain_of:
-    - Feed
-    range: ToolUsage
-    required: true
-  consumer:
-    name: consumer
-    description: 수요 측 툴사용 (to_io 의 io_owner).
-    from_schema: http://en-genius.local/onto/
-    rank: 1000
-    domain_of:
-    - Feed
-    range: ToolUsage
     required: true
   matched_category:
     name: matched_category
@@ -409,16 +404,6 @@ attributes:
     domain_of:
     - Feed
     range: ManualBasis
-  grade:
-    name: grade
-    description: 착수 등급 (docs/02 7.4) — 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인
-      Feed 에 매긴다 (비고 신호는 착수 순위에 종류 '비고' 로 따로 올린다 — 골든 I3). 변환 구간(숨은변환 의심)은 계산된 연결이
-      없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항).
-    from_schema: http://en-genius.local/onto/
-    rank: 1000
-    domain_of:
-    - Feed
-    range: StartGrade
 
 ```
 </details>
@@ -438,6 +423,16 @@ slot_usage:
   id:
     name: id
     pattern: ^egid:FEED-[0-9a-f]{10}$
+  supplier:
+    name: supplier
+    required: true
+  consumer:
+    name: consumer
+    required: true
+  grade:
+    name: grade
+    description: 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에만 매긴다 (골든 I3).
+      변환 구간(숨은변환 의심)은 Feed 가 없으므로 등급은 Handoff 에 둔다.
 attributes:
   from_io:
     name: from_io
@@ -458,26 +453,6 @@ attributes:
     domain_of:
     - Feed
     range: IOSpec
-    required: true
-  supplier:
-    name: supplier
-    description: 공급 측 툴사용 (from_io 의 io_owner).
-    from_schema: http://en-genius.local/onto/
-    rank: 1000
-    owner: Feed
-    domain_of:
-    - Feed
-    range: ToolUsage
-    required: true
-  consumer:
-    name: consumer
-    description: 수요 측 툴사용 (to_io 의 io_owner).
-    from_schema: http://en-genius.local/onto/
-    rank: 1000
-    owner: Feed
-    domain_of:
-    - Feed
-    range: ToolUsage
     required: true
   matched_category:
     name: matched_category
@@ -550,17 +525,6 @@ attributes:
     domain_of:
     - Feed
     range: ManualBasis
-  grade:
-    name: grade
-    description: 착수 등급 (docs/02 7.4) — 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인
-      Feed 에 매긴다 (비고 신호는 착수 순위에 종류 '비고' 로 따로 올린다 — 골든 I3). 변환 구간(숨은변환 의심)은 계산된 연결이
-      없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항).
-    from_schema: http://en-genius.local/onto/
-    rank: 1000
-    owner: Feed
-    domain_of:
-    - Feed
-    range: StartGrade
   id:
     name: id
     description: 노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001
@@ -575,6 +539,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: uriorcurie
     required: true
@@ -593,9 +560,45 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: string
     required: true
+  supplier:
+    name: supplier
+    description: 공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측).
+    from_schema: http://en-genius.local/onto/
+    rank: 1000
+    owner: Feed
+    domain_of:
+    - Feed
+    - Handoff
+    range: ToolUsage
+    required: true
+  consumer:
+    name: consumer
+    description: 수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측).
+    from_schema: http://en-genius.local/onto/
+    rank: 1000
+    owner: Feed
+    domain_of:
+    - Feed
+    - Handoff
+    range: ToolUsage
+    required: true
+  grade:
+    name: grade
+    description: 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에만 매긴다 (골든 I3).
+      변환 구간(숨은변환 의심)은 Feed 가 없으므로 등급은 Handoff 에 둔다.
+    from_schema: http://en-genius.local/onto/
+    rank: 1000
+    owner: Feed
+    domain_of:
+    - Feed
+    - Handoff
+    range: StartGrade
   rule_version:
     name: rule_version
     description: 이 파생 노드를 만든 규칙 버전 (예 feed_v1).

@@ -1,7 +1,7 @@
 id: http://en-genius.local/onto/dataset/
 name: engenius_tool_dataset
 title: En-Genius 툴 온톨로지 — 검증용 컨테이너
-version: 0.1.0
+version: 0.2.0
 description: >-
   적재 결과 전체를 한 문서로 묶어 Pydantic 으로 검증하기 위한 컨테이너. 온톨로지 본체가 아니므로
   OWL·SHACL 생성 대상이 아니고, RDF 로 직렬화하지 않는다 — 적재기(M3)는 이름에 @ko 를 붙이는
@@ -65,3 +65,18 @@ classes:
         multivalued: true
         inlined_as_list: true
         description: (파생) 공급 연결 노드. ToolUsage.feeds(eg:feeds, 툴사용→툴사용 지름길)와 다른 슬롯이다.
+      derived_reconciliations:
+        range: Reconciliation
+        multivalued: true
+        inlined_as_list: true
+        description: (파생) 계산 vs 신고 대조 노드 (CQ04).
+      derived_isolations:
+        range: IsolationFinding
+        multivalued: true
+        inlined_as_list: true
+        description: (파생) 고립 툴사용 노드 (CQ05).
+      derived_handoffs:
+        range: Handoff
+        multivalued: true
+        inlined_as_list: true
+        description: (파생) 착수 구간 노드 (CQ03).

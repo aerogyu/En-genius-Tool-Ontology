@@ -20,7 +20,7 @@ S = URIRef("http://en-genius.local/id/TEST-000001")
 P = URIRef("http://www.w3.org/2000/01/rdf-schema#label")
 
 UNION_QUERY = """
-SELECT ?o WHERE { ?s <http://www.w3.org/2000/01/rdf-schema#label> ?o }
+SELECT ?o WHERE { <http://en-genius.local/id/TEST-000001> <http://www.w3.org/2000/01/rdf-schema#label> ?o }
 ORDER BY ?o
 """
 
@@ -36,7 +36,7 @@ def test_help_subprocess():
         assert name in r.stdout
 
 
-@pytest.mark.parametrize("name", list(COMMANDS))
+@pytest.mark.parametrize("name", [n for n, (_, ms) in COMMANDS.items() if ms == "M4"])
 def test_unimplemented_commands_fail_loudly(name):
     """미구현 명령은 조용히 성공하지 않는다."""
     assert main([name]) == 2

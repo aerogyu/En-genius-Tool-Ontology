@@ -218,6 +218,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: uriorcurie
     required: true
@@ -236,6 +239,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: string
     required: true
@@ -249,6 +255,7 @@ attributes:
     domain_of:
     - ResearchField
     - Tool
+    - DataCategory
     range: EntityStatus
 class_uri: eg:Field
 

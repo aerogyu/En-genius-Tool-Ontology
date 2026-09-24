@@ -1,7 +1,7 @@
 <!-- 자동 생성 — 직접 고치지 말 것. 원본: schema/engenius_tool.yaml, 명령: python -m engenius_onto schema -->
 # 양식 열 ↔ 스키마 슬롯 매핑표
 
-스키마 v0.1.0 · 원본 양식 `SW조사양식_EnGenius_v1.0.xlsx` 기준. 열 문자는 **원본** 양식의 위치다 — 사내 배포본은 위치가 다를 수 있어 적재기는 헤더 이름으로 매핑한다 (docs/02 5장).
+스키마 v0.2.0 · 원본 양식 `SW조사양식_EnGenius_v1.0.xlsx` 기준. 열 문자는 **원본** 양식의 위치다 — 사내 배포본은 위치가 다를 수 있어 적재기는 헤더 이름으로 매핑한다 (docs/02 5장).
 
 ## SW기본정보 (32열 적재)
 
@@ -79,6 +79,7 @@
 | Tool | `kind` | ToolKind | 구분 — 사용 기록들의 응답 중 다수값. |
 | Tool | `merged_into` | Tool | 사람 판정으로 다른 Tool 에 통합된 경우 그 대상 (status=통합됨과 함께). |
 | DataCategory | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
+| DataCategory | `status` | EntityStatus | 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성. |
 | ToolUsage | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
 | ToolUsage | `source_row` | integer | 원천 엑셀 시트의 행 번호 (조사 보완 시 원본 행을 찾기 위한 추적 정보). |
 | ToolUsage | `loaded_in` | SurveyLoad | 이 노드를 만든 적재 기록 (provenance). |
@@ -95,10 +96,11 @@
 | IOSpec | `partner_tools` | Tool | 연계 SW명 중 Tool 로 해석된 것. |
 | IOSpec | `partner_unresolved` | string | 연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09). 원문은 partner_raw 에 있으므로 여기에는 툴 통합과 같은 정규화 키를 넣는다 (SPARQL 로는 정규화를 재현할 수 없어 원문을 넣으면 표기 변형이 서로 다른 후보로 쪼개진다 — M1 검토). |
 | Feed | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
+| Feed | `supplier` | ToolUsage | 공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측). |
+| Feed | `consumer` | ToolUsage | 수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측). |
+| Feed | `grade` | StartGrade | 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에만 매긴다 (골든 I3). 변환 구간(숨은변환 의심)은 Feed 가 없으므로 등급은 Handoff 에 둔다. |
 | Feed | `from_io` | IOSpec | 공급 측 출력 명세. |
 | Feed | `to_io` | IOSpec | 수요 측 입력 명세. |
-| Feed | `supplier` | ToolUsage | 공급 측 툴사용 (from_io 의 io_owner). |
-| Feed | `consumer` | ToolUsage | 수요 측 툴사용 (to_io 의 io_owner). |
 | Feed | `matched_category` | DataCategory | 양쪽이 일치한 분류. |
 | Feed | `matched_extensions` | string | 양쪽이 겹친 정규화 확장자. |
 | Feed | `confidence` | FeedConfidence | 겹친 확장자가 전부 범용(config rules.yaml generic_extensions)이면 낮음. |
@@ -106,10 +108,32 @@
 | Feed | `transfer` | TransferMethod | 양쪽 명세의 전달 방법. |
 | Feed | `manual` | boolean | 수기 구간 여부 (전달 방법 기준). 수기 행이 연계 SW 를 적었으면 그중 해석된 상대 툴과의 Feed 에만 적용한다 (골든 I32). |
 | Feed | `manual_basis` | ManualBasis | 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 (manual=false). |
-| Feed | `grade` | StartGrade | 착수 등급 (docs/02 7.4) — 수기 연결(manual=true)과 비고 신호(manual_basis=비고)인 Feed 에 매긴다 (비고 신호는 착수 순위에 종류 '비고' 로 따로 올린다 — 골든 I3). 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항). |
 | Feed | `rule_version` | string | 이 파생 노드를 만든 규칙 버전 (예 feed_v1). |
 | Feed | `derived_from` | SurveyLoad | 파생의 근거가 된 적재 기록 (provenance). |
 | Feed | `generated_at` | datetime | 파생 노드 생성 일시 (provenance). |
+| Reconciliation | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
+| Reconciliation | `recon_io` | IOSpec | 대조한 입출력 명세 (고아 입출력은 대상 아님 — 골든 I9). |
+| Reconciliation | `recon_partner` | Tool | 대조한 상대 툴. |
+| Reconciliation | `verdict` | ReconVerdict | 판정 (docs/02 7.2). |
+| Reconciliation | `rule_version` | string | 이 파생 노드를 만든 규칙 버전 (예 feed_v1). |
+| Reconciliation | `derived_from` | SurveyLoad | 파생의 근거가 된 적재 기록 (provenance). |
+| Reconciliation | `generated_at` | datetime | 파생 노드 생성 일시 (provenance). |
+| IsolationFinding | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
+| IsolationFinding | `isolated_usage` | ToolUsage | 고립된 툴사용. |
+| IsolationFinding | `isolation_kind` | IsolationKind | 고립 유형 (골든 I11). |
+| IsolationFinding | `rule_version` | string | 이 파생 노드를 만든 규칙 버전 (예 feed_v1). |
+| IsolationFinding | `derived_from` | SurveyLoad | 파생의 근거가 된 적재 기록 (provenance). |
+| IsolationFinding | `generated_at` | datetime | 파생 노드 생성 일시 (provenance). |
+| Handoff | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
+| Handoff | `supplier` | ToolUsage | 공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측). |
+| Handoff | `consumer` | ToolUsage | 수요 측 툴사용 (Feed 는 to_io 의 io_owner, Handoff 는 착수 구간의 수요 측). |
+| Handoff | `grade` | StartGrade | 착수 등급 (docs/02 7.4) — 공급·수요 툴사용의 자동화 가능 여부와 폐쇄망 구동으로 정한다. |
+| Handoff | `handoff_kind` | HandoffKind | 착수 구간 종류. |
+| Handoff | `evidence_io` | IOSpec | 근거 입출력 명세 (수기·비고는 Feed 양쪽, 변환은 숨은변환 의심 입출력). |
+| Handoff | `rank` | integer | 착수 순위 (1부터 — docs/02 7.4 정렬, 골든 I5·I6·I18). |
+| Handoff | `rule_version` | string | 이 파생 노드를 만든 규칙 버전 (예 feed_v1). |
+| Handoff | `derived_from` | SurveyLoad | 파생의 근거가 된 적재 기록 (provenance). |
+| Handoff | `generated_at` | datetime | 파생 노드 생성 일시 (provenance). |
 | SurveyLoad | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
 | SurveyLoad | `run_id` | string | 적재 실행 ID (output/<실행ID> 와 같다). |
 | SurveyLoad | `source_file_name` | string | 원천 파일명 (경로 제외 — 경로 구분자·드라이브 문자를 허용하지 않는다). |

@@ -529,6 +529,9 @@ URI: [eg:ToolUsage](http://en-genius.local/onto/ToolUsage)
 | [IOSpec](IOSpec.md) | [io_owner](io_owner.md) | range | [ToolUsage](ToolUsage.md) |
 | [Feed](Feed.md) | [supplier](supplier.md) | range | [ToolUsage](ToolUsage.md) |
 | [Feed](Feed.md) | [consumer](consumer.md) | range | [ToolUsage](ToolUsage.md) |
+| [IsolationFinding](IsolationFinding.md) | [isolated_usage](isolated_usage.md) | range | [ToolUsage](ToolUsage.md) |
+| [Handoff](Handoff.md) | [supplier](supplier.md) | range | [ToolUsage](ToolUsage.md) |
+| [Handoff](Handoff.md) | [consumer](consumer.md) | range | [ToolUsage](ToolUsage.md) |
 
 
 
@@ -789,6 +792,9 @@ attributes:
       form_column:
         tag: form_column
         value: J
+      form_list:
+        tag: form_list
+        value: 담당부서
     description: 담당 부서 값으로 만든 Field (문자열이 아니라 노드).
     from_schema: http://en-genius.local/onto/
     rank: 1000
@@ -1435,6 +1441,9 @@ attributes:
       form_column:
         tag: form_column
         value: J
+      form_list:
+        tag: form_list
+        value: 담당부서
     description: 담당 부서 값으로 만든 Field (문자열이 아니라 노드).
     from_schema: http://en-genius.local/onto/
     rank: 1000
@@ -1896,6 +1905,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: uriorcurie
     required: true
@@ -1914,6 +1926,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: string
     required: true

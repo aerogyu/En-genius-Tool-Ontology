@@ -1,0 +1,9 @@
+# 툴 이름 통합 판정 (docs/02 6.1, HITL). 적재기가 정규화 키보다 먼저 적용한다.
+# 사람이 툴 통합 검토표(tool_review.csv)의 '판정' 열을 채운 뒤
+#   python -m engenius_onto apply-review output/<실행ID>/tool_review.csv
+# 로 여기에 누적한다. 손으로 고쳐도 된다.
+#
+# aliases:   대표 이름: [변형 표기, ...]   — 변형 표기로 적힌 SW명·연계 SW명을 대표 이름의 툴로 본다
+# distinct:  [[정규화 키 A, 정규화 키 B], ...] — 별개로 판정한 쌍 (통합 후보에 다시 올리지 않는다)
+aliases: {}
+distinct: []

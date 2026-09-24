@@ -144,6 +144,7 @@ URI: [eg:Tool](http://en-genius.local/onto/Tool)
 | [Tool](Tool.md) | [merged_into](merged_into.md) | range | [Tool](Tool.md) |
 | [ToolUsage](ToolUsage.md) | [usage_tool](usage_tool.md) | range | [Tool](Tool.md) |
 | [IOSpec](IOSpec.md) | [partner_tools](partner_tools.md) | range | [Tool](Tool.md) |
+| [Reconciliation](Reconciliation.md) | [recon_partner](recon_partner.md) | range | [Tool](Tool.md) |
 
 
 
@@ -326,6 +327,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: uriorcurie
     required: true
@@ -344,6 +348,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: string
     required: true
@@ -357,6 +364,7 @@ attributes:
     domain_of:
     - ResearchField
     - Tool
+    - DataCategory
     range: EntityStatus
 
 ```

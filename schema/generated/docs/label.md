@@ -31,6 +31,9 @@ URI: [rdfs:label](http://www.w3.org/2000/01/rdf-schema#label)
 | [ToolUsage](ToolUsage.md) | 분야별 SW 응답 1건 = SW기본정보 1행 = SW ID 1개 |  no  |
 | [IOSpec](IOSpec.md) | SW입출력 1행 |  yes  |
 | [Feed](Feed.md) | (파생) 규칙으로 계산한 공급 연결 — 출력 명세 from_io 와 입력 명세 to_io 의 분류가 같고 정규화 확장자가 겹칠 때 (doc... |  no  |
+| [Reconciliation](Reconciliation.md) | (파생) 계산 vs 신고 대조 1건 (CQ04, docs/02 7 |  no  |
+| [IsolationFinding](IsolationFinding.md) | (파생) 고립 툴사용 1건 (CQ05, docs/02 7 |  no  |
+| [Handoff](Handoff.md) | (파생) 착수 구간 1행 (CQ03, docs/02 7 |  no  |
 | [SurveyLoad](SurveyLoad.md) | 적재 기록 1건 — 원천 조사 파일 1개를 한 번 적재한 것 |  no  |
 
 
@@ -45,7 +48,7 @@ URI: [rdfs:label](http://www.w3.org/2000/01/rdf-schema#label)
 | Property | Value |
 | --- | --- |
 | Range | [xsd:string](http://www.w3.org/2001/XMLSchema#string) |
-| Domain Of | [ResearchField](ResearchField.md), [Tool](Tool.md), [DataCategory](DataCategory.md), [ToolUsage](ToolUsage.md), [IOSpec](IOSpec.md), [Feed](Feed.md), [SurveyLoad](SurveyLoad.md) |
+| Domain Of | [ResearchField](ResearchField.md), [Tool](Tool.md), [DataCategory](DataCategory.md), [ToolUsage](ToolUsage.md), [IOSpec](IOSpec.md), [Feed](Feed.md), [Reconciliation](Reconciliation.md), [IsolationFinding](IsolationFinding.md), [Handoff](Handoff.md), [SurveyLoad](SurveyLoad.md) |
 | Slot URI | [rdfs:label](http://www.w3.org/2000/01/rdf-schema#label) |
 
 ### Cardinality and Requirements
@@ -103,6 +106,9 @@ domain_of:
 - ToolUsage
 - IOSpec
 - Feed
+- Reconciliation
+- IsolationFinding
+- Handoff
 - SurveyLoad
 range: string
 required: true

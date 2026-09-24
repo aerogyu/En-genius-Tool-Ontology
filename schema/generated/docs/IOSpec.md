@@ -299,6 +299,8 @@ URI: [eg:IOSpec](http://en-genius.local/onto/IOSpec)
 | ---  | --- | --- | --- |
 | [Feed](Feed.md) | [from_io](from_io.md) | range | [IOSpec](IOSpec.md) |
 | [Feed](Feed.md) | [to_io](to_io.md) | range | [IOSpec](IOSpec.md) |
+| [Reconciliation](Reconciliation.md) | [recon_io](recon_io.md) | range | [IOSpec](IOSpec.md) |
+| [Handoff](Handoff.md) | [evidence_io](evidence_io.md) | range | [IOSpec](IOSpec.md) |
 
 
 
@@ -452,6 +454,9 @@ attributes:
       form_column:
         tag: form_column
         value: E
+      form_list:
+        tag: form_list
+        value: 온톨로지분류
     description: 분류. 연결 계산 키 ①.
     from_schema: http://en-genius.local/onto/
     rank: 1000
@@ -737,6 +742,9 @@ attributes:
       form_column:
         tag: form_column
         value: E
+      form_list:
+        tag: form_list
+        value: 온톨로지분류
     description: 분류. 연결 계산 키 ①.
     from_schema: http://en-genius.local/onto/
     rank: 1000
@@ -938,6 +946,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: uriorcurie
     required: true
@@ -956,6 +967,9 @@ attributes:
     - ToolUsage
     - IOSpec
     - Feed
+    - Reconciliation
+    - IsolationFinding
+    - Handoff
     - SurveyLoad
     range: string
     required: true

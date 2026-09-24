@@ -6,7 +6,7 @@ search:
 # Slot: supplier 
 
 
-_공급 측 툴사용 (from_io 의 io_owner)._
+_공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측)._
 
 
 
@@ -25,7 +25,8 @@ URI: [eg:supplier](http://en-genius.local/onto/supplier)
 
 | Name | Description | Modifies Slot |
 | --- | --- | --- |
-| [Feed](Feed.md) | (파생) 규칙으로 계산한 공급 연결 — 출력 명세 from_io 와 입력 명세 to_io 의 분류가 같고 정규화 확장자가 겹칠 때 (doc... |  no  |
+| [Feed](Feed.md) | (파생) 규칙으로 계산한 공급 연결 — 출력 명세 from_io 와 입력 명세 to_io 의 분류가 같고 정규화 확장자가 겹칠 때 (doc... |  yes  |
+| [Handoff](Handoff.md) | (파생) 착수 구간 1행 (CQ03, docs/02 7 |  yes  |
 
 
 
@@ -39,20 +40,12 @@ URI: [eg:supplier](http://en-genius.local/onto/supplier)
 | Property | Value |
 | --- | --- |
 | Range | [ToolUsage](ToolUsage.md) |
-| Domain Of | [Feed](Feed.md) |
+| Domain Of | [Feed](Feed.md), [Handoff](Handoff.md) |
 
 ### Cardinality and Requirements
 
 | Property | Value |
 | --- | --- |
-| Required | Yes |
-### Slot Characteristics
-
-| Property | Value |
-| --- | --- |
-| Owner | [Feed](Feed.md) |
-
-
 
 
 
@@ -92,14 +85,13 @@ URI: [eg:supplier](http://en-genius.local/onto/supplier)
 <details>
 ```yaml
 name: supplier
-description: 공급 측 툴사용 (from_io 의 io_owner).
+description: 공급 측 툴사용 (Feed 는 from_io 의 io_owner, Handoff 는 착수 구간의 공급 측).
 from_schema: http://en-genius.local/onto/
 rank: 1000
-owner: Feed
 domain_of:
 - Feed
+- Handoff
 range: ToolUsage
-required: true
 
 ```
 </details></div>

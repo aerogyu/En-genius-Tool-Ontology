@@ -27,6 +27,7 @@ URI: [eg:status](http://en-genius.local/onto/status)
 | --- | --- | --- |
 | [ResearchField](ResearchField.md) | 연구소 분야 (조직 노드, RDF 클래스 eg:Field — docs/02 용어) |  no  |
 | [Tool](Tool.md) | 제품 단위 툴 (표기 변형을 통합한 것) |  no  |
+| [DataCategory](DataCategory.md) | 데이터 분류 (SW입출력 '분류' 드롭다운 값) |  no  |
 
 
 
@@ -40,7 +41,7 @@ URI: [eg:status](http://en-genius.local/onto/status)
 | Property | Value |
 | --- | --- |
 | Range | [EntityStatus](EntityStatus.md) |
-| Domain Of | [ResearchField](ResearchField.md), [Tool](Tool.md) |
+| Domain Of | [ResearchField](ResearchField.md), [Tool](Tool.md), [DataCategory](DataCategory.md) |
 
 ### Cardinality and Requirements
 
@@ -99,6 +100,7 @@ ifabsent: string(활성)
 domain_of:
 - ResearchField
 - Tool
+- DataCategory
 range: EntityStatus
 
 ```

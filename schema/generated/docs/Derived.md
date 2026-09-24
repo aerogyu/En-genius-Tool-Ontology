@@ -26,6 +26,12 @@ URI: [eg:Derived](http://en-genius.local/onto/Derived)
     click Derived href "../Derived/"
       Derived <|-- Feed
         click Feed href "../Feed/"
+      Derived <|-- Reconciliation
+        click Reconciliation href "../Reconciliation/"
+      Derived <|-- IsolationFinding
+        click IsolationFinding href "../IsolationFinding/"
+      Derived <|-- Handoff
+        click Handoff href "../Handoff/"
       
       Derived : derived_from
         
@@ -90,6 +96,9 @@ URI: [eg:Derived](http://en-genius.local/onto/Derived)
 | mixed into | description |
 | --- | --- |
 | [Feed](Feed.md) | (파생) 규칙으로 계산한 공급 연결 — 출력 명세 from_io 와 입력 명세 to_io 의 분류가 같고 정규화 확장자가 겹칠 때 (doc... |
+| [Reconciliation](Reconciliation.md) | (파생) 계산 vs 신고 대조 1건 (CQ04, docs/02 7 |
+| [IsolationFinding](IsolationFinding.md) | (파생) 고립 툴사용 1건 (CQ05, docs/02 7 |
+| [Handoff](Handoff.md) | (파생) 착수 구간 1행 (CQ03, docs/02 7 |
 
 
 

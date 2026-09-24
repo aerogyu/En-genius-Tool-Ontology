@@ -74,6 +74,7 @@ URI: [eg:usage_field](http://en-genius.local/onto/usage_field)
 | form_sheet | SW기본정보 |
 | form_header | 담당 부서 * |
 | form_column | J |
+| form_list | 담당부서 |
 
 
 
@@ -111,6 +112,9 @@ annotations:
   form_column:
     tag: form_column
     value: J
+  form_list:
+    tag: form_list
+    value: 담당부서
 description: 담당 부서 값으로 만든 Field (문자열이 아니라 노드).
 from_schema: http://en-genius.local/onto/
 rank: 1000

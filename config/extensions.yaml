@@ -1,0 +1,18 @@
+# 확장자 정규화 (docs/02 6.2, 골든 I12·I16). 빈 값 토큰은 rules.yaml empty_tokens 를 같이 쓴다.
+aliases:
+  step: stp
+  iges: igs
+  jpeg: jpg
+  tif: tiff
+  yml: yaml
+  엑셀: xlsx
+  워드: docx
+  파워포인트: pptx
+  한글: hwp
+  텍스트: txt
+# 이 토큰(또는 괄호 안에 이 문자열)이 있으면 inhouse_format=true 로 두고 확장자 목록에서는 뺀다
+inhouse_tokens: ["사내"]
+# 토큰 구분자 — 공백 포함. 'ㆍ' 는 NFKC 후 U+119E
+separators: "/,;·ㆍᆞ・ \t\n"
+# 정규화 후 이 패턴이 아니면 확장자로 보지 않고 원문 보존 + 경고 (다중 점 tar.gz 허용)
+pattern: '^[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$'

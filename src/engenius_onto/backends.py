@@ -37,3 +37,49 @@ def fuseki_dataset_exists(cfg: FusekiConfig) -> bool:
             return r.status == 200
     except (urllib.error.URLError, OSError):
         return False
+
+
+def push_graph(cfg: FusekiConfig, graph_iri: str, turtle: bytes) -> int:
+    """named graph 하나를 통째 교체 (SPARQL Graph Store Protocol PUT) 하고 올라간 트리플 수를 돌려준다."""
+    import urllib.parse
+
+    url = f"{cfg.dataset_url}/data?graph=" + urllib.parse.quote(graph_iri, safe="")
+    req = urllib.request.Request(url, data=turtle, method="PUT",
+                                 headers={"Content-Type": "text/turtle; charset=utf-8"})
+    with urllib.request.urlopen(req, timeout=max(cfg.timeout_s, 60)) as r:
+        if r.status not in (200, 201, 204):
+            raise RuntimeError(f"Fuseki PUT 실패 {r.status}: {graph_iri}")
+    return int(select(cfg, f"SELECT (COUNT(*) AS ?n) WHERE {{ GRAPH <{graph_iri}> {{ ?s ?p ?o }} }}")[0]["n"])
+
+
+def select(cfg: FusekiConfig, query: str) -> list[dict]:
+    """Fuseki SPARQL SELECT → [{변수: 값 문자열}]."""
+    import json
+    import urllib.parse
+
+    body = urllib.parse.urlencode({"query": query}).encode("utf-8")
+    req = urllib.request.Request(f"{cfg.dataset_url}/sparql", data=body, method="POST", headers={
+        "Accept": "application/sparql-results+json", "Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req, timeout=max(cfg.timeout_s, 60)) as r:
+        res = json.load(r)
+    return [{k: v["value"] for k, v in b.items()} for b in res["results"]["bindings"]]
+
+
+def delete_graph(cfg: FusekiConfig, graph_iri: str) -> None:
+    import urllib.parse
+
+    url = f"{cfg.dataset_url}/data?graph=" + urllib.parse.quote(graph_iri, safe="")
+    try:
+        urllib.request.urlopen(urllib.request.Request(url, method="DELETE"), timeout=cfg.timeout_s)
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise
+
+
+def load_local(ds: Dataset, graph_iri: str, turtle: str) -> None:
+    """로컬 Dataset 의 named graph 하나를 통째 교체 (Fuseki push_graph 와 같은 의미)."""
+    from rdflib import URIRef
+
+    g = ds.graph(URIRef(graph_iri))
+    g.remove((None, None, None))
+    g.parse(data=turtle, format="turtle")
