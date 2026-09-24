@@ -242,7 +242,7 @@ URI: [eg:Feed](http://en-genius.local/onto/Feed)
 | [transfer](transfer.md) | * <br/> [TransferMethod](TransferMethod.md) | 양쪽 명세의 전달 방법 | direct |
 | [manual](manual.md) | 1 <br/> [xsd:boolean](http://www.w3.org/2001/XMLSchema#boolean) | 수기 구간 여부 (전달 방법 기준) | direct |
 | [manual_basis](manual_basis.md) | 0..1 <br/> [ManualBasis](ManualBasis.md) | 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호 | direct |
-| [grade](grade.md) | 0..1 <br/> [StartGrade](StartGrade.md) | 착수 등급 (수기·변환 구간에만 매긴다, docs/02 7 | direct |
+| [grade](grade.md) | 0..1 <br/> [StartGrade](StartGrade.md) | 착수 등급 (docs/02 7 | direct |
 | [rule_version](rule_version.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 이 파생 노드를 만든 규칙 버전 (예 feed_v1) | [Derived](Derived.md) |
 | [derived_from](derived_from.md) | 1..* <br/> [SurveyLoad](SurveyLoad.md) | 파생의 근거가 된 적재 기록 (provenance) | [Derived](Derived.md) |
 | [generated_at](generated_at.md) | 1 <br/> [xsd:dateTime](http://www.w3.org/2001/XMLSchema#dateTime) | 파생 노드 생성 일시 (provenance) | [Derived](Derived.md) |
@@ -410,7 +410,8 @@ attributes:
     range: ManualBasis
   grade:
     name: grade
-    description: 착수 등급 (수기·변환 구간에만 매긴다, docs/02 7.4).
+    description: 착수 등급 (docs/02 7.4) — 수기 연결(manual=true)인 Feed 에 매긴다. 변환 구간(숨은변환
+      의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항).
     from_schema: http://en-genius.local/onto/
     rank: 1000
     domain_of:
@@ -548,7 +549,8 @@ attributes:
     range: ManualBasis
   grade:
     name: grade
-    description: 착수 등급 (수기·변환 구간에만 매긴다, docs/02 7.4).
+    description: 착수 등급 (docs/02 7.4) — 수기 연결(manual=true)인 Feed 에 매긴다. 변환 구간(숨은변환
+      의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항).
     from_schema: http://en-genius.local/onto/
     rank: 1000
     owner: Feed

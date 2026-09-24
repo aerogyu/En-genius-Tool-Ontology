@@ -127,7 +127,7 @@ slots:
 slot_usage:
   id:
     name: id
-    pattern: ^egid:CAT-\d{3}$
+    pattern: ^egid:CAT-[0-9]{3}$
 
 ```
 </details>
@@ -143,7 +143,7 @@ rank: 1000
 slot_usage:
   id:
     name: id
-    pattern: ^egid:CAT-\d{3}$
+    pattern: ^egid:CAT-[0-9]{3}$
 attributes:
   id:
     name: id
@@ -162,7 +162,7 @@ attributes:
     - SurveyLoad
     range: uriorcurie
     required: true
-    pattern: ^egid:CAT-\d{3}$
+    pattern: ^egid:CAT-[0-9]{3}$
   label:
     name: label
     description: 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.

@@ -126,7 +126,7 @@ URI: [eg:Tool](http://en-genius.local/onto/Tool)
 | ---  | --- | --- | --- |
 | [id](id.md) | 1 <br/> [xsd:anyURI](http://www.w3.org/2001/XMLSchema#anyURI) | 노드 식별자 | direct |
 | [label](label.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 사람이 읽는 이름 | direct |
-| [status](status.md) | 0..1 <br/> [EntityStatus](EntityStatus.md) | 수명주기 상태 | direct |
+| [status](status.md) | 0..1 <br/> [EntityStatus](EntityStatus.md) | 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9) | direct |
 | [pref_label](pref_label.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 대표 이름 | direct |
 | [alt_labels](alt_labels.md) | * <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 조사에서 나온 변형 표기들 (CQ10) | direct |
 | [vendor](vendor.md) | 0..1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 제조사/개발주체 — 사용 기록들의 응답 중 다수값 (엇갈리면 검토표에 표시) | direct |
@@ -202,7 +202,7 @@ slots:
 slot_usage:
   id:
     name: id
-    pattern: ^egid:TOOL-\d{6}$
+    pattern: ^egid:TOOL-[0-9]{6}$
 attributes:
   pref_label:
     name: pref_label
@@ -261,7 +261,7 @@ rank: 1000
 slot_usage:
   id:
     name: id
-    pattern: ^egid:TOOL-\d{6}$
+    pattern: ^egid:TOOL-[0-9]{6}$
 attributes:
   pref_label:
     name: pref_label
@@ -329,7 +329,7 @@ attributes:
     - SurveyLoad
     range: uriorcurie
     required: true
-    pattern: ^egid:TOOL-\d{6}$
+    pattern: ^egid:TOOL-[0-9]{6}$
   label:
     name: label
     description: 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.
@@ -349,9 +349,10 @@ attributes:
     required: true
   status:
     name: status
-    description: 수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6).
+    description: 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.
     from_schema: http://en-genius.local/onto/
     rank: 1000
+    ifabsent: string(활성)
     owner: Tool
     domain_of:
     - ResearchField

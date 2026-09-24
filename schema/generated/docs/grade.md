@@ -6,7 +6,7 @@ search:
 # Slot: grade 
 
 
-_착수 등급 (수기·변환 구간에만 매긴다, docs/02 7.4)._
+_착수 등급 (docs/02 7.4) — 수기 연결(manual=true)인 Feed 에 매긴다. 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항)._
 
 
 
@@ -91,7 +91,8 @@ URI: [eg:grade](http://en-genius.local/onto/grade)
 <details>
 ```yaml
 name: grade
-description: 착수 등급 (수기·변환 구간에만 매긴다, docs/02 7.4).
+description: 착수 등급 (docs/02 7.4) — 수기 연결(manual=true)인 Feed 에 매긴다. 변환 구간(숨은변환 의심)은
+  계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항).
 from_schema: http://en-genius.local/onto/
 rank: 1000
 owner: Feed

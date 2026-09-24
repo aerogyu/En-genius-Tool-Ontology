@@ -6,7 +6,7 @@ search:
 # Slot: partner_unresolved 
 
 
-_연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09)._
+_연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09). 원문은 partner_raw 에 있으므로 여기에는 툴 통합과 같은 정규화 키를 넣는다 (SPARQL 로는 정규화를 재현할 수 없어 원문을 넣으면 표기 변형이 서로 다른 후보로 쪼개진다 — M1 검토)._
 
 
 
@@ -92,7 +92,9 @@ URI: [eg:partner_unresolved](http://en-genius.local/onto/partner_unresolved)
 <details>
 ```yaml
 name: partner_unresolved
-description: 연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09).
+description: 연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09). 원문은 partner_raw 에 있으므로
+  여기에는 툴 통합과 같은 정규화 키를 넣는다 (SPARQL 로는 정규화를 재현할 수 없어 원문을 넣으면 표기 변형이 서로 다른 후보로 쪼개진다
+  — M1 검토).
 from_schema: http://en-genius.local/onto/
 rank: 1000
 owner: IOSpec

@@ -589,7 +589,7 @@ slots:
 slot_usage:
   id:
     name: id
-    pattern: ^egid:USE-\d{6}$
+    pattern: ^egid:USE-[0-9]{6}$
   note:
     name: note
     annotations:
@@ -901,7 +901,7 @@ attributes:
     rank: 1000
     domain_of:
     - ToolUsage
-    pattern: ^\d{4}-(0[1-9]|1[0-2])$
+    pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
   runtime_env:
     name: runtime_env
     annotations:
@@ -1219,7 +1219,7 @@ rank: 1000
 slot_usage:
   id:
     name: id
-    pattern: ^egid:USE-\d{6}$
+    pattern: ^egid:USE-[0-9]{6}$
   note:
     name: note
     annotations:
@@ -1558,7 +1558,7 @@ attributes:
     domain_of:
     - ToolUsage
     range: string
-    pattern: ^\d{4}-(0[1-9]|1[0-2])$
+    pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
   runtime_env:
     name: runtime_env
     annotations:
@@ -1899,7 +1899,7 @@ attributes:
     - SurveyLoad
     range: uriorcurie
     required: true
-    pattern: ^egid:USE-\d{6}$
+    pattern: ^egid:USE-[0-9]{6}$
   label:
     name: label
     description: 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.

@@ -6,7 +6,7 @@ search:
 # Slot: extensions 
 
 
-_정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용). 연결 계산 키 ② (docs/02 6.2)._
+_정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar.gz 허용). 연결 계산 키 ② (docs/02 6.2). 매핑하지 못한 표기는 넣지 않고 extensions_raw 원문 + 경고._
 
 
 
@@ -57,7 +57,7 @@ URI: [eg:extensions](http://en-genius.local/onto/extensions)
 
 | Property | Value |
 | --- | --- |
-| Regex Pattern | `^[a-z0-9_+-]+$` |
+| Regex Pattern | `^[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$` |
 
 
 
@@ -99,7 +99,8 @@ URI: [eg:extensions](http://en-genius.local/onto/extensions)
 <details>
 ```yaml
 name: extensions
-description: 정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용). 연결 계산 키 ② (docs/02 6.2).
+description: 정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar.gz 허용). 연결 계산 키 ②
+  (docs/02 6.2). 매핑하지 못한 표기는 넣지 않고 extensions_raw 원문 + 경고.
 from_schema: http://en-genius.local/onto/
 rank: 1000
 owner: IOSpec
@@ -107,7 +108,7 @@ domain_of:
 - IOSpec
 range: string
 multivalued: true
-pattern: ^[a-z0-9_+-]+$
+pattern: ^[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$
 
 ```
 </details></div>

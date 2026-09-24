@@ -7,7 +7,7 @@ rules:
     # 적재기가 엑셀 셀 값을 그대로 대조하고, rules.yaml 의 규칙 값도 원문이다.
     exclude_type: [permissible_value]
   canonical_prefixes:
-    # eg:/egid: 는 사설 네임스페이스 (임시 — config/namespaces.yaml 과 동기, docs/02 4장)
+    # eg:/egid: 는 사설 네임스페이스 (임시 — 정본은 스키마 prefixes, docs/02 4장)
     level: disabled
   recommended:
     # 양식 선택지 값은 원문 자체가 의미 — 값마다 설명을 달지 않는다

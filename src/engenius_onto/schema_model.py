@@ -67,19 +67,33 @@ class LinkMLMeta(RootModel):
         return key in self.root
 
 
-linkml_meta = LinkMLMeta({'default_prefix': 'eg',
+linkml_meta = LinkMLMeta({'default_prefix': 'egds',
      'default_range': 'string',
-     'description': '적재 결과 전체를 한 문서로 묶어 검증·직렬화하기 위한 컨테이너. 온톨로지 본체가 아니므로 OWL·SHACL '
-                    '생성 대상이 아니다 (engenius_tool.yaml 만 생성). Pydantic 클래스는 이 파일에서 '
-                    '생성해 적재기(M3)가 인스턴스 검증에 쓴다.',
-     'id': 'http://en-genius.local/onto/dataset',
+     'description': '적재 결과 전체를 한 문서로 묶어 Pydantic 으로 검증하기 위한 컨테이너. 온톨로지 본체가 아니므로 '
+                    'OWL·SHACL 생성 대상이 아니고, RDF 로 직렬화하지 않는다 — 적재기(M3)는 이름에 @ko 를 '
+                    '붙이는 전용 RDF 작성기로 노드만 내보낸다 (linkml rdflib_dumper 는 참조 슬롯이 문자열인 '
+                    'Pydantic 객체를 다루지 못한다 — M1 검토 실측). 컨테이너 슬롯은 별도 네임스페이스(egds:)에 '
+                    '두어 온톨로지 속성(eg:)과 섞이지 않게 한다.',
+     'id': 'http://en-genius.local/onto/dataset/',
      'imports': ['linkml:types', 'engenius_tool'],
      'license': '사내 전용 — 개발은 합성 데이터로만',
      'name': 'engenius_tool_dataset',
      'prefixes': {'eg': {'prefix_prefix': 'eg',
                          'prefix_reference': 'http://en-genius.local/onto/'},
+                  'egds': {'prefix_prefix': 'egds',
+                           'prefix_reference': 'http://en-genius.local/onto/dataset/'},
+                  'egid': {'prefix_prefix': 'egid',
+                           'prefix_reference': 'http://en-genius.local/id/'},
                   'linkml': {'prefix_prefix': 'linkml',
-                             'prefix_reference': 'https://w3id.org/linkml/'}},
+                             'prefix_reference': 'https://w3id.org/linkml/'},
+                  'prov': {'prefix_prefix': 'prov',
+                           'prefix_reference': 'http://www.w3.org/ns/prov#'},
+                  'rdfs': {'prefix_prefix': 'rdfs',
+                           'prefix_reference': 'http://www.w3.org/2000/01/rdf-schema#'},
+                  'skos': {'prefix_prefix': 'skos',
+                           'prefix_reference': 'http://www.w3.org/2004/02/skos/core#'},
+                  'xsd': {'prefix_prefix': 'xsd',
+                          'prefix_reference': 'http://www.w3.org/2001/XMLSchema#'}},
      'source_file': '<repo>/schema/engenius_tool_dataset.yaml',
      'title': 'En-Genius 툴 온톨로지 — 검증용 컨테이너'} )
 
@@ -310,7 +324,7 @@ class SecurityGrade(str, Enum):
 
 class EntityStatus(str, Enum):
     """
-    수명주기 상태 — 삭제 대신 전이 (상위 스키마 v0.2 §6, docs/01 원칙 9).
+    레지스트리 노드(분야·툴)의 수명주기 — 삭제 대신 전이 (docs/01 원칙 9). 상위 스키마 v0.2 §6 의 산출물 수명주기(작성중→검토중→승인→대체됨|폐기)와는 대상이 다르다: 여기 노드는 사람이 작성·승인하는 산출물이 아니라 조사에서 나온 기준 노드다. 대응은 통합됨 ≈ 대체됨, 폐기 = 폐기.
     """
     활성 = "활성"
     """
@@ -398,7 +412,7 @@ class ResearchField(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'class_uri': 'eg:Field',
          'from_schema': 'http://en-genius.local/onto/',
-         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:FLD-\\d{3}$'}}})
+         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:FLD-[0-9]{3}$'}}})
 
     id: str = Field(default=..., description="""노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -415,12 +429,12 @@ class ResearchField(ConfiguredBaseModel):
                        'Feed',
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
-    status: Optional[EntityStatus] = Field(default=None, description="""수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6).""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField', 'Tool']} })
+    status: Optional[EntityStatus] = Field(default=EntityStatus.활성, description="""수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField', 'Tool'], 'ifabsent': 'string(활성)'} })
     succeeded_by: Optional[list[str]] = Field(default=None, description="""통폐합·분할로 이 분야를 이어받은 분야.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField']} })
 
     @field_validator('id')
     def pattern_id(cls, v):
-        pattern=re.compile(r"^egid:FLD-\d{3}$")
+        pattern=re.compile(r"^egid:FLD-[0-9]{3}$")
         if isinstance(v, list):
             for element in v:
                 if isinstance(element, str) and not pattern.match(element):
@@ -437,7 +451,7 @@ class Tool(ConfiguredBaseModel):
     제품 단위 툴 (표기 변형을 통합한 것). 예 ANSYS Fluent. 분야별 사용 기록은 ToolUsage. 통합은 정규화 키 일치일 때만 자동, 유사도 후보는 사람이 판정 (docs/02 6.1).
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/',
-         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:TOOL-\\d{6}$'}}})
+         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:TOOL-[0-9]{6}$'}}})
 
     id: str = Field(default=..., description="""노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -454,7 +468,7 @@ class Tool(ConfiguredBaseModel):
                        'Feed',
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
-    status: Optional[EntityStatus] = Field(default=None, description="""수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6).""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField', 'Tool']} })
+    status: Optional[EntityStatus] = Field(default=EntityStatus.활성, description="""수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField', 'Tool'], 'ifabsent': 'string(활성)'} })
     pref_label: str = Field(default=..., description="""대표 이름.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Tool'], 'slot_uri': 'skos:prefLabel'} })
     alt_labels: Optional[list[str]] = Field(default=None, description="""조사에서 나온 변형 표기들 (CQ10).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Tool'], 'slot_uri': 'skos:altLabel'} })
     vendor: Optional[str] = Field(default=None, description="""제조사/개발주체 — 사용 기록들의 응답 중 다수값 (엇갈리면 검토표에 표시).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Tool']} })
@@ -463,7 +477,7 @@ class Tool(ConfiguredBaseModel):
 
     @field_validator('id')
     def pattern_id(cls, v):
-        pattern=re.compile(r"^egid:TOOL-\d{6}$")
+        pattern=re.compile(r"^egid:TOOL-[0-9]{6}$")
         if isinstance(v, list):
             for element in v:
                 if isinstance(element, str) and not pattern.match(element):
@@ -480,7 +494,7 @@ class DataCategory(ConfiguredBaseModel):
     데이터 분류 (SW입출력 '분류' 드롭다운 값). 연결 계산 키 ① (docs/02 7.1).
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/',
-         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:CAT-\\d{3}$'}}})
+         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:CAT-[0-9]{3}$'}}})
 
     id: str = Field(default=..., description="""노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -500,7 +514,7 @@ class DataCategory(ConfiguredBaseModel):
 
     @field_validator('id')
     def pattern_id(cls, v):
-        pattern=re.compile(r"^egid:CAT-\d{3}$")
+        pattern=re.compile(r"^egid:CAT-[0-9]{3}$")
         if isinstance(v, list):
             for element in v:
                 if isinstance(element, str) and not pattern.match(element):
@@ -517,7 +531,7 @@ class ToolUsage(ConfiguredBaseModel):
     분야별 SW 응답 1건 = SW기본정보 1행 = SW ID 1개. 같은 툴을 여러 분야가 적으면 여러 개. 입출력(IOSpec)은 분야마다 다르므로 여기에 붙는다.
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/',
-         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:USE-\\d{6}$'},
+         'slot_usage': {'id': {'name': 'id', 'pattern': '^egid:USE-[0-9]{6}$'},
                         'note': {'annotations': {'form_column': {'tag': 'form_column',
                                                                  'value': 'AG'},
                                                  'form_header': {'tag': 'form_header',
@@ -676,11 +690,11 @@ class ToolUsage(ConfiguredBaseModel):
                          'form_header': {'tag': 'form_header', 'value': '대체/업그레이드 계획'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW기본정보'}},
          'domain_of': ['ToolUsage']} })
-    feeds: Optional[list[str]] = Field(default=None, description="""(파생) 이 툴사용이 데이터를 공급하는 툴사용 — Feed 의 지름길, 경로 질의(eg:feeds+)용. derived 그래프에만 있다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ToolUsage', 'Dataset']} })
+    feeds: Optional[list[str]] = Field(default=None, description="""(파생) 이 툴사용이 데이터를 공급하는 툴사용 — Feed 의 지름길, 경로 질의(eg:feeds+)용. derived 그래프에만 있다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ToolUsage']} })
 
     @field_validator('id')
     def pattern_id(cls, v):
-        pattern=re.compile(r"^egid:USE-\d{6}$")
+        pattern=re.compile(r"^egid:USE-[0-9]{6}$")
         if isinstance(v, list):
             for element in v:
                 if isinstance(element, str) and not pattern.match(element):
@@ -693,7 +707,7 @@ class ToolUsage(ConfiguredBaseModel):
 
     @field_validator('license_expiry')
     def pattern_license_expiry(cls, v):
-        pattern=re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+        pattern=re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
         if isinstance(v, list):
             for element in v:
                 if isinstance(element, str) and not pattern.match(element):
@@ -764,7 +778,7 @@ class IOSpec(ConfiguredBaseModel):
                          'form_header': {'tag': 'form_header', 'value': '파일 형식/확장자 *'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW입출력'}},
          'domain_of': ['IOSpec']} })
-    extensions: Optional[list[str]] = Field(default=None, description="""정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용). 연결 계산 키 ② (docs/02 6.2).""", json_schema_extra = { "linkml_meta": {'domain_of': ['IOSpec']} })
+    extensions: Optional[list[str]] = Field(default=None, description="""정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar.gz 허용). 연결 계산 키 ② (docs/02 6.2). 매핑하지 못한 표기는 넣지 않고 extensions_raw 원문 + 경고.""", json_schema_extra = { "linkml_meta": {'domain_of': ['IOSpec']} })
     inhouse_format: Optional[bool] = Field(default=None, description="""확장자 원문에 '(사내)'·'사내' 표기가 있었는지.""", json_schema_extra = { "linkml_meta": {'domain_of': ['IOSpec']} })
     format_standard: Optional[FormatStandard] = Field(default=None, description="""포맷 표준성.""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'G'},
                          'form_header': {'tag': 'form_header', 'value': '포맷 표준성'},
@@ -783,7 +797,7 @@ class IOSpec(ConfiguredBaseModel):
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW입출력'}},
          'domain_of': ['IOSpec']} })
     partner_tools: Optional[list[str]] = Field(default=None, description="""연계 SW명 중 Tool 로 해석된 것.""", json_schema_extra = { "linkml_meta": {'domain_of': ['IOSpec']} })
-    partner_unresolved: Optional[list[str]] = Field(default=None, description="""연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09).""", json_schema_extra = { "linkml_meta": {'domain_of': ['IOSpec']} })
+    partner_unresolved: Optional[list[str]] = Field(default=None, description="""연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09). 원문은 partner_raw 에 있으므로 여기에는 툴 통합과 같은 정규화 키를 넣는다 (SPARQL 로는 정규화를 재현할 수 없어 원문을 넣으면 표기 변형이 서로 다른 후보로 쪼개진다 — M1 검토).""", json_schema_extra = { "linkml_meta": {'domain_of': ['IOSpec']} })
     storage_path: Optional[str] = Field(default=None, description="""저장 위치/경로 원문 (공유폴더 경로, PDM 폴더명).""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'K'},
                          'form_header': {'tag': 'form_header', 'value': '저장 위치/경로'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW입출력'}},
@@ -808,7 +822,7 @@ class IOSpec(ConfiguredBaseModel):
 
     @field_validator('extensions')
     def pattern_extensions(cls, v):
-        pattern=re.compile(r"^[a-z0-9_+-]+$")
+        pattern=re.compile(r"^[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$")
         if isinstance(v, list):
             for element in v:
                 if isinstance(element, str) and not pattern.match(element):
@@ -854,7 +868,7 @@ class Feed(Derived):
     transfer: Optional[list[TransferMethod]] = Field(default=None, description="""양쪽 명세의 전달 방법.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     manual: bool = Field(default=..., description="""수기 구간 여부 (전달 방법 기준).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     manual_basis: Optional[ManualBasis] = Field(default=None, description="""수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
-    grade: Optional[StartGrade] = Field(default=None, description="""착수 등급 (수기·변환 구간에만 매긴다, docs/02 7.4).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
+    grade: Optional[StartGrade] = Field(default=None, description="""착수 등급 (docs/02 7.4) — 수기 연결(manual=true)인 Feed 에 매긴다. 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Feed']} })
     rule_version: str = Field(default=..., description="""이 파생 노드를 만든 규칙 버전 (예 feed_v1).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived']} })
     derived_from: list[str] = Field(default=..., description="""파생의 근거가 된 적재 기록 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:wasDerivedFrom'} })
     generated_at: datetime  = Field(default=..., description="""파생 노드 생성 일시 (provenance).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Derived'], 'slot_uri': 'prov:generatedAtTime'} })
@@ -879,7 +893,7 @@ class SurveyLoad(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/',
          'slot_usage': {'id': {'name': 'id',
-                               'pattern': '^egid:LOAD-\\d{8}T\\d{6}-\\d{2}$'}}})
+                               'pattern': '^egid:LOAD-[0-9]{8}T[0-9]{6}-[0-9]{2}$'}}})
 
     id: str = Field(default=..., description="""노드 식별자. 의미 없는 일련번호 또는 결정적 해시 (docs/02 4장). 예 egid:TOOL-000001""", json_schema_extra = { "linkml_meta": {'domain_of': ['ResearchField',
                        'Tool',
@@ -897,7 +911,7 @@ class SurveyLoad(ConfiguredBaseModel):
                        'SurveyLoad'],
          'slot_uri': 'rdfs:label'} })
     run_id: str = Field(default=..., description="""적재 실행 ID (output/<실행ID> 와 같다).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SurveyLoad']} })
-    source_file_name: str = Field(default=..., description="""원천 파일명 (경로 제외).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SurveyLoad']} })
+    source_file_name: str = Field(default=..., description="""원천 파일명 (경로 제외 — 경로 구분자·드라이브 문자를 허용하지 않는다).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SurveyLoad']} })
     source_sha256: str = Field(default=..., description="""원천 파일 SHA-256 (소문자 16진수).""", json_schema_extra = { "linkml_meta": {'domain_of': ['SurveyLoad']} })
     loaded_at: datetime  = Field(default=..., description="""적재 일시.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SurveyLoad']} })
     row_count: Optional[int] = Field(default=None, description="""적재한 행 수 (두 시트 합).""", ge=0, json_schema_extra = { "linkml_meta": {'domain_of': ['SurveyLoad']} })
@@ -906,7 +920,7 @@ class SurveyLoad(ConfiguredBaseModel):
 
     @field_validator('id')
     def pattern_id(cls, v):
-        pattern=re.compile(r"^egid:LOAD-\d{8}T\d{6}-\d{2}$")
+        pattern=re.compile(r"^egid:LOAD-[0-9]{8}T[0-9]{6}-[0-9]{2}$")
         if isinstance(v, list):
             for element in v:
                 if isinstance(element, str) and not pattern.match(element):
@@ -914,6 +928,19 @@ class SurveyLoad(ConfiguredBaseModel):
                     raise ValueError(err_msg)
         elif isinstance(v, str) and not pattern.match(v):
             err_msg = f"Invalid id format: {v}"
+            raise ValueError(err_msg)
+        return v
+
+    @field_validator('source_file_name')
+    def pattern_source_file_name(cls, v):
+        pattern=re.compile(r"^[^/\\:]+$")
+        if isinstance(v, list):
+            for element in v:
+                if isinstance(element, str) and not pattern.match(element):
+                    err_msg = f"Invalid source_file_name format: {element}"
+                    raise ValueError(err_msg)
+        elif isinstance(v, str) and not pattern.match(v):
+            err_msg = f"Invalid source_file_name format: {v}"
             raise ValueError(err_msg)
         return v
 
@@ -933,17 +960,17 @@ class SurveyLoad(ConfiguredBaseModel):
 
 class Dataset(ConfiguredBaseModel):
     """
-    적재 1회 분량의 survey 그래프 + (선택) derived 그래프 내용.
+    적재 1회 분량(파일 여러 개 가능)의 survey 그래프 + (선택) derived 그래프 내용.
     """
-    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/dataset', 'tree_root': True})
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'http://en-genius.local/onto/dataset/', 'tree_root': True})
 
     fields: Optional[list[ResearchField]] = Field(default=None, description="""분야 노드.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
     tools: Optional[list[Tool]] = Field(default=None, description="""통합된 툴 노드.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
     data_categories: Optional[list[DataCategory]] = Field(default=None, description="""데이터 분류 노드.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
     tool_usages: Optional[list[ToolUsage]] = Field(default=None, description="""툴사용 노드 (SW기본정보 행).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
     io_specs: Optional[list[IOSpec]] = Field(default=None, description="""입출력 명세 노드 (SW입출력 행).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
-    survey_loads: Optional[list[SurveyLoad]] = Field(default=None, description="""적재 기록.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
-    feeds: Optional[list[Feed]] = Field(default=None, description="""(파생) 공급 연결.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ToolUsage', 'Dataset']} })
+    survey_loads: Optional[list[SurveyLoad]] = Field(default=None, description="""적재 기록 (원천 파일마다 1건).""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
+    derived_feeds: Optional[list[Feed]] = Field(default=None, description="""(파생) 공급 연결 노드. ToolUsage.feeds(eg:feeds, 툴사용→툴사용 지름길)와 다른 슬롯이다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Dataset']} })
 
 
 # Model rebuild

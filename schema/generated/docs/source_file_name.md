@@ -6,7 +6,7 @@ search:
 # Slot: source_file_name 
 
 
-_원천 파일명 (경로 제외)._
+_원천 파일명 (경로 제외 — 경로 구분자·드라이브 문자를 허용하지 않는다)._
 
 
 
@@ -53,6 +53,13 @@ URI: [eg:source_file_name](http://en-genius.local/onto/source_file_name)
 | Owner | [SurveyLoad](SurveyLoad.md) |
 
 
+### Value Constraints
+
+| Property | Value |
+| --- | --- |
+| Regex Pattern | `^[^/\\:]+$` |
+
+
 
 
 
@@ -92,7 +99,7 @@ URI: [eg:source_file_name](http://en-genius.local/onto/source_file_name)
 <details>
 ```yaml
 name: source_file_name
-description: 원천 파일명 (경로 제외).
+description: 원천 파일명 (경로 제외 — 경로 구분자·드라이브 문자를 허용하지 않는다).
 from_schema: http://en-genius.local/onto/
 rank: 1000
 owner: SurveyLoad
@@ -100,6 +107,7 @@ domain_of:
 - SurveyLoad
 range: string
 required: true
+pattern: ^[^/\\:]+$
 
 ```
 </details></div>

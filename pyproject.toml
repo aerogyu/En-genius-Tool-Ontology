@@ -19,4 +19,5 @@ where = ["src"]
 testpaths = ["tests"]
 markers = [
     "fuseki: Fuseki 서버가 떠 있어야 하는 테스트 (없으면 skip)",
+    "shacl: Java·Fuseki jar 로 SHACL 을 실제 실행하는 테스트 (없으면 skip)",
 ]

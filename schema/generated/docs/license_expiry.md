@@ -56,7 +56,7 @@ URI: [eg:license_expiry](http://en-genius.local/onto/license_expiry)
 
 | Property | Value |
 | --- | --- |
-| Regex Pattern | `^\d{4}-(0[1-9]|1[0-2])$` |
+| Regex Pattern | `^[0-9]{4}-(0[1-9]|1[0-2])$` |
 
 
 
@@ -124,7 +124,7 @@ owner: ToolUsage
 domain_of:
 - ToolUsage
 range: string
-pattern: ^\d{4}-(0[1-9]|1[0-2])$
+pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
 
 ```
 </details></div>

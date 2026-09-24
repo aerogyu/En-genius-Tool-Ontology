@@ -69,10 +69,10 @@
 | 클래스 | 슬롯 | 범위 | 설명 |
 |---|---|---|---|
 | ResearchField | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
-| ResearchField | `status` | EntityStatus | 수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6). |
+| ResearchField | `status` | EntityStatus | 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성. |
 | ResearchField | `succeeded_by` | ResearchField | 통폐합·분할로 이 분야를 이어받은 분야. |
 | Tool | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
-| Tool | `status` | EntityStatus | 수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6). |
+| Tool | `status` | EntityStatus | 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성. |
 | Tool | `pref_label` | string | 대표 이름. |
 | Tool | `alt_labels` | string | 조사에서 나온 변형 표기들 (CQ10). |
 | Tool | `vendor` | string | 제조사/개발주체 — 사용 기록들의 응답 중 다수값 (엇갈리면 검토표에 표시). |
@@ -90,10 +90,10 @@
 | IOSpec | `source_row` | integer | 원천 엑셀 시트의 행 번호 (조사 보완 시 원본 행을 찾기 위한 추적 정보). |
 | IOSpec | `loaded_in` | SurveyLoad | 이 노드를 만든 적재 기록 (provenance). |
 | IOSpec | `io_owner` | ToolUsage | 이 입출력을 가진 툴사용 (owner_source_key 로 찾은 것). |
-| IOSpec | `extensions` | string | 정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용). 연결 계산 키 ② (docs/02 6.2). |
+| IOSpec | `extensions` | string | 정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar.gz 허용). 연결 계산 키 ② (docs/02 6.2). 매핑하지 못한 표기는 넣지 않고 extensions_raw 원문 + 경고. |
 | IOSpec | `inhouse_format` | boolean | 확장자 원문에 '(사내)'·'사내' 표기가 있었는지. |
 | IOSpec | `partner_tools` | Tool | 연계 SW명 중 Tool 로 해석된 것. |
-| IOSpec | `partner_unresolved` | string | 연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09). |
+| IOSpec | `partner_unresolved` | string | 연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09). 원문은 partner_raw 에 있으므로 여기에는 툴 통합과 같은 정규화 키를 넣는다 (SPARQL 로는 정규화를 재현할 수 없어 원문을 넣으면 표기 변형이 서로 다른 후보로 쪼개진다 — M1 검토). |
 | Feed | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
 | Feed | `from_io` | IOSpec | 공급 측 출력 명세. |
 | Feed | `to_io` | IOSpec | 수요 측 입력 명세. |
@@ -106,13 +106,13 @@
 | Feed | `transfer` | TransferMethod | 양쪽 명세의 전달 방법. |
 | Feed | `manual` | boolean | 수기 구간 여부 (전달 방법 기준). |
 | Feed | `manual_basis` | ManualBasis | 수기 판정 근거 — 전달방법, 또는 비고 키워드만 있는 보조 신호. |
-| Feed | `grade` | StartGrade | 착수 등급 (수기·변환 구간에만 매긴다, docs/02 7.4). |
+| Feed | `grade` | StartGrade | 착수 등급 (docs/02 7.4) — 수기 연결(manual=true)인 Feed 에 매긴다. 변환 구간(숨은변환 의심)은 계산된 연결이 없는 경우라 Feed 노드가 없다 — 그 등급을 둘 자리는 M4 전에 정한다 (docs/05 미결 사항). |
 | Feed | `rule_version` | string | 이 파생 노드를 만든 규칙 버전 (예 feed_v1). |
 | Feed | `derived_from` | SurveyLoad | 파생의 근거가 된 적재 기록 (provenance). |
 | Feed | `generated_at` | datetime | 파생 노드 생성 일시 (provenance). |
 | SurveyLoad | `label` | string | 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다. |
 | SurveyLoad | `run_id` | string | 적재 실행 ID (output/<실행ID> 와 같다). |
-| SurveyLoad | `source_file_name` | string | 원천 파일명 (경로 제외). |
+| SurveyLoad | `source_file_name` | string | 원천 파일명 (경로 제외 — 경로 구분자·드라이브 문자를 허용하지 않는다). |
 | SurveyLoad | `source_sha256` | string | 원천 파일 SHA-256 (소문자 16진수). |
 | SurveyLoad | `loaded_at` | datetime | 적재 일시. |
 | SurveyLoad | `row_count` | integer | 적재한 행 수 (두 시트 합). |

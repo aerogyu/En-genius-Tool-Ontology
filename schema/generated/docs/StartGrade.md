@@ -32,7 +32,7 @@ URI: [eg:StartGrade](http://en-genius.local/onto/StartGrade)
 
 | Name | Description |
 | ---  | --- |
-| [grade](grade.md) | 착수 등급 (수기·변환 구간에만 매긴다, docs/02 7 |
+| [grade](grade.md) | 착수 등급 (docs/02 7 |
 
 
 

@@ -1,6 +1,6 @@
 # En-Genius 툴 온톨로지
 
-연구소 분야별 SW 조사(SW기본정보·SW입출력)를 담아 툴 간 데이터 연결을 계산하기 위한 스키마. 설계 기준은 docs/02_툴온톨로지_설계.md (3·4·7장). 클래스 7종: Field, Tool, ToolUsage, IOSpec, DataCategory, Feed(파생), SurveyLoad. ID 는 의미 없는 일련번호·해시(egid:TOOL-000001 등), 사람이 읽는 이름은 rdfs:label(@ko). 언어 태그(@ko)는 LinkML 이 데이터로 표현하지 못하므로 적재기(M3)가 RDF 를 만들 때 붙인다. 예약(미구현): WbsTask —uses_tool→ ToolUsage/Tool (지멘스 PoC 의 WBS Lv.6 연결).
+연구소 분야별 SW 조사(SW기본정보·SW입출력)를 담아 툴 간 데이터 연결을 계산하기 위한 스키마. 설계 기준은 docs/02_툴온톨로지_설계.md (3·4·7장). 클래스 7종: Field, Tool, ToolUsage, IOSpec, DataCategory, Feed(파생), SurveyLoad. ID 는 의미 없는 일련번호·해시(egid:TOOL-000001 등), 사람이 읽는 이름은 rdfs:label(@ko). 언어 태그(@ko)는 LinkML 이 데이터로 표현하지 못하므로 적재기(M3)가 RDF 를 만들 때 이름 속성(rdfs:label·skos:prefLabel·skos:altLabel)에만 붙인다 — 선택지 값은 태그 없는 문자열. 식별자는 노드 IRI 자체다(eg:id 트리플 없음). ID 규칙은 SHACL 노드 모양이 IRI 패턴으로 검사한다. 네임스페이스 정본은 이 파일의 prefixes (eg·egid) — 코드는 여기서 읽는다 (config.namespaces()). 예약(미구현): WbsTask —uses_tool→ ToolUsage/Tool (지멘스 PoC 의 WBS Lv.6 연결).
 
 URI: http://en-genius.local/onto/
 
@@ -43,14 +43,14 @@ Name: engenius_tool
 | [derived_from](derived_from.md) | 파생의 근거가 된 적재 기록 (provenance) |
 | [direction](direction.md) | 방향 — 이 SW 가 받는 것 = 입력(소비), 내놓는 것 = 출력(생산) |
 | [excluded_row_count](excluded_row_count.md) | 제외한 행 수 (예시 행·빈 행 등, 사유는 실행 로그) |
-| [extensions](extensions.md) | 정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용) |
+| [extensions](extensions.md) | 정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar |
 | [extensions_raw](extensions_raw.md) | 파일 형식/확장자 원문 |
 | [feeds](feeds.md) | (파생) 이 툴사용이 데이터를 공급하는 툴사용 — Feed 의 지름길, 경로 질의(eg:feeds+)용 |
 | [format_standard](format_standard.md) | 포맷 표준성 |
 | [frequency](frequency.md) | 사용 빈도 — 착수 순위 정렬 키 (docs/02 7 |
 | [from_io](from_io.md) | 공급 측 출력 명세 |
 | [generated_at](generated_at.md) | 파생 노드 생성 일시 (provenance) |
-| [grade](grade.md) | 착수 등급 (수기·변환 구간에만 매긴다, docs/02 7 |
+| [grade](grade.md) | 착수 등급 (docs/02 7 |
 | [headless](headless.md) | 헤드리스 실행 — 화면 없이(서버에서) 실행 가능한가 |
 | [id](id.md) | 노드 식별자 |
 | [inhouse_format](inhouse_format.md) | 확장자 원문에 '(사내)'·'사내' 표기가 있었는지 |
@@ -91,11 +91,11 @@ Name: engenius_tool
 | [run_id](run_id.md) | 적재 실행 ID (output/<실행ID> 와 같다) |
 | [runtime_env](runtime_env.md) | 실행 환경 (복수면 대표 1개 + 비고) |
 | [security_grade](security_grade.md) | 보안등급 — 지금은 속성으로만 적재, 접근 통제는 M6 이후 MCP 게이트웨이 (docs/02 11장) |
-| [source_file_name](source_file_name.md) | 원천 파일명 (경로 제외) |
+| [source_file_name](source_file_name.md) | 원천 파일명 (경로 제외 — 경로 구분자·드라이브 문자를 허용하지 않는다) |
 | [source_key](source_key.md) | SW ID 원문 (분야 약칭이 들어 있어 URI 로 쓰지 않는다 — docs/02 4장) |
 | [source_row](source_row.md) | 원천 엑셀 시트의 행 번호 (조사 보완 시 원본 행을 찾기 위한 추적 정보) |
 | [source_sha256](source_sha256.md) | 원천 파일 SHA-256 (소문자 16진수) |
-| [status](status.md) | 수명주기 상태 |
+| [status](status.md) | 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9) |
 | [storage_path](storage_path.md) | 저장 위치/경로 원문 (공유폴더 경로, PDM 폴더명) |
 | [succeeded_by](succeeded_by.md) | 통폐합·분할로 이 분야를 이어받은 분야 |
 | [supplier](supplier.md) | 공급 측 툴사용 (from_io 의 io_owner) |
@@ -124,7 +124,7 @@ Name: engenius_tool
 | [BatchCapability](BatchCapability.md) | 원본 양식 '선택지' 시트의 '배치실행' 목록 |
 | [DataNature](DataNature.md) | 원본 양식 '선택지' 시트의 '데이터성격' 목록 |
 | [DevPhase](DevPhase.md) | 원본 양식 '선택지' 시트의 '사용단계' 목록 |
-| [EntityStatus](EntityStatus.md) | 수명주기 상태 — 삭제 대신 전이 (상위 스키마 v0 |
+| [EntityStatus](EntityStatus.md) | 레지스트리 노드(분야·툴)의 수명주기 — 삭제 대신 전이 (docs/01 원칙 9) |
 | [FeedConfidence](FeedConfidence.md) | 공급 연결 신뢰도 (docs/02 7 |
 | [FormatStandard](FormatStandard.md) | 원본 양식 '선택지' 시트의 '포맷표준성' 목록 |
 | [HeadlessCapability](HeadlessCapability.md) | 원본 양식 '선택지' 시트의 '가능불가모름' 목록 |

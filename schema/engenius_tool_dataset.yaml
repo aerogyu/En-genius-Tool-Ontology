@@ -1,16 +1,25 @@
-id: http://en-genius.local/onto/dataset
+id: http://en-genius.local/onto/dataset/
 name: engenius_tool_dataset
 title: En-Genius 툴 온톨로지 — 검증용 컨테이너
 version: 0.1.0
 description: >-
-  적재 결과 전체를 한 문서로 묶어 검증·직렬화하기 위한 컨테이너. 온톨로지 본체가 아니므로
-  OWL·SHACL 생성 대상이 아니다 (engenius_tool.yaml 만 생성). Pydantic 클래스는 이 파일에서
-  생성해 적재기(M3)가 인스턴스 검증에 쓴다.
+  적재 결과 전체를 한 문서로 묶어 Pydantic 으로 검증하기 위한 컨테이너. 온톨로지 본체가 아니므로
+  OWL·SHACL 생성 대상이 아니고, RDF 로 직렬화하지 않는다 — 적재기(M3)는 이름에 @ko 를 붙이는
+  전용 RDF 작성기로 노드만 내보낸다 (linkml rdflib_dumper 는 참조 슬롯이 문자열인 Pydantic
+  객체를 다루지 못한다 — M1 검토 실측). 컨테이너 슬롯은 별도 네임스페이스(egds:)에 두어
+  온톨로지 속성(eg:)과 섞이지 않게 한다.
 license: 사내 전용 — 개발은 합성 데이터로만
 prefixes:
   linkml: https://w3id.org/linkml/
+  egds: http://en-genius.local/onto/dataset/
+  # 아래는 engenius_tool.yaml 과 같아야 한다 (테스트가 검사) — import 한 스키마의 접두어는 병합되지 않는다
   eg: http://en-genius.local/onto/
-default_prefix: eg
+  egid: http://en-genius.local/id/
+  rdfs: http://www.w3.org/2000/01/rdf-schema#
+  skos: http://www.w3.org/2004/02/skos/core#
+  prov: http://www.w3.org/ns/prov#
+  xsd: http://www.w3.org/2001/XMLSchema#
+default_prefix: egds
 default_range: string
 imports:
   - linkml:types
@@ -19,7 +28,7 @@ imports:
 classes:
   Dataset:
     tree_root: true
-    description: 적재 1회 분량의 survey 그래프 + (선택) derived 그래프 내용.
+    description: 적재 1회 분량(파일 여러 개 가능)의 survey 그래프 + (선택) derived 그래프 내용.
     attributes:
       fields:
         range: ResearchField
@@ -50,9 +59,9 @@ classes:
         range: SurveyLoad
         multivalued: true
         inlined_as_list: true
-        description: 적재 기록.
-      feeds:
+        description: 적재 기록 (원천 파일마다 1건).
+      derived_feeds:
         range: Feed
         multivalued: true
         inlined_as_list: true
-        description: (파생) 공급 연결.
+        description: (파생) 공급 연결 노드. ToolUsage.feeds(eg:feeds, 툴사용→툴사용 지름길)와 다른 슬롯이다.

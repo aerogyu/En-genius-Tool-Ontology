@@ -138,7 +138,7 @@ URI: [eg:SurveyLoad](http://en-genius.local/onto/SurveyLoad)
 | [id](id.md) | 1 <br/> [xsd:anyURI](http://www.w3.org/2001/XMLSchema#anyURI) | 노드 식별자 | direct |
 | [label](label.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 사람이 읽는 이름 | direct |
 | [run_id](run_id.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 적재 실행 ID (output/<실행ID> 와 같다) | direct |
-| [source_file_name](source_file_name.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 원천 파일명 (경로 제외) | direct |
+| [source_file_name](source_file_name.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 원천 파일명 (경로 제외 — 경로 구분자·드라이브 문자를 허용하지 않는다) | direct |
 | [source_sha256](source_sha256.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 원천 파일 SHA-256 (소문자 16진수) | direct |
 | [loaded_at](loaded_at.md) | 1 <br/> [xsd:dateTime](http://www.w3.org/2001/XMLSchema#dateTime) | 적재 일시 | direct |
 | [row_count](row_count.md) | 0..1 <br/> [xsd:integer](http://www.w3.org/2001/XMLSchema#integer) | 적재한 행 수 (두 시트 합) | direct |
@@ -214,7 +214,7 @@ slots:
 slot_usage:
   id:
     name: id
-    pattern: ^egid:LOAD-\d{8}T\d{6}-\d{2}$
+    pattern: ^egid:LOAD-[0-9]{8}T[0-9]{6}-[0-9]{2}$
 attributes:
   run_id:
     name: run_id
@@ -226,12 +226,13 @@ attributes:
     required: true
   source_file_name:
     name: source_file_name
-    description: 원천 파일명 (경로 제외).
+    description: 원천 파일명 (경로 제외 — 경로 구분자·드라이브 문자를 허용하지 않는다).
     from_schema: http://en-genius.local/onto/
     rank: 1000
     domain_of:
     - SurveyLoad
     required: true
+    pattern: ^[^/\\:]+$
   source_sha256:
     name: source_sha256
     description: 원천 파일 SHA-256 (소문자 16진수).
@@ -293,7 +294,7 @@ rank: 1000
 slot_usage:
   id:
     name: id
-    pattern: ^egid:LOAD-\d{8}T\d{6}-\d{2}$
+    pattern: ^egid:LOAD-[0-9]{8}T[0-9]{6}-[0-9]{2}$
 attributes:
   run_id:
     name: run_id
@@ -307,7 +308,7 @@ attributes:
     required: true
   source_file_name:
     name: source_file_name
-    description: 원천 파일명 (경로 제외).
+    description: 원천 파일명 (경로 제외 — 경로 구분자·드라이브 문자를 허용하지 않는다).
     from_schema: http://en-genius.local/onto/
     rank: 1000
     owner: SurveyLoad
@@ -315,6 +316,7 @@ attributes:
     - SurveyLoad
     range: string
     required: true
+    pattern: ^[^/\\:]+$
   source_sha256:
     name: source_sha256
     description: 원천 파일 SHA-256 (소문자 16진수).
@@ -383,7 +385,7 @@ attributes:
     - SurveyLoad
     range: uriorcurie
     required: true
-    pattern: ^egid:LOAD-\d{8}T\d{6}-\d{2}$
+    pattern: ^egid:LOAD-[0-9]{8}T[0-9]{6}-[0-9]{2}$
   label:
     name: label
     description: 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.

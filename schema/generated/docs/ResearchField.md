@@ -89,7 +89,7 @@ URI: [eg:Field](http://en-genius.local/onto/Field)
 | ---  | --- | --- | --- |
 | [id](id.md) | 1 <br/> [xsd:anyURI](http://www.w3.org/2001/XMLSchema#anyURI) | 노드 식별자 | direct |
 | [label](label.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 사람이 읽는 이름 | direct |
-| [status](status.md) | 0..1 <br/> [EntityStatus](EntityStatus.md) | 수명주기 상태 | direct |
+| [status](status.md) | 0..1 <br/> [EntityStatus](EntityStatus.md) | 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9) | direct |
 | [succeeded_by](succeeded_by.md) | * <br/> [ResearchField](ResearchField.md) | 통폐합·분할로 이 분야를 이어받은 분야 | direct |
 
 
@@ -162,7 +162,7 @@ slots:
 slot_usage:
   id:
     name: id
-    pattern: ^egid:FLD-\d{3}$
+    pattern: ^egid:FLD-[0-9]{3}$
 attributes:
   succeeded_by:
     name: succeeded_by
@@ -192,7 +192,7 @@ rank: 1000
 slot_usage:
   id:
     name: id
-    pattern: ^egid:FLD-\d{3}$
+    pattern: ^egid:FLD-[0-9]{3}$
 attributes:
   succeeded_by:
     name: succeeded_by
@@ -221,7 +221,7 @@ attributes:
     - SurveyLoad
     range: uriorcurie
     required: true
-    pattern: ^egid:FLD-\d{3}$
+    pattern: ^egid:FLD-[0-9]{3}$
   label:
     name: label
     description: 사람이 읽는 이름. RDF 에서는 @ko 언어 태그를 붙인다.
@@ -241,9 +241,10 @@ attributes:
     required: true
   status:
     name: status
-    description: 수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6).
+    description: 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.
     from_schema: http://en-genius.local/onto/
     rank: 1000
+    ifabsent: string(활성)
     owner: ResearchField
     domain_of:
     - ResearchField

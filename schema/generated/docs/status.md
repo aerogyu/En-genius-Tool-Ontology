@@ -6,7 +6,7 @@ search:
 # Slot: status 
 
 
-_수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6)._
+_수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성._
 
 
 
@@ -46,6 +46,13 @@ URI: [eg:status](http://en-genius.local/onto/status)
 
 | Property | Value |
 | --- | --- |
+### Slot Characteristics
+
+| Property | Value |
+| --- | --- |
+| If Absent | `string(활성)` |
+
+
 
 
 
@@ -85,9 +92,10 @@ URI: [eg:status](http://en-genius.local/onto/status)
 <details>
 ```yaml
 name: status
-description: 수명주기 상태. 삭제하지 않고 상태를 바꾼다 (상위 스키마 v0.2 §6).
+description: 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9). 없으면 활성.
 from_schema: http://en-genius.local/onto/
 rank: 1000
+ifabsent: string(활성)
 domain_of:
 - ResearchField
 - Tool

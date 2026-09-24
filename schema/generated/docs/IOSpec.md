@@ -278,7 +278,7 @@ URI: [eg:IOSpec](http://en-genius.local/onto/IOSpec)
 | [data_name](data_name.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 데이터/산출물 명칭 원문 | direct |
 | [io_category](io_category.md) | 1 <br/> [DataCategory](DataCategory.md) | 분류 | direct |
 | [extensions_raw](extensions_raw.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 파일 형식/확장자 원문 | direct |
-| [extensions](extensions.md) | * <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용) | direct |
+| [extensions](extensions.md) | * <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar | direct |
 | [inhouse_format](inhouse_format.md) | 0..1 <br/> [xsd:boolean](http://www.w3.org/2001/XMLSchema#boolean) | 확장자 원문에 '(사내)'·'사내' 표기가 있었는지 | direct |
 | [format_standard](format_standard.md) | 0..1 <br/> [FormatStandard](FormatStandard.md) | 포맷 표준성 | direct |
 | [data_nature](data_nature.md) | 1 <br/> [DataNature](DataNature.md) | 데이터 성격 — 서술형은 문서 RAG, 수치는 DB 적재 대상 | direct |
@@ -479,13 +479,14 @@ attributes:
     required: true
   extensions:
     name: extensions
-    description: 정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용). 연결 계산 키 ② (docs/02 6.2).
+    description: 정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar.gz 허용). 연결 계산
+      키 ② (docs/02 6.2). 매핑하지 못한 표기는 넣지 않고 extensions_raw 원문 + 경고.
     from_schema: http://en-genius.local/onto/
     rank: 1000
     domain_of:
     - IOSpec
     multivalued: true
-    pattern: ^[a-z0-9_+-]+$
+    pattern: ^[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$
   inhouse_format:
     name: inhouse_format
     description: 확장자 원문에 '(사내)'·'사내' 표기가 있었는지.
@@ -578,7 +579,9 @@ attributes:
     multivalued: true
   partner_unresolved:
     name: partner_unresolved
-    description: 연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09).
+    description: 연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09). 원문은 partner_raw 에 있으므로
+      여기에는 툴 통합과 같은 정규화 키를 넣는다 (SPARQL 로는 정규화를 재현할 수 없어 원문을 넣으면 표기 변형이 서로 다른 후보로 쪼개진다
+      — M1 검토).
     from_schema: http://en-genius.local/onto/
     rank: 1000
     domain_of:
@@ -764,7 +767,8 @@ attributes:
     required: true
   extensions:
     name: extensions
-    description: 정규화한 확장자 목록 (소문자, 점·별표 제거, 별칭 적용). 연결 계산 키 ② (docs/02 6.2).
+    description: 정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar.gz 허용). 연결 계산
+      키 ② (docs/02 6.2). 매핑하지 못한 표기는 넣지 않고 extensions_raw 원문 + 경고.
     from_schema: http://en-genius.local/onto/
     rank: 1000
     owner: IOSpec
@@ -772,7 +776,7 @@ attributes:
     - IOSpec
     range: string
     multivalued: true
-    pattern: ^[a-z0-9_+-]+$
+    pattern: ^[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$
   inhouse_format:
     name: inhouse_format
     description: 확장자 원문에 '(사내)'·'사내' 표기가 있었는지.
@@ -872,7 +876,9 @@ attributes:
     multivalued: true
   partner_unresolved:
     name: partner_unresolved
-    description: 연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09).
+    description: 연계 SW명 중 Tool 로 해석하지 못한 이름 — 조사 누락 후보 (CQ09). 원문은 partner_raw 에 있으므로
+      여기에는 툴 통합과 같은 정규화 키를 넣는다 (SPARQL 로는 정규화를 재현할 수 없어 원문을 넣으면 표기 변형이 서로 다른 후보로 쪼개진다
+      — M1 검토).
     from_schema: http://en-genius.local/onto/
     rank: 1000
     owner: IOSpec

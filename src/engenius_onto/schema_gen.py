@@ -38,8 +38,10 @@ GENERATED_BANNER = "자동 생성 — 직접 고치지 말 것. 원본: schema/e
 
 
 def _norm_header(h: str) -> str:
-    """헤더 비교용 정규화 — '*' 와 공백 무시 (docs/02 5장)."""
-    return re.sub(r"[\s*]", "", h or "")
+    """헤더 비교용 정규화 — '*' 와 공백 무시 (docs/02 5장). NFKC 를 먼저 적용해 전각 기호(＊ 등)도 같게."""
+    import unicodedata
+
+    return re.sub(r"[\s*]", "", unicodedata.normalize("NFKC", h or ""))
 
 
 # ---------------------------------------------------------------------------
@@ -113,8 +115,8 @@ def _owl_dl_tidy(ttl: str) -> str:
        갖는 슬롯은 DatatypeProperty 로 바꾼다. 데이터의 선택지 값은 언어 태그 없는 문자열이어야
        한다 (SHACL sh:in 과 같은 표현).
     """
-    from rdflib import BNode, Graph, URIRef
-    from rdflib.namespace import OWL, RDF, RDFS
+    from rdflib import BNode, Graph, Literal, URIRef
+    from rdflib.namespace import OWL, RDF, RDFS, SKOS, XSD
 
     g = Graph().parse(data=ttl, format="turtle")
 
@@ -144,7 +146,81 @@ def _owl_dl_tidy(ttl: str) -> str:
     for p in enum_props:
         g.remove((p, RDF.type, OWL.ObjectProperty))
         g.add((p, RDF.type, OWL.DatatypeProperty))
+
+    # 3. 식별자 — LinkML identifier 슬롯(id)을 gen-owl 이 eg:id 데이터 속성 + 클래스마다
+    #    cardinality 1 + allValuesFrom (xsd:anyURI ∩ xsd:string[pattern]) 으로 만든다. 두 데이터타입의
+    #    값 공간은 서로소라 핵심 클래스가 전부 충족 불가(owl:Nothing)가 된다 (M1 검토에서 HermiT 로
+    #    실측). 식별자는 노드 IRI 자체이므로 eg:id 를 통째로 지운다 — ID 규칙은 SHACL 이 IRI 패턴으로 검사.
+    eg_id = URIRef(_namespaces()["eg"] + "id")
+    for r in list(g.subjects(OWL.onProperty, eg_id)):
+        for s, pp in list(g.subject_predicates(r)):
+            g.remove((s, pp, r))
+        g.remove((r, None, None))
+    g.remove((eg_id, None, None))
+
+    # 4. xsd:pattern — XSD 정규식은 전체 일치가 암묵이고 ^ $ 는 일반 문자다 (XSD Part 2 부록 F).
+    #    LinkML 패턴의 앵커를 떼어낸다 (SHACL sh:pattern 은 부분 일치라 앵커를 그대로 둔다).
+    for s, p, o in list(g.triples((None, XSD.pattern, None))):
+        g.remove((s, p, o))
+        g.add((s, p, Literal(re.sub(r"^\^|\$$", "", str(o)))))
+
+    # 5. 외부 표준 속성(prov: 등)에 건 전역 rdfs:range·domain 은 남의 어휘를 바꾸는 것 — 그 속성을
+    #    제약하는 클래스의 국소 allValuesFrom 으로 옮긴다.
+    eg_ns = _namespaces()["eg"]
+    for p, rng in list(g.subject_objects(RDFS.range)):
+        if str(p).startswith(eg_ns):
+            continue
+        g.remove((p, RDFS.range, rng))
+        for cls in {c for r in g.subjects(OWL.onProperty, p) for c in g.subjects(RDFS.subClassOf, r)}:
+            r2 = BNode()
+            g.add((r2, RDF.type, OWL.Restriction))
+            g.add((r2, OWL.onProperty, p))
+            g.add((r2, OWL.allValuesFrom, rng))
+            g.add((cls, RDFS.subClassOf, r2))
+    for p, dom in list(g.subject_objects(RDFS.domain)):
+        if not str(p).startswith(eg_ns):
+            g.remove((p, RDFS.domain, dom))
+
+    # 6. 가리키는 대상이 없는 eg: IRI 로의 skos:exactMatch (LinkML 원래 클래스명 — class_uri 를 쓴 경우)
+    for s, o in list(g.subject_objects(SKOS.exactMatch)):
+        if str(o).startswith(eg_ns) and (o, None, None) not in g:
+            g.remove((s, SKOS.exactMatch, o))
+
+    _drop_orphan_bnodes(g)
+
+    # 7. 쓰였지만 선언되지 않은 주석 속성 선언 (OWL 2 RDF 매핑은 내장 외 주석 속성의 선언을 요구)
+    builtin = (str(RDF), str(RDFS), str(OWL), str(XSD))
+    declared = {p for t in (OWL.AnnotationProperty, OWL.DatatypeProperty, OWL.ObjectProperty)
+                for p in g.subjects(RDF.type, t)}
+    for p in set(g.predicates()):
+        if not str(p).startswith(builtin) and p not in declared:
+            g.add((p, RDF.type, OWL.AnnotationProperty))
+
+    # 8. 온톨로지 버전
+    version = yaml.safe_load(SCHEMA.read_text(encoding="utf-8")).get("version")
+    for ont in g.subjects(RDF.type, OWL.Ontology):
+        if version:
+            g.add((ont, OWL.versionInfo, Literal(str(version))))
     return g.serialize(format="turtle")
+
+
+def _drop_orphan_bnodes(g) -> None:
+    """어디서도 참조되지 않는 빈 노드와 그 아래 트리플을 지운다 (제약·리스트를 뺀 뒤 남는 조각)."""
+    from rdflib import BNode
+
+    while True:
+        referenced = {o for o in g.objects() if isinstance(o, BNode)}
+        orphans = {s for s in g.subjects() if isinstance(s, BNode) and s not in referenced}
+        if not orphans:
+            return
+        for s in orphans:
+            g.remove((s, None, None))
+
+
+def _namespaces() -> dict:
+    from engenius_onto.config import namespaces
+
+    return namespaces(SCHEMA)
 
 
 def build_shacl() -> str:
@@ -157,13 +233,18 @@ def build_shacl() -> str:
 
 
 def _shacl_tidy(ttl: str) -> str:
-    """이름 속성(rdfs:label·skos:prefLabel·skos:altLabel)의 값 타입을 rdf:langString 으로.
+    """gen-shacl 출력 정리.
 
-    설계상 모든 이름은 @ko 언어 태그를 단다 (docs/02 4장) — 태그 붙은 리터럴의 데이터타입은
-    rdf:langString 이라, gen-shacl 이 넣는 xsd:string 그대로면 모든 노드가 위반이 된다.
+    1. 이름 속성(rdfs:label·skos:prefLabel·skos:altLabel) — 설계상 모든 이름은 @ko 언어 태그를
+       단다 (docs/02 4장). 태그 붙은 리터럴의 데이터타입은 rdf:langString 이라, gen-shacl 이 넣는
+       xsd:string 그대로면 모든 노드가 위반이 된다. langString + sh:languageIn ("ko").
+    2. 식별자 — 아래 주석.
     """
     from rdflib import Graph, Namespace, URIRef
     from rdflib.namespace import RDF, XSD
+
+    from rdflib import BNode, Literal
+    from rdflib.collection import Collection
 
     sh = Namespace("http://www.w3.org/ns/shacl#")
     g = Graph().parse(data=ttl, format="turtle")
@@ -172,7 +253,40 @@ def _shacl_tidy(ttl: str) -> str:
             if (ps, sh.datatype, XSD.string) in g:
                 g.remove((ps, sh.datatype, XSD.string))
                 g.add((ps, sh.datatype, RDF.langString))
+            # docs/02 4장: 모든 이름은 @ko. (상위 스키마 부록 B 의 @ko/@en 이중화는 v0.1 범위 밖)
+            langs = BNode()
+            Collection(g, langs, [Literal("ko")])
+            g.add((ps, sh.languageIn, langs))
+
+    # 식별자 — gen-shacl 은 id 를 sh:path eg:id 속성 모양으로 만드는데, 식별자는 노드 IRI 자체라
+    # eg:id 트리플이 없어 그 패턴은 항상 통과하는 무효 제약이다 (M1 검토에서 Jena SHACL 로 실측).
+    # 속성 모양을 지우고, 노드 모양에 IRI 자체의 패턴(전개된 네임스페이스)을 건다.
+    ns = _namespaces()
+    eg_id = URIRef(ns["eg"] + "id")
+    for ps in list(g.subjects(sh.path, eg_id)):
+        for s, pp in list(g.subject_predicates(ps)):
+            g.remove((s, pp, ps))
+        g.remove((ps, None, None))
+    for class_uri, pattern in _id_patterns().items():
+        full = pattern.replace("egid:", re.escape(ns["egid"]), 1)
+        for shape in g.subjects(sh.targetClass, URIRef(class_uri)):
+            g.add((shape, sh.nodeKind, sh.IRI))
+            g.add((shape, sh.pattern, Literal(full)))
+    _drop_orphan_bnodes(g)
     return g.serialize(format="turtle")
+
+
+def _id_patterns() -> dict[str, str]:
+    """클래스 IRI → id 슬롯 패턴 (egid: 접두 이름 형태)."""
+    sv = _schema_view()
+    out = {}
+    for cname in sv.all_classes():
+        if sv.get_class(cname).mixin:
+            continue
+        pat = sv.induced_slot("id", cname).pattern if "id" in sv.class_slots(cname) else None
+        if pat:
+            out[sv.get_uri(cname, expand=True)] = pat
+    return out
 
 
 def build_pydantic() -> str:
@@ -260,10 +374,14 @@ def form_mapping(sv=None) -> list[MappingRow]:
 def excluded_columns(sv=None) -> list[tuple[str, str, str]]:
     sv = sv or _schema_view()
     raw = _ann(sv.schema, "form_excluded_columns")
+    if not raw:
+        raise ValueError("스키마 주석 form_excluded_columns 가 없다")
     out = []
     for item in raw.split(";"):
-        sheet, header, reason = (x.strip() for x in item.split("|", 2))
-        out.append((sheet, header, reason))
+        parts = [x.strip() for x in item.split("|", 2)]
+        if len(parts) != 3 or not all(parts):
+            raise ValueError(f"form_excluded_columns 항목 형식 오류 ('시트|헤더|이유'): {item.strip()!r}")
+        out.append(tuple(parts))
     return out
 
 
@@ -317,8 +435,15 @@ def check_mapping(sv=None) -> list[str]:
     """양식 헤더 전부가 슬롯 하나 또는 의도적 제외에 대응하는지 (M1 완료 기준: 누락 0)."""
     sv = sv or _schema_view()
     rows = form_mapping(sv)
-    excl = excluded_columns(sv)
+    try:
+        excl = excluded_columns(sv)
+    except ValueError as e:
+        return [str(e)]
     problems = []
+    for sheet, header, _ in excl:
+        both = [r for r in rows if r.sheet == sheet and _norm_header(r.header) == _norm_header(header)]
+        for r in both:
+            problems.append(f"{sheet} '{header}': 제외 열인데 슬롯 {r.cls}.{r.slot} 에도 매핑됨")
     for source, headers in (("xlsx", form_headers_xlsx()), ("양식_명세.md", form_headers_spec_md())):
         for sheet in FORM_SHEETS:
             mapped = [r for r in rows if r.sheet == sheet]
@@ -431,29 +556,39 @@ def _read(p: Path) -> str | None:
     return p.read_text(encoding="utf-8") if p.exists() else None
 
 
+def check_dataset_prefixes() -> list[str]:
+    """컨테이너 스키마는 import 한 본 스키마의 접두어를 물려받지 못한다 — 같은 값을 직접 가져야 한다."""
+    master = yaml.safe_load(SCHEMA.read_text(encoding="utf-8"))["prefixes"]
+    ds = yaml.safe_load(DATASET_SCHEMA.read_text(encoding="utf-8"))["prefixes"]
+    return [f"컨테이너 스키마 접두어 '{k}' 가 본 스키마와 다름 ({ds.get(k)!r} vs {v!r})"
+            for k, v in master.items() if ds.get(k) != v]
+
+
 def run(check: bool = False) -> int:
     problems = []
     lp = lint()
     problems += [f"[lint] {p}" for p in lp]
     problems += [f"[매핑] {p}" for p in check_mapping()]
     problems += [f"[선택지] {p}" for p in check_enums_vs_form()]
+    problems += [f"[접두어] {p}" for p in check_dataset_prefixes()]
     for p in problems:
         print(p)
     if problems:
         print(f"점검 실패 {len(problems)}건 — 생성하지 않음")
         return 1
-    print("[OK] lint 0건 · 양식 매핑 누락 0 · 선택지 일치")
+    print("[OK] lint 0건 · 양식 매핑 누락 0 · 선택지 일치 · 컨테이너 접두어 일치")
 
     new = outputs()
-    stale_docs = [p for p in DOCS_DIR.rglob("*") if p.is_file() and p not in new] if DOCS_DIR.exists() else []
+    # 생성물 폴더 전체 기준 — 생성 목록에서 빠진 옛 파일이 남아 있으면 잔존으로 본다
+    stale = [p for p in GEN_DIR.rglob("*") if p.is_file() and p not in new] if GEN_DIR.exists() else []
     changed = [p for p, txt in new.items() if _read(p) != txt]
     rel = lambda p: p.relative_to(REPO_ROOT).as_posix()  # noqa: E731
     if check:
         for p in changed:
             print(f"[불일치] {rel(p)} — 생성물이 스키마와 다르다")
-        for p in stale_docs:
-            print(f"[잔존] {rel(p)} — 스키마에 없는 문서")
-        if changed or stale_docs:
+        for p in stale:
+            print(f"[잔존] {rel(p)} — 지금 스키마로는 생성되지 않는 파일")
+        if changed or stale:
             print("python -m engenius_onto schema 로 다시 생성할 것")
             return 1
         print(f"[OK] 생성물 {len(new)}개가 스키마와 일치")
@@ -461,7 +596,7 @@ def run(check: bool = False) -> int:
     for p in changed:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(new[p], encoding="utf-8", newline="\n")
-    for p in stale_docs:
+    for p in stale:
         p.unlink()
-    print(f"생성 {len(new)}개 (변경 {len(changed)}, 삭제 {len(stale_docs)})")
+    print(f"생성 {len(new)}개 (변경 {len(changed)}, 삭제 {len(stale)})")
     return 0

@@ -9,7 +9,7 @@ search:
 
 
 
-_수명주기 상태 — 삭제 대신 전이 (상위 스키마 v0.2 §6, docs/01 원칙 9)._
+_레지스트리 노드(분야·툴)의 수명주기 — 삭제 대신 전이 (docs/01 원칙 9). 상위 스키마 v0.2 §6 의 산출물 수명주기(작성중→검토중→승인→대체됨|폐기)와는 대상이 다르다: 여기 노드는 사람이 작성·승인하는 산출물이 아니라 조사에서 나온 기준 노드다. 대응은 통합됨 ≈ 대체됨, 폐기 = 폐기._
 
 
 
@@ -31,7 +31,7 @@ URI: [eg:EntityStatus](http://en-genius.local/onto/EntityStatus)
 
 | Name | Description |
 | ---  | --- |
-| [status](status.md) | 수명주기 상태 |
+| [status](status.md) | 수명주기 상태 — 삭제하지 않고 상태를 바꾼다 (docs/01 원칙 9) |
 
 
 
@@ -63,7 +63,9 @@ URI: [eg:EntityStatus](http://en-genius.local/onto/EntityStatus)
 <details>
 ```yaml
 name: EntityStatus
-description: 수명주기 상태 — 삭제 대신 전이 (상위 스키마 v0.2 §6, docs/01 원칙 9).
+description: '레지스트리 노드(분야·툴)의 수명주기 — 삭제 대신 전이 (docs/01 원칙 9). 상위 스키마 v0.2 §6 의 산출물
+  수명주기(작성중→검토중→승인→대체됨|폐기)와는 대상이 다르다: 여기 노드는 사람이 작성·승인하는 산출물이 아니라 조사에서 나온 기준 노드다. 대응은
+  통합됨 ≈ 대체됨, 폐기 = 폐기.'
 from_schema: http://en-genius.local/onto/
 rank: 1000
 permissible_values:

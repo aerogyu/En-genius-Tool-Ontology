@@ -73,11 +73,17 @@ def test_generated_files_up_to_date():
     assert schema_gen.run(check=True) == 0
 
 
-def test_namespaces_config_matches_schema():
+def test_namespaces_single_source():
+    """네임스페이스 정본은 스키마 prefixes 한 곳 — 코드는 거기서 읽고, 컨테이너 스키마도 같은 값."""
     sch = yaml.safe_load(schema_gen.SCHEMA.read_text(encoding="utf-8"))
     ns = namespaces()
-    assert sch["prefixes"]["eg"] == ns["eg"] and sch["prefixes"]["egid"] == ns["egid"]
+    assert ns == {"eg": sch["prefixes"]["eg"], "egid": sch["prefixes"]["egid"]}
     assert sch["id"] == ns["eg"]
+    assert schema_gen.check_dataset_prefixes() == []
+
+
+def test_header_normalization_nfkc():
+    assert schema_gen._norm_header("담당 부서 ＊") == schema_gen._norm_header("담당 부서 *")
 
 
 # --- OWL ---------------------------------------------------------------------
@@ -114,6 +120,44 @@ def test_owl_form_annotations_present(owl):
     assert owl.value(EG.source_key, EG.form_header) is not None
 
 
+def test_owl_no_identifier_property(owl):
+    """식별자는 노드 IRI — eg:id 속성·제약이 남으면 핵심 클래스가 충족 불가가 된다 (M1 검토, HermiT 실측)."""
+    assert not list(owl.triples((EG.id, None, None)))
+    assert not list(owl.subjects(OWL.onProperty, EG.id))
+
+
+def test_owl_patterns_are_xsd_syntax(owl):
+    """XSD 정규식은 전체 일치가 암묵 — ^ $ 가 남으면 모든 값이 거부된다. \\d 대신 [0-9] (HermiT 호환)."""
+    from rdflib.namespace import XSD
+
+    pats = [str(o) for o in owl.objects(None, XSD.pattern)]
+    assert pats
+    for p in pats:
+        assert not p.startswith("^") and not p.endswith("$") and "\\d" not in p
+
+
+def test_owl_all_predicates_declared_and_no_orphans(owl):
+    from rdflib import BNode
+    from rdflib.namespace import XSD
+
+    builtin = (str(RDF), str(RDFS), str(OWL), str(XSD))
+    declared = {p for t in (OWL.AnnotationProperty, OWL.DatatypeProperty, OWL.ObjectProperty)
+                for p in owl.subjects(RDF.type, t)}
+    assert [p for p in set(owl.predicates()) if not str(p).startswith(builtin) and p not in declared] == []
+    referenced = {o for o in owl.objects() if isinstance(o, BNode)}
+    assert not {s for s in owl.subjects() if isinstance(s, BNode) and s not in referenced}
+
+
+def test_owl_external_vocab_not_globally_constrained(owl):
+    """prov:wasDerivedFrom 같은 남의 속성에 전역 range 를 걸지 않고 Derived 의 국소 제약으로 둔다."""
+    prov = Namespace("http://www.w3.org/ns/prov#")
+    assert not [p for p, _ in owl.subject_objects(RDFS.range) if not str(p).startswith(str(EG))]
+    local = [r for r in owl.objects(EG.Derived, RDFS.subClassOf)
+             if owl.value(r, OWL.onProperty) == prov.wasDerivedFrom and owl.value(r, OWL.allValuesFrom) == EG.SurveyLoad]
+    assert local
+    assert str(owl.value(URIRef(str(EG)), OWL.versionInfo)) == "0.1.0"
+
+
 # --- SHACL -------------------------------------------------------------------
 def test_shacl_labels_accept_language_tags(shacl):
     for p in map(URIRef, schema_gen._ANNOTATION_PROPS):
@@ -132,6 +176,25 @@ def test_shacl_enum_values_are_plain_strings(shacl):
     for lst in ins:
         for v in Collection(shacl, lst):
             assert v.language is None
+
+
+def test_shacl_ids_checked_on_node_iri(shacl):
+    """ID 규칙은 노드 IRI 자체의 패턴 (eg:id 속성 모양은 값이 없어 무효였다)."""
+    ns = namespaces()
+    assert not list(shacl.subjects(SH.path, EG.id))
+    for cls in CORE_CLASSES:
+        shape = next(shacl.subjects(SH.targetClass, EG[cls]))
+        assert shacl.value(shape, SH.nodeKind) == SH.IRI
+        pat = str(shacl.value(shape, SH.pattern))
+        assert pat.startswith("^" + __import__("re").escape(ns["egid"]))
+
+
+def test_shacl_labels_require_ko(shacl):
+    from rdflib.collection import Collection
+
+    for p in map(URIRef, schema_gen._ANNOTATION_PROPS):
+        for ps in shacl.subjects(SH.path, p):
+            assert [str(x) for x in Collection(shacl, shacl.value(ps, SH.languageIn))] == ["ko"]
 
 
 # --- Pydantic (적재기 검증용) -----------------------------------------------
@@ -174,7 +237,9 @@ def test_pydantic_accepts_valid_sample():
     (("tool_usages", "user_count"), -1),                    # 음수
     (("tool_usages", "id"), "egid:USE-1"),                  # ID 규칙 위반
     (("io_specs", "extensions"), [".CAS"]),                 # 정규화 안 된 확장자
+    (("io_specs", "extensions"), ["inp(abaqus)"]),          # 괄호 주석이 남은 확장자
     (("fields", "id"), "egid:FLD-1"),
+    (("fields", "id"), "egid:FLD-٠٠١"),                    # 아랍-인도 숫자 — \d 는 통과시키지만 [0-9] 는 거부
 ])
 def test_pydantic_rejects_invalid(path, bad):
     """거부는 적재기(M3)가 잡아 '경고'로 낮춘다 — 여기서는 검출되는지만 본다."""
@@ -186,6 +251,26 @@ def test_pydantic_rejects_invalid(path, bad):
     d[path[0]][0][path[1]] = bad
     with pytest.raises(ValidationError):
         Dataset(**d)
+
+
+def test_pydantic_v01_review_fixes():
+    """M1 검토 반영: 다중 점 확장자 허용, 상태 기본값 활성, 파일명에 경로 금지, 컨테이너 슬롯 이름."""
+    from pydantic import ValidationError
+
+    from engenius_onto.schema_model import Dataset, SurveyLoad
+
+    d = _sample()
+    d["io_specs"][0]["extensions"] = ["tar.gz", "x_t", "c++"]
+    ds = Dataset(**d)
+    assert ds.fields[0].status == "활성"
+    assert "derived_feeds" in Dataset.model_fields and "feeds" not in Dataset.model_fields
+    load = dict(id="egid:LOAD-20260924T120000-01", label="합성 적재", run_id="R1",
+                source_file_name="survey_synthetic.xlsx", source_sha256="0" * 64,
+                loaded_at="2026-09-24T12:00:00")
+    SurveyLoad(**load)
+    for bad in (r"C:\data\survey.xlsx", "data/survey.xlsx"):
+        with pytest.raises(ValidationError):
+            SurveyLoad(**{**load, "source_file_name": bad})
 
 
 def test_pydantic_required_field_missing():

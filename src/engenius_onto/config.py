@@ -43,5 +43,15 @@ def fuseki_config(config_dir: Path | None = None) -> FusekiConfig:
     )
 
 
-def namespaces(config_dir: Path | None = None) -> dict:
-    return load_yaml("namespaces.yaml", config_dir)
+SCHEMA_FILE = REPO_ROOT / "schema" / "engenius_tool.yaml"
+
+
+def namespaces(schema_file: Path | None = None) -> dict:
+    """온톨로지·인스턴스 네임스페이스 {eg, egid}. 정본은 스키마 prefixes 한 곳이다.
+
+    바꿀 때는 schema/engenius_tool.yaml(과 검증용 컨테이너 스키마) 의 prefixes 를 고치고
+    python -m engenius_onto schema 로 재생성한다 — 생성물(OWL·SHACL·Pydantic)이 IRI 를 담기 때문.
+    """
+    with (schema_file or SCHEMA_FILE).open(encoding="utf-8") as f:
+        prefixes = yaml.safe_load(f)["prefixes"]
+    return {"eg": prefixes["eg"], "egid": prefixes["egid"]}
