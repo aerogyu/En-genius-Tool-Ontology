@@ -1,0 +1,16 @@
+# 실데이터 — 절대 커밋 금지 (사내 전용)
+data/real/
+
+# 실행 결과·캐시
+output/
+offline/wheels/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+
+# Fuseki 데이터베이스 파일
+fuseki-data/
+run/
