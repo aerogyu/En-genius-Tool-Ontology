@@ -1,0 +1,29 @@
+{
+  "$comment_1": "En-Genius 툴 온톨로지 전용 권한. SANTA(C:\\GTSAS) 설정과 독립.",
+  "$comment_2": "절대 규칙 1·7: data/real/ 은 사내 전용 — 이 PC 에서 도구가 읽거나 쓰지 않는다.",
+  "$comment_3": "다운로드(curl)는 막지 않는다 — 반입용 SW·wheel 수집이 이 저장소의 일이다 (2026-09-24 Leo 승인).",
+
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "Bash(py:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "ask": [
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)"
+    ],
+    "deny": [
+      "Read(/data/real/**)",
+      "Edit(/data/real/**)",
+      "Write(/data/real/**)",
+      "Read(.env)",
+      "Bash(rm -rf:*)"
+    ]
+  }
+}
