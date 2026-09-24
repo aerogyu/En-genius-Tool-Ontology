@@ -1,0 +1,8 @@
+# Fuseki 접속과 named graph IRI (docs/02 8장)
+endpoint: http://localhost:3030
+dataset: engenius
+graphs:
+  schema: http://en-genius.local/graph/schema
+  survey: http://en-genius.local/graph/survey
+  derived: http://en-genius.local/graph/derived
+timeout_s: 10

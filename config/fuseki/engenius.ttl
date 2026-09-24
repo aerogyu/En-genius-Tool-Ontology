@@ -1,0 +1,24 @@
+# Fuseki 서버 설정 — TDB2 데이터셋 'engenius' (docs/02 8장)
+# 실행: scripts\fuseki_start.bat (저장소 루트 기준 상대경로로 DB 위치를 잡는다)
+PREFIX :        <#>
+PREFIX fuseki:  <http://jena.apache.org/fuseki#>
+PREFIX rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX tdb2:    <http://jena.apache.org/2016/tdb#>
+
+[] rdf:type fuseki:Server .
+
+:service rdf:type fuseki:Service ;
+    fuseki:name "engenius" ;
+    fuseki:endpoint [ fuseki:operation fuseki:query  ; fuseki:name "sparql" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:query  ; fuseki:name "query" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:update ; fuseki:name "update" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:gsp-rw ; fuseki:name "data" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:query ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:gsp-rw ] ;
+    fuseki:dataset :dataset .
+
+# unionDefaultGraph: 기본 그래프 = 모든 named graph 의 합집합.
+# 로컬 rdflib 백엔드도 Dataset(default_union=True) 로 같은 의미를 맞춘다.
+:dataset rdf:type tdb2:DatasetTDB2 ;
+    tdb2:location "fuseki-data/engenius" ;
+    tdb2:unionDefaultGraph true .

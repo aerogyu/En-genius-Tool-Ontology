@@ -1,0 +1,11 @@
+# 런타임 의존성 (반입 대상). 버전 고정은 requirements.lock (M5).
+# 새 패키지는 docs/04_반입목록.md 에 라이선스와 함께 추가한다.
+#
+# linkml 은 여기 넣지 않는다 — linkml 이 jsonschema[format] 을 거쳐 rfc3987(GPLv3+)
+# 을 끌어온다. 스키마 생성(gen-owl/gen-shacl/gen-pydantic)은 개발 PC 에서 하고
+# 생성물을 schema/ 에 커밋한다. 사내 런타임은 생성된 Pydantic 클래스로 검증한다.
+rdflib
+pydantic
+openpyxl
+pandas
+pyyaml

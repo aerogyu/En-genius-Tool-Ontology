@@ -14,3 +14,8 @@ __pycache__/
 # Fuseki 데이터베이스 파일
 fuseki-data/
 run/
+
+# 빌드 산출물
+*.egg-info/
+build/
+dist/
