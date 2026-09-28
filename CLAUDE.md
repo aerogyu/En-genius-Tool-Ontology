@@ -39,6 +39,7 @@
 - `docs/07_적재_M3.md` — M3 적재 파이프라인: 명령·산출물·모듈·설정·스키마 v0.2·검증 기록
 - `docs/09_M3_검토_수리계획.md` — M3 독립 검토 28건(반박 0)·수리 계획·작업 순서·Leo 결정 질문 **← M3.1 정본**
 - `docs/10_파트_단위_조직.md` — 조직 단위 = 파트 설계 제안 (파트 23개 잠정 목록 `config/parts.yaml`, 확인 질문 Q1~Q5)
+- `README_offline.md` — **사내(폐쇄망) 설치·실행 안내** (연습용 패키지 v0; 더블클릭 `scripts\*.bat`, 산출물 읽는 법, 밖으로 가져올 수 있는 것). 패키지 조립·검증 기록은 `docs/04` 6장
 - `schema/engenius_tool.yaml` — 스키마 마스터. 고친 뒤 `python -m engenius_onto schema` (생성물 드리프트는 `--check`·테스트가 잡음)
 - `reference/양식_명세.md` — 조사 양식의 모든 열·안내·드롭다운 (원본 양식에서 자동 추출)
 - `reference/SW조사양식_EnGenius_v1.0.xlsx` — 원본 양식 (합성 데이터 생성의 틀)
@@ -55,7 +56,10 @@
     `docs/10` — FLD = 파일명 약칭(`config/parts.yaml`)·'담당 부서' 는 분류 속성 domain('기타' 허용)·분할은 succeeded_by;
     `diag` 명령 — 셀 값 없이 경고 종류별 건수만 담은 반출용 진단 요약, docs/08 8장)
 - [ ] M4 연결 도출·질의·보고서 (Leo 확인 ②) — M3.1 뒤 (보고서에 툴 연결 지도 HTML 포함 — Leo 요청 2026-09-24)
-- [ ] M5 반입 패키지
+- [ ] M5 반입 패키지 — **연습용 v0 만듦 (2026-09-28, Leo 요청 "먼저 반입해 직접 해보겠다")**: `requirements.lock`(90) · `offline/wheels`(93, win_amd64·cp310, 55MB, antlr4 는 sdist 로 빌드) ·
+  더블클릭 `scripts\setup_offline.bat`·`doctor.bat`·`load.bat`·`push.bat`·`env.bat` · `README_offline.md`. 검증: 깨끗한 복사본에서 .bat 흐름(설치→doctor→합성 적재 34/77) +
+  옛 pip 21.2.4(사내 3.10.2 동봉판) 에뮬레이션 오프라인 설치 통과. 코드는 설치하지 않고 `PYTHONPATH=src` 로 실행(설치하면 `config/` 를 못 찾음 — config.py REPO_ROOT).
+  정식 M5 는 M4 뒤 (M3.1·M4 코드로 저장소 zip 만 재반입; wheel·JDK·Fuseki 는 그대로)
 - [ ] M6 에이전트 준비 (Leo 승인 후 착수)
 
 마일스톤을 끝낼 때마다 이 체크리스트와 아래 '미확정 사항'을 갱신한다.
@@ -113,7 +117,7 @@ offline/         반입 패키지 (wheels 등)
   '담당 부서' 값 · FEM 정식 이름 · CD domains(터빈·압축기) 확인
 - ~~스키마 미결 D1~D8~~ → 전부 권장안 승인 (2026-09-24). ~~제출 형식~~ → 분야별 파일, 파일명에 분야명만(인명 없음). SW ID 는 분야별 `약칭-번호` 통일 재요청 예정
 - ~~M2 골든 확인 질문 3건~~ → 결정 (2026-09-24, `expected_head.yaml` decisions): Q-R1 최신 파일만 적재 (I33), Q-D2 연계 SW 를 적은 수기 행은 적힌 상대에게만 (I32 — '우선 그렇게 해보자', 운영 중 재검토), Q-I3 비고 신호 구간도 착수 순위에 종류 '비고' (I3 개정)
-- **실행 GUI 여부** (Leo 질문 2026-09-28 "CLI 말고 GUI 로 만들 수 있나") — **M4 보고서·연결 지도를 본 뒤 결정.** CLI 는 엔진으로 유지하고
-  얇은 GUI 를 위에 얹는 방향. 후보: ① 표준 라이브러리 `http.server` 로컬 웹 UI(127.0.0.1, 연결 지도 HTML 과 같은 기술, 반입 추가 0)
-  ② Tkinter 창(표준 라이브러리, 사내 파이썬에 tkinter 포함 여부 확인 필요). Streamlit·Gradio·PySide 등 외부 프레임워크는 반입 부담·런타임
-  외부 호출 위험으로 제외 권장
+- **실행 GUI 여부** (Leo 질문 2026-09-28 "CLI 말고 GUI 로 만들 수 있나") — **M4 보고서·연결 지도를 본 뒤 결정** (Leo 동의 2026-09-28,
+  **로컬 웹 UI 선호**). CLI 는 엔진으로 유지하고 얇은 GUI 를 위에 얹는 방향. 후보: ① 표준 라이브러리 `http.server` 로컬 웹 UI(127.0.0.1,
+  연결 지도 HTML 과 같은 기술, 반입 추가 0) ② Tkinter 창. Streamlit·Gradio·PySide 등 외부 프레임워크는 반입 부담·런타임 외부 호출 위험으로 제외.
+  Leo 는 CLI 적재에 부담을 느낀다 — GUI 와 별개로 M5 에 **더블클릭 .bat(doctor·load·report) + 한국어 설치·실행 안내**를 넣는다

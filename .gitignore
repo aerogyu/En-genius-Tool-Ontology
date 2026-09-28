@@ -19,3 +19,7 @@ run/
 *.egg-info/
 build/
 dist/
+
+# 반입 패키지 조립 폴더·zip (offline/wheels 는 위에 있음)
+offline/package*/
+offline/*.zip

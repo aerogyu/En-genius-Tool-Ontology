@@ -5,6 +5,7 @@ rem JAVA_HOME   : JDK 21 for Fuseki 6.x, 17+ for 5.x (falls back to java on PATH
 rem This .bat is ASCII-only on purpose: cmd reads .bat files as cp949 on Korean Windows.
 setlocal
 cd /d "%~dp0.."
+if exist "%~dp0env.bat" call "%~dp0env.bat"
 if "%FUSEKI_HOME%"=="" (
   echo [NG] FUSEKI_HOME is not set. e.g. set FUSEKI_HOME=C:\EnGenius\tools\apache-jena-fuseki-6.2.0
   exit /b 1
