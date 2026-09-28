@@ -32,7 +32,7 @@ manual_note_keywords: ["수기", "수작업", "손으로", "복사", "재입력"
 automatable:
   operation_modes: ["CLI 지원", "GUI+CLI"]
   non_automation_if: ["없음", "모름"]
-airgap_excluded: ["불가"]
+airgap_excluded: ["불가"]   # 폐지 결정 (Leo 2026-09-29, docs/02 7.4) — M4 에서 [] 로 바꾸고 골든 재등급을 한 커밋에 (지금은 골든이 이 값을 쓴다)
 generic_extensions: [xlsx, xls, csv, txt, pdf, docx, pptx, hwp]
 frequency_rank: {"매일": 4, "주 1회 이상": 3, "월 1회 이상": 2, "분기 이하": 1}
 priority_rank: {"상": 3, "중": 2, "하": 1}
