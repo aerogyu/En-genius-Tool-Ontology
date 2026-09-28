@@ -307,6 +307,17 @@ EXPECTED_ISSUES = {  # (골든 키, 슬롯) — 적재 경고와 같은 문제�
 }
 
 
+def test_file_name_rule_accepts_both_prefixes():
+    """I31: 정식 규칙 Tool조사_<부서>_<YYYYMMDD>.xlsx (양식 v1.1 B27) 와 옛 SW조사_ 접두어(v1.0 B26) 를 모두 읽고,
+    그 밖(구분자 추가·날짜 형식·소문자 접두어)은 분야 미상 (None, None)."""
+    ld = Loader()
+    assert ld.parse_name("Tool조사_2차유로(SAS)_20260928.xlsx") == ("2차유로(SAS)", "20260928")
+    assert ld.parse_name("SW조사_압축기_20260924.xlsx") == ("압축기", "20260924")
+    for bad in ["Tool조사_압축기_홍OO_20260928.xlsx", "Tool조사_압축기.xlsx",
+                "Tool조사_압축기_2026-09-28.xlsx", "tool조사_압축기_20260928.xlsx", "Tool조사_압축기_20260928.xlsm"]:
+        assert ld.parse_name(bad) == (None, None), bad
+
+
 def test_pydantic_row_issues(out):
     assert {(i["key"], i["slot"]) for i in out.schema_issues} == EXPECTED_ISSUES
 

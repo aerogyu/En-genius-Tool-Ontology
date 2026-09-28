@@ -5,8 +5,9 @@ rule_version: feed_v1
 # --- 적재 (docs/02 5장) ---------------------------------------------------------
 loader:
   file_pattern: "*.xlsx"
-  # 파일명 규칙 (작성안내 B26, I31) — field·date 이름 그룹 필수. 맞지 않으면 경고 후 분야 미상으로 적재
-  file_name_regex: '^SW조사_(?P<field>[^_]+)_(?P<date>\d{8})\.xlsx$'
+  # 파일명 규칙 (I31; 양식 v1.0 작성안내 B26 'SW조사_', v1.1 B27 'Tool조사_' — 둘 다 허용) — field·date 이름 그룹 필수.
+  # 맞지 않으면 경고 후 분야 미상으로 적재. 정식 규칙: Tool조사_<부서>_<YYYYMMDD>.xlsx (Leo 확정 2026-09-28, docs/02 5-1)
+  file_name_regex: '^(?:SW|Tool)조사_(?P<field>[^_]+)_(?P<date>\d{8})\.xlsx$'
   header_row: 2               # 1행 섹션 밴드, 2행 헤더
   data_start_row: 4           # 3행 작성 안내(회색), 4행부터 예시·응답 — 예시는 내용으로 판별 (I15)
   blank_rows_end: 10          # 연속 빈 행이 이만큼이면 시트 끝으로 본다 (5장 2)
