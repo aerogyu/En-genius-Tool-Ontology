@@ -1,0 +1,29 @@
+# 조직 단위 = 파트 (docs/10, 설계 제안 — Leo 확인 뒤 M3.1 묶음 T 에서 적재기가 읽는다. 지금은 아무 코드도 읽지 않는다).
+# 약칭은 파일명 Tool조사_<약칭>_<YYYYMMDD>.xlsx 와 Tool ID 접두어(<약칭>-01)에 쓰인다. FLD ID 는 레지스트리가 발급하는 무의미 번호.
+# name: 정식 이름(라벨) · domains: 이 파트 행에 허용되는 '담당 부서' 드롭다운 값 · status: 확정|미정|분할예정|폐기 · succeeds: 분할·통합 전 약칭
+# Leo 2026-09-28 잠정 목록. 빈 name·domains 는 Leo 가 채운다.
+parts:
+  PL:   {name: "", domains: [], status: 확정}
+  TEST: {name: "", domains: [], status: 확정}
+  PRF:  {name: "", domains: [], status: 확정}
+  CMP:  {name: "", domains: [], status: 확정}
+  COMB: {name: "", domains: [], status: 확정}
+  TA:   {name: "", domains: [터빈], status: 확정}          # 양식 예시 행 TA-01 이 '터빈' — 확인 필요
+  CL:   {name: "", domains: [], status: 확정}
+  SAS:  {name: "2차유로", domains: ["2차유로(SAS)"], status: 확정}
+  CD:   {name: "형상설계팀", domains: [], status: 분할예정}  # 3개 파트가 한 약칭 — 예: CDT(터빈)·CDC(압축기) 로 분할 요청 예정
+  IPS:  {name: "", domains: [], status: 확정}
+  RSP:  {name: "", domains: [], status: 확정}
+  FEM:  {name: "", domains: [], status: 분할예정}           # 2개 파트가 한 약칭 — 분할 요청 예정
+  FS:   {name: "", domains: [], status: 확정}
+  RE:   {name: "", domains: [], status: 확정}
+  EC:   {name: "", domains: [], status: 확정}
+  ACT:  {name: "", domains: [], status: 확정}
+  MAT:  {name: "", domains: [], status: 확정}
+  PE:   {name: "", domains: [], status: 확정}
+  # 약칭 미정 2개 — 약칭이 오면 키를 바꾼다 (임시 코드로 적재했다면 field_renames.yaml, docs/09 #25b)
+  전기전자제어:      {name: "전기전자제어", domains: [], status: 미정}
+  연료윤활기어박스:  {name: "연료윤활기어박스", domains: [], status: 미정}
+
+# 합성 데이터(data/synthetic)용 — 파일명 분야 = 담당 부서 값 체계. M3.1 T 에서 골든 값을 유지하려고 둔다.
+synthetic_parts_are_domains: true
