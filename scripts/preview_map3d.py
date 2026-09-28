@@ -129,7 +129,13 @@ const DATA = __DATA__;
 const N = DATA.nodes, E = DATA.edges, C = DATA.clusters;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const tip = document.getElementById('tip'), side = document.getElementById('side'), sideBody = document.getElementById('sideBody');
-const S = { yaw: 0.6, pitch: 0.35, dist: 900, fov: 700, panX: 0, panY: 0, hover: -1, sel: -1, spin: true, dirty: true };
+// 회전은 3x3 행렬을 누적한다 (트랙볼): 드래그 방향이 화면 기준이라 위아래로도 끝없이 돈다
+function rotX(a) { const c = Math.cos(a), s = Math.sin(a); return [1, 0, 0, 0, c, -s, 0, s, c]; }
+function rotY(a) { const c = Math.cos(a), s = Math.sin(a); return [c, 0, s, 0, 1, 0, -s, 0, c]; }
+function mul(A, B) { const M = new Array(9); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i * 3 + j] = A[i * 3] * B[j] + A[i * 3 + 1] * B[3 + j] + A[i * 3 + 2] * B[6 + j]; return M; }
+function initR() { return mul(rotX(0.35), rotY(0.6)); }
+const S = { R: initR(), dist: 900, fov: 700, panX: 0, panY: 0, hover: -1, sel: -1, spin: true, dirty: true };
+function orbit(dx, dy) { S.R = mul(mul(rotX(dy * 0.006), rotY(dx * 0.006)), S.R); }
 const COL = { manual: '#ff9a2e', note: '#c9925a', auto: '#7f8c99', ok: '#3fbf73', no: '#aab3bc', iso: '#ff5a5a', fg: '#e6edf3', muted: '#9fb0c0' };
 const ui = id => document.getElementById(id);
 const adj = N.map(() => new Set());
@@ -148,10 +154,8 @@ addEventListener('resize', resize); resize();
 let P = [];   // 노드 투영 결과 {x,y,s,d}
 let PC = [];  // 묶음 투영
 function rot(x, y, z) {
-  const cy = Math.cos(S.yaw), sy = Math.sin(S.yaw), cp = Math.cos(S.pitch), sp = Math.sin(S.pitch);
-  let x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
-  let y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
-  return [x1, y1, z2];
+  const R = S.R;
+  return [R[0] * x + R[1] * y + R[2] * z, R[3] * x + R[4] * y + R[5] * z, R[6] * x + R[7] * y + R[8] * z];
 }
 function proj(x, y, z) {
   const [rx, ry, rz] = rot(x, y, z);
@@ -256,7 +260,7 @@ cv.addEventListener('mousedown', ev => {
 addEventListener('mousemove', ev => {
   if (drag) {
     const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y; drag.x = ev.clientX; drag.y = ev.clientY; moved += Math.abs(dx) + Math.abs(dy);
-    if (drag.btn === 0 && !drag.shift) { S.yaw += dx * 0.006; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch + dy * 0.006)); }
+    if (drag.btn === 0 && !drag.shift) orbit(dx, dy);
     else { S.panX += dx; S.panY += dy; }
     S.dirty = true; tip.style.display = 'none'; return;
   }
@@ -284,7 +288,7 @@ addEventListener('mouseup', ev => {
 cv.addEventListener('wheel', ev => { ev.preventDefault(); S.dist = Math.max(220, Math.min(3200, S.dist * (ev.deltaY > 0 ? 1.1 : 0.9))); S.dirty = true; }, { passive: false });
 cv.addEventListener('dblclick', resetView);
 ui('reset').addEventListener('click', resetView);
-function resetView() { S.yaw = 0.6; S.pitch = 0.35; S.dist = 900; S.panX = 0; S.panY = 0; S.sel = -1; showSide(); S.dirty = true; }
+function resetView() { S.R = initR(); S.dist = 900; S.panX = 0; S.panY = 0; S.sel = -1; showSide(); S.dirty = true; }
 ['fManual', 'fNote', 'fAuto', 'fGrade', 'fLabel', 'fCluster'].forEach(id => ui(id).addEventListener('change', () => { S.dirty = true; }));
 ui('fSpin').addEventListener('change', ev => { S.spin = ev.target.checked; });
 ui('closeSide').addEventListener('click', () => { S.sel = -1; showSide(); S.dirty = true; });
@@ -293,7 +297,7 @@ let touches = null;
 cv.addEventListener('touchstart', ev => { touches = [...ev.touches].map(t => ({ x: t.clientX, y: t.clientY })); S.spin = false; ui('fSpin').checked = false; }, { passive: true });
 cv.addEventListener('touchmove', ev => {
   const t = [...ev.touches].map(t => ({ x: t.clientX, y: t.clientY }));
-  if (touches && t.length === 1 && touches.length === 1) { S.yaw += (t[0].x - touches[0].x) * 0.006; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch + (t[0].y - touches[0].y) * 0.006)); }
+  if (touches && t.length === 1 && touches.length === 1) orbit(t[0].x - touches[0].x, t[0].y - touches[0].y);
   else if (touches && t.length === 2 && touches.length === 2) { const d0 = Math.hypot(touches[0].x - touches[1].x, touches[0].y - touches[1].y), d1 = Math.hypot(t[0].x - t[1].x, t[0].y - t[1].y); S.dist = Math.max(220, Math.min(3200, S.dist * d0 / Math.max(1, d1))); }
   touches = t; S.dirty = true; ev.preventDefault();
 }, { passive: false });
@@ -314,7 +318,7 @@ function showSide() {
 }
 
 function loop(t) {
-  if (S.spin) { S.yaw += 0.0025; S.dirty = true; }
+  if (S.spin) { S.R = mul(rotY(0.0025), S.R); S.dirty = true; }
   if (S.dirty) { draw(); S.dirty = false; }
   requestAnimationFrame(loop);
 }
