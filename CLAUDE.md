@@ -131,4 +131,7 @@ offline/         반입 패키지 (wheels 등)
 - **실행 GUI 여부** (Leo 질문 2026-09-28 "CLI 말고 GUI 로 만들 수 있나") — **M4 보고서·연결 지도를 본 뒤 결정** (Leo 동의 2026-09-28,
   **로컬 웹 UI 선호**). CLI 는 엔진으로 유지하고 얇은 GUI 를 위에 얹는 방향. 후보: ① 표준 라이브러리 `http.server` 로컬 웹 UI(127.0.0.1,
   연결 지도 HTML 과 같은 기술, 반입 추가 0) ② Tkinter 창. Streamlit·Gradio·PySide 등 외부 프레임워크는 반입 부담·런타임 외부 호출 위험으로 제외.
-  Leo 는 CLI 적재에 부담을 느낀다 — GUI 와 별개로 M5 에 **더블클릭 .bat(doctor·load·report) + 한국어 설치·실행 안내**를 넣는다
+  Leo 는 CLI 적재에 부담을 느낀다 — GUI 와 별개로 M5 에 **더블클릭 .bat(doctor·load·report) + 한국어 설치·실행 안내**를 넣는다.
+  **추가 요청 (2026-09-30)**: GUI 에서 트리플을 **만들고 고치기** (조사 엑셀 밖의 지식 — 나중에라도). 방향 제안(미확정): 적재 원본(survey 그래프)은
+  건드리지 않고 사람이 넣은 것은 별도 named graph `manual` 에 쌓는다 (재적재해도 안 지워짐, 도출은 survey ∪ manual 로 재계산) · 저장 전 SHACL 검증 ·
+  provenance 는 일시·사유만 (인명 저장 금지, 규칙 5) · 폼은 스키마(LinkML) 슬롯에서 생성. GUI 결정 때 같이 설계
