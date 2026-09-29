@@ -10,7 +10,8 @@
 
 | 파일 | 크기 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|---|
-| `En-genius-Ontology-2d6e8c6.zip` | 0.7 MB | 저장소 — 코드·스키마·설정·합성 데이터·설치 스크립트·안내 | 사내 소유 코드 (의존성은 docs/04) | git archive 2d6e8c6 |
+| `En-genius-Ontology-2d6e8c6.zip` | 0.7 MB | 저장소 — 코드·스키마·설정·합성 데이터·설치 스크립트·안내 (첫 반입본) | 사내 소유 코드 (의존성은 docs/04) | git archive 2d6e8c6 |
+| `En-genius-Ontology-f3a4f55.zip` | 0.7 MB | 저장소 **최신** — 위 + 적재한 온톨로지 3D 뷰어(`scripts\graph_view.bat`) · doctor Java 확인 수정 (2026-09-30 추가) | 사내 소유 코드 | git archive f3a4f55 |
 | `wheels_win_amd64_cp310.zip` | 56.9 MB | 파이썬 패키지 wheel 93개 (Windows x64 · Python 3.10) — 풀지 말고 저장소의 offline\ 에 | Apache·MIT·BSD 계열 (docs/04 부록 A) | PyPI (antlr4 4.9.3 은 sdist 를 빌드) |
 | `OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip` | 205.1 MB | Java 21 (Temurin JDK) — Fuseki 실행용 런타임 | GPLv2 + Classpath Exception | https://github.com/adoptium/temurin21-binaries/releases |
 | `apache-jena-fuseki-6.2.0.zip` | 51.4 MB | Apache Jena Fuseki 6.2.0 — 그래프 DB | Apache 2.0 | https://dlcdn.apache.org/jena/binaries/ |
@@ -31,6 +32,7 @@ JDK·Fuseki 는 공급자 원본 그대로다 — 반입 심사에서 원 출처
 |---|---|---|---|
 | 2026-09-29 | 패키지 v0.1 | 저장소 zip `2d6e8c6` · wheels · JDK · Fuseki · 지도 2D v1 · 3D v1 | 연습용 첫 판 (합성 데이터) |
 | 2026-09-29 | 지도 3D v2 | `maps/preview_map3d_v2.html` | '툴 기준 후보' 버튼 — 연결 많은 툴 순위표(행 클릭 = 그 툴의 모든 사용처·연결 강조), '연결 수로 크기' 토글. 제안 시안 (docs/02 7.5, Leo 확인 대기) |
+| 2026-09-30 | 저장소 `f3a4f55` | `En-genius-Ontology-f3a4f55.zip` | **적재한 온톨로지 3D 뷰어** `scripts\graph_view.bat` (최신 `output\<실행ID>\survey.ttl` → `graph3d.html`, 골든 계산이 아니라 적재 그래프 그대로) · doctor 가 JAVA_HOME 의 Java 를 찾음. **사내 갱신: 풀어서 기존 `engenius-tool-ontology` 에 덮어쓰기** (`.venv`·`output`·`fuseki-data` 는 zip 에 없어 그대로 남는다 — 재설치 불필요) |
 
 ## 들여간 뒤
 
