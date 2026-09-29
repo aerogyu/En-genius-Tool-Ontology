@@ -1,13 +1,23 @@
 @echo off
 rem Offline install (closed network). Run once from anywhere; it works in the repo root.
-rem Needs: Python 3.10 on this PC, offline\wheels\ (from the import package), requirements.lock.
+rem Needs: Python 3.10 on this PC, requirements.lock, and either offline\wheels\*.whl
+rem or offline\wheels_win_amd64_cp310.zip from the import package (unpacked here with Python's zipfile).
 rem This .bat is ASCII-only on purpose: cmd reads .bat files as cp949 on Korean Windows.
 setlocal
 cd /d "%~dp0.."
 call "%~dp0env.bat"
 
+if not exist offline\wheels\ if exist offline\wheels_win_amd64_cp310.zip (
+  echo [0/4] unpacking offline\wheels_win_amd64_cp310.zip
+  %PYTHON% -m zipfile -e offline\wheels_win_amd64_cp310.zip offline
+  if errorlevel 1 (
+    echo [NG] could not unpack the wheels zip - is Python 3.10 on PATH? See scripts\env.bat
+    pause
+    exit /b 1
+  )
+)
 if not exist offline\wheels\ (
-  echo [NG] offline\wheels\ not found. Unpack the import package into this folder first.
+  echo [NG] offline\wheels\ not found. Put wheels_win_amd64_cp310.zip into the offline folder first.
   pause
   exit /b 1
 )

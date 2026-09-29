@@ -1,7 +1,10 @@
 # En-Genius 툴 온톨로지 — 사내(폐쇄망) 설치·실행 안내
 
-연습용 패키지 v0 (2026-09-28, M3 코드 기준). **이 판으로는 합성 데이터로 연습만 한다** — 실데이터 적재는 M3.1(적재기 보강)이 끝난
+연습용 패키지 v0.1 (2026-09-29, M3 코드 기준). **이 판으로는 합성 데이터로 연습만 한다** — 실데이터 적재는 M3.1(적재기 보강)이 끝난
 판을 다시 반입한 뒤에 한다 (인명 마스킹·파일 간 병합 수리 전에는 실데이터를 넣지 않는다).
+
+**받는 곳**: GitHub 비공개 저장소 `aerogyu/En-genius-Ontology` 의 **`import-package` 브랜치** — 파일을 하나씩 열어 `Download`(원본 받기).
+큰 zip 은 Git LFS 로 올라가 있어 브랜치 전체 'Download ZIP' 으로는 알맹이가 안 받아진다 — 파일마다 받는다.
 
 ## 0. 이 패키지로 할 수 있는 것
 
@@ -15,9 +18,10 @@
 | 파일 | 용도 | 비고 |
 |---|---|---|
 | `En-genius-Ontology-<커밋>.zip` | 저장소(코드·스키마·설정·합성 데이터·이 안내) | 풀면 `engenius-tool-ontology\` |
-| `offline\wheels\*.whl` | 파이썬 패키지 (runtime 90개 + pip·setuptools·wheel), Windows x64 · Python 3.10 용 | 저장소 폴더 안 `offline\wheels\` 에 둔다 |
+| `wheels_win_amd64_cp310.zip` | 파이썬 패키지 93개 (runtime 90 + pip·setuptools·wheel), Windows x64 · Python 3.10 용 | **풀지 말고** `engenius-tool-ontology\offline\` 에 그대로 — 설치 스크립트가 푼다 |
 | `OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip` | Java 21 (Fuseki 실행용) | 설치 아님 — 압축만 푼다 |
 | `apache-jena-fuseki-6.2.0.zip` | 그래프 DB | 압축만 푼다 |
+| `maps\preview_map.html` · `maps\preview_map3d.html` | 툴 연결 지도 미리보기 2D·3D (합성 데이터) | 브라우저로 바로 열림, 설치 불필요 |
 | `SHA256SUMS.txt` | 위 파일들의 체크섬 | 반입 심사·손상 확인용 |
 
 라이선스·출처·체크섬의 정본은 저장소 `docs\04_반입목록.md`.
@@ -31,7 +35,7 @@
 ```text
 C:\EnGenius\
   engenius-tool-ontology\          ← 저장소 zip 을 푼 것
-    offline\wheels\*.whl           ← wheel 폴더를 여기에
+    offline\wheels_win_amd64_cp310.zip   ← wheels zip 을 풀지 말고 여기에
     scripts\env.bat                ← 경로 2개를 여기서 맞춘다
   tools\
     jdk-21.0.12.1+1\               ← JDK zip 을 푼 것 (bin\java.exe 가 있어야 함)
@@ -44,6 +48,7 @@ C:\EnGenius\
 
 `scripts\setup_offline.bat` 을 **더블클릭** (또는 cmd 에서 실행). 하는 일:
 
+0. `offline\wheels\` 가 없으면 `offline\wheels_win_amd64_cp310.zip` 을 파이썬으로 푼다
 1. `.venv` 가상환경 생성 (`python -m venv .venv`)
 2. `offline\wheels` 에서 pip·setuptools·wheel 갱신 (인터넷 없음)
 3. `requirements.lock` 의 90개 패키지 설치 — `--no-index --no-deps`, 전부 wheel 이라 컴파일 없음.
