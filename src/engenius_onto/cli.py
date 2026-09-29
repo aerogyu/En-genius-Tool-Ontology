@@ -6,10 +6,12 @@ M3: load·push·apply-review·template-examples 구현. derive·report·query·a
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 from engenius_onto import __version__
 
@@ -30,7 +32,13 @@ def _not_yet(name: str) -> int:
 
 
 def _java_version() -> str | None:
-    java = shutil.which("java")
+    """JAVA_HOME(scripts\\env.bat 이 잡는다)을 먼저 보고, 없으면 PATH 의 java — 사내 PC 는 JDK zip 만 풀어 PATH 에 java 가 없다."""
+    java = None
+    home = os.environ.get("JAVA_HOME")
+    if home:
+        cand = Path(home) / "bin" / ("java.exe" if os.name == "nt" else "java")
+        java = str(cand) if cand.is_file() else None
+    java = java or shutil.which("java")
     if not java:
         return None
     try:
