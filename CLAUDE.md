@@ -61,7 +61,9 @@
   옛 pip 21.2.4(사내 3.10.2 동봉판) 에뮬레이션 오프라인 설치 통과. 코드는 설치하지 않고 `PYTHONPATH=src` 로 실행(설치하면 `config/` 를 못 찾음 — config.py REPO_ROOT).
   정식 M5 는 M4 뒤 (M3.1·M4 코드로 저장소 zip 만 재반입; wheel·JDK·Fuseki 는 그대로).
   **v0.1 (2026-09-29)**: GitHub **`import-package` 고아 브랜치**(zip 4개 Git LFS, 314 MB)에 올림 — Leo 가 거기서 파일마다 받는다. 조립 `scripts/build_package.py`,
-  wheels 는 zip 한 개로(setup 이 자동 해제), 연결 지도 2개 동봉. 패키지에서 푼 그대로 설치·합성 적재 검증 (docs/04 6장)
+  wheels 는 zip 한 개로(setup 이 자동 해제), 연결 지도 2개 동봉. 패키지에서 푼 그대로 설치·합성 적재 검증 (docs/04 6장).
+  **사내 반입·설치 성공 (Leo 2026-09-30)** — 1~6단계(설치·Fuseki·합성 적재·push·SPARQL) 통과. 같은 날 적재 그래프 3D 뷰어
+  `scripts\graph_view.bat` 추가, 저장소 zip `f3a4f55` 를 브랜치에 더함 (사내 갱신 = 풀어서 덮어쓰기)
 - [ ] M6 에이전트 준비 (Leo 승인 후 착수)
 
 마일스톤을 끝낼 때마다 이 체크리스트와 아래 '미확정 사항'을 갱신한다.
