@@ -12,6 +12,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+# 지도 판 번호 — 반입 브랜치에 올릴 때 파일명에 붙인다 (덮어쓰지 않는다, Leo 2026-09-29). 그림·동작을 바꾸면 올린다.
+# v1 2026-09-28 회의용 (회전·줌·클릭) · v2 2026-09-29 '툴 기준 후보' 순위표·'연결 수로 크기'
+MAP_VERSION = "v2"
 sys.path.insert(0, str(REPO / "tests" / "golden"))
 sys.path.insert(0, str(REPO / "src"))
 import oracle  # noqa: E402
@@ -116,7 +119,7 @@ data = {"nodes": nodes, "edges": edges, "clusters": clusters, "ranked": ranked, 
 data["counts"]["auto"] = data["counts"]["feeds"] - data["counts"]["manual"] - data["counts"]["note"]
 
 PAGE = r"""<!DOCTYPE html>
-<html lang="ko"><head><meta charset="utf-8"><title>툴 연결 지도 3D — 합성 데이터 미리보기</title>
+<html lang="ko"><head><meta charset="utf-8"><title>툴 연결 지도 3D __VER__ — 합성 데이터 미리보기</title>
 <style>
  :root{--bg:#0f1720;--panel:#16212c;--line:#2a3a4a;--fg:#e6edf3;--muted:#9fb0c0;--manual:#ff9a2e;--note:#c9925a;--auto:#7f8c99;--ok:#3fbf73;--no:#aab3bc;--iso:#ff5a5a}
  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:13px;overflow:hidden}
@@ -144,7 +147,7 @@ PAGE = r"""<!DOCTYPE html>
  #side p{margin:4px 0;line-height:1.45}
 </style></head><body>
 <div id="top">
- <h1>툴 연결 지도 3D <span style="color:var(--muted);font-weight:400;font-size:12px">합성 데이터 · M4 전 시안</span></h1>
+ <h1>툴 연결 지도 3D <span style="color:var(--muted);font-weight:400;font-size:12px">__VER__ · 합성 데이터 · M4 전 시안</span></h1>
  <label><input type="checkbox" id="fManual" checked><span class="sw" style="background:var(--manual)"></span>수기 전달</label>
  <label><input type="checkbox" id="fNote" checked><span class="sw" style="background:var(--note);height:0;border-top:3px dashed var(--note)"></span>비고 신호</label>
  <label><input type="checkbox" id="fAuto" checked><span class="sw" style="background:var(--auto)"></span>자동 연결</label>
@@ -404,5 +407,5 @@ requestAnimationFrame(loop);
 """
 
 out = REPO / "output" / "preview_map3d.html"
-out.write_text(PAGE.replace("__DATA__", json.dumps(data, ensure_ascii=False)), encoding="utf-8", newline="\n")
+out.write_text(PAGE.replace("__VER__", MAP_VERSION).replace("__DATA__", json.dumps(data, ensure_ascii=False)), encoding="utf-8", newline="\n")
 print(f"wrote {out} ({out.stat().st_size:,} bytes): nodes={len(nodes)} edges={len(edges)} clusters={len(clusters)} ranked={len(ranked)}")

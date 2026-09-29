@@ -6,15 +6,18 @@
   En-genius-Ontology-<커밋>.zip   git archive HEAD (추적 파일만 — data/real·output 은 들어갈 수 없다)
   wheels_win_amd64_cp310.zip      offline/wheels/*.whl → 'wheels/…' (사내에서 setup_offline.bat 이 offline\ 에 푼다)
   OpenJDK21U-…zip · apache-jena-fuseki-6.2.0.zip   공급자 원본 그대로 (체크섬 = docs/04 1장)
-  maps/preview_map.html · maps/preview_map3d.html   합성 데이터 연결 지도 (scripts/preview_map*.py 로 새로 생성)
+  maps/preview_map_<판>.html · maps/preview_map3d_<판>.html   합성 데이터 연결 지도 (scripts/preview_map*.py 의 MAP_VERSION)
   README_offline.md · README.md(패키지 안내) · SHA256SUMS.txt
 작업 트리에 커밋 안 된 변경이 있으면 멈춘다 — 패키지의 저장소 zip 이 HEAD 와 같아야 하므로.
+import-package 브랜치에 올릴 때는 덮어쓰지 않는다 (Leo 2026-09-29): 산출물은 판 번호·커밋이 붙은 새 파일로 더하고,
+README.md·SHA256SUMS.txt 는 기존 줄을 지우지 않고 합친다 (docs/04 6장).
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import hashlib
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +30,12 @@ VENDOR = {
                                                           "https://github.com/adoptium/temurin21-binaries/releases"),
     "apache-jena-fuseki-6.2.0.zip": ("Apache Jena Fuseki 6.2.0 — 그래프 DB", "Apache 2.0", "https://dlcdn.apache.org/jena/binaries/"),
 }
+
+
+def map_version(script: Path) -> str:
+    """preview 스크립트의 MAP_VERSION (없으면 v1)."""
+    m = re.search(r'^MAP_VERSION = "([^"]+)"', script.read_text(encoding="utf-8"), re.M)
+    return m.group(1) if m else "v1"
 
 
 def git(*args: str) -> str:
@@ -75,9 +84,11 @@ def main() -> int:
     for name in VENDOR:
         shutil.copy2(Path(args.downloads) / name, out / name)
 
+    maps = {}
     for script, html in [("preview_map.py", "preview_map.html"), ("preview_map3d.py", "preview_map3d.html")]:
         subprocess.run([sys.executable, str(REPO / "scripts" / script)], cwd=REPO, check=True, capture_output=True)
-        shutil.copy2(REPO / "output" / html, out / "maps" / html)
+        maps[script] = f"maps/{Path(html).stem}_{map_version(REPO / 'scripts' / script)}.html"  # 판 번호를 붙여 덮어쓰지 않게
+        shutil.copy2(REPO / "output" / html, out / maps[script])
 
     shutil.copy2(REPO / "README_offline.md", out / "README_offline.md")
 
@@ -85,8 +96,8 @@ def main() -> int:
         (repo_zip.name, "저장소 — 코드·스키마·설정·합성 데이터·설치 스크립트·안내", "사내 소유 코드 (의존성은 docs/04)", f"git archive {head}"),
         (wz.name, f"파이썬 패키지 wheel {len(wheels)}개 (Windows x64 · Python 3.10) — 풀지 말고 저장소의 offline\\ 에", "Apache·MIT·BSD 계열 (docs/04 부록 A)", "PyPI (antlr4 4.9.3 은 sdist 를 빌드)"),
         *[(n, d, lic, src) for n, (d, lic, src) in VENDOR.items()],
-        ("maps/preview_map.html", "툴 연결 지도 2D (합성 데이터) — 브라우저로 바로 열림", "—", "scripts/preview_map.py"),
-        ("maps/preview_map3d.html", "툴 연결 지도 3D (합성 데이터) — 드래그 회전·휠 줌", "—", "scripts/preview_map3d.py"),
+        (maps["preview_map.py"], "툴 연결 지도 2D (합성 데이터) — 브라우저로 바로 열림", "—", "scripts/preview_map.py"),
+        (maps["preview_map3d.py"], "툴 연결 지도 3D (합성 데이터) — 드래그 회전·휠 줌", "—", "scripts/preview_map3d.py"),
         ("README_offline.md", "사내 설치·실행 안내 (저장소 zip 안에도 있음)", "—", "—"),
     ]
     table = "\n".join(f"| `{n}` | {mb((out / n).stat().st_size)} | {d} | {lic} | {src} |" for n, d, lic, src in rows)

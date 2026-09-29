@@ -11,6 +11,8 @@ from collections import defaultdict
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+# 지도 판 번호 — 반입 브랜치에 올릴 때 파일명에 붙인다 (덮어쓰지 않는다, Leo 2026-09-29). 그림을 바꾸면 올린다. v1 2026-09-28 회의용
+MAP_VERSION = "v1"
 sys.path.insert(0, str(REPO / "tests" / "golden"))
 sys.path.insert(0, str(REPO / "src"))
 import oracle  # noqa: E402
