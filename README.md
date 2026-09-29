@@ -15,11 +15,22 @@
 | `OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip` | 205.1 MB | Java 21 (Temurin JDK) — Fuseki 실행용 런타임 | GPLv2 + Classpath Exception | https://github.com/adoptium/temurin21-binaries/releases |
 | `apache-jena-fuseki-6.2.0.zip` | 51.4 MB | Apache Jena Fuseki 6.2.0 — 그래프 DB | Apache 2.0 | https://dlcdn.apache.org/jena/binaries/ |
 | `maps/preview_map.html` | 41 KB | 툴 연결 지도 2D (합성 데이터) — 브라우저로 바로 열림 | — | scripts/preview_map.py |
-| `maps/preview_map3d.html` | 39 KB | 툴 연결 지도 3D (합성 데이터) — 드래그 회전·휠 줌 | — | scripts/preview_map3d.py |
+| `maps/preview_map3d.html` | 39 KB | 툴 연결 지도 3D (합성 데이터) — 드래그 회전·휠 줌 (**3D v1**, 회의용) | — | scripts/preview_map3d.py |
+| `maps/preview_map3d_v2.html` | 47 KB | 툴 연결 지도 3D **v2** — v1 + '툴 기준 후보' 순위표·'연결 수로 크기' (2026-09-29 추가) | — | scripts/preview_map3d.py (main `9136272`) |
 | `README_offline.md` | 8 KB | 사내 설치·실행 안내 (저장소 zip 안에도 있음) | — | — |
 
 JDK·Fuseki 는 공급자 원본 그대로다 — 반입 심사에서 원 출처에서 직접 받기를 요구하면 위 출처에서 같은 파일을 받아 체크섬이 같은지 보면 된다
 (공급자 체크섬: 저장소 `docs/04_반입목록.md` 1장).
+
+## 판 기록 (덮어쓰지 않는다)
+
+이 브랜치의 산출물은 **덮어쓰지 않는다** (Leo 2026-09-29). 새 판은 판 번호나 커밋이 붙은 **새 파일**로 더하고, 이 표와 파일 표에 한 줄씩 추가한다.
+`SHA256SUMS.txt` 는 산출물 줄을 지우지 않고 더한다 (안내문인 README.md 줄만 새 값으로 바뀐다). 지나간 판도 git 이력에 그대로 남는다.
+
+| 날짜 | 판 | 더한 파일 | 내용 |
+|---|---|---|---|
+| 2026-09-29 | 패키지 v0.1 | 저장소 zip `2d6e8c6` · wheels · JDK · Fuseki · 지도 2D v1 · 3D v1 | 연습용 첫 판 (합성 데이터) |
+| 2026-09-29 | 지도 3D v2 | `maps/preview_map3d_v2.html` | '툴 기준 후보' 버튼 — 연결 많은 툴 순위표(행 클릭 = 그 툴의 모든 사용처·연결 강조), '연결 수로 크기' 토글. 제안 시안 (docs/02 7.5, Leo 확인 대기) |
 
 ## 들여간 뒤
 
