@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><title>툴 연결 지도 3D — 합성 데이터 미리보기</title>
+<style>
+ :root{--bg:#0f1720;--panel:#16212c;--line:#2a3a4a;--fg:#e6edf3;--muted:#9fb0c0;--manual:#ff9a2e;--note:#c9925a;--auto:#7f8c99;--ok:#3fbf73;--no:#aab3bc;--iso:#ff5a5a}
+ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:13px;overflow:hidden}
+ #top{position:absolute;left:0;right:0;top:0;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;background:rgba(22,33,44,.92);border-bottom:1px solid var(--line);z-index:5}
+ #top h1{font-size:15px;margin:0 10px 0 0;font-weight:700}
+ #top label{display:inline-flex;align-items:center;gap:4px;color:var(--muted);cursor:pointer}
+ #top select,#top button{background:#0f1720;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:2px 7px;font:inherit}
+ #top button{cursor:pointer}
+ .sw{display:inline-block;width:22px;height:3px;vertical-align:middle;margin-right:3px}
+ canvas{display:block;width:100vw;height:100vh;cursor:grab}
+ canvas.drag{cursor:grabbing}
+ #tip{position:absolute;pointer-events:none;background:rgba(22,33,44,.96);border:1px solid var(--line);border-radius:6px;padding:7px 9px;max-width:340px;white-space:pre-line;display:none;z-index:6;line-height:1.35}
+ #side{position:absolute;right:0;top:0;bottom:0;width:min(340px,46vw);box-sizing:border-box;background:rgba(22,33,44,.95);border-left:1px solid var(--line);padding:56px 14px 14px;overflow:auto;display:none;z-index:4}
+ #side h2{font-size:14px;margin:6px 0 4px} #side .m{color:var(--muted);font-size:12px} #side ul{padding-left:16px;margin:4px 0} #side li{margin:2px 0}
+ #side .close{position:absolute;right:10px;top:52px;cursor:pointer;color:var(--muted)}
+ #help{position:absolute;left:12px;bottom:10px;max-width:54vw;color:var(--muted);font-size:12px;background:rgba(15,23,32,.75);padding:4px 8px;border-radius:5px;line-height:1.4}
+ #counts{position:absolute;right:12px;bottom:10px;max-width:38vw;text-align:right;color:var(--muted);font-size:12px;background:rgba(15,23,32,.75);padding:4px 8px;border-radius:5px;line-height:1.4}
+ b.m{color:var(--manual)} b.n{color:var(--note)} b.i{color:var(--iso)}
+ .gA{color:var(--manual);font-weight:700} .gB{color:#ffd28a} .gC{color:var(--muted)} .g제외{color:#6b7785}
+</style></head><body>
+<div id="top">
+ <h1>툴 연결 지도 3D <span style="color:var(--muted);font-weight:400;font-size:12px">합성 데이터 · M4 전 시안</span></h1>
+ <label><input type="checkbox" id="fManual" checked><span class="sw" style="background:var(--manual)"></span>수기 전달</label>
+ <label><input type="checkbox" id="fNote" checked><span class="sw" style="background:var(--note);height:0;border-top:3px dashed var(--note)"></span>비고 신호</label>
+ <label><input type="checkbox" id="fAuto" checked><span class="sw" style="background:var(--auto)"></span>자동 연결</label>
+ <label>등급 <select id="fGrade"><option value="">전체</option><option value="A">A만</option><option value="AB">A·B</option></select></label>
+ <label>이름 <select id="fLabel"><option value="near">가까운 것</option><option value="all">전부</option><option value="sel">선택·연결만</option><option value="none">없음</option></select></label>
+ <label><input type="checkbox" id="fCluster" checked>분야 묶음</label>
+ <label><input type="checkbox" id="fSpin" checked>자동 회전</label>
+ <button id="reset">시점 초기화</button>
+</div>
+<canvas id="c"></canvas>
+<div id="tip"></div>
+<div id="side"><span class="close" id="closeSide">✕ 닫기</span><div id="sideBody"></div></div>
+<div id="help">왼쪽 드래그 회전 · 휠 줌 · 휠(가운데)/오른쪽 드래그 이동 · 더블클릭 초기화 · 노드 클릭 선택 · 초록=자동화 가능 · 회색=불가/모름 · 빨간 테두리=고립</div>
+<div id="counts"></div>
+<script>
+const DATA = {"nodes": [{"id": "2차유로(SAS)/SAS-01", "name": "가상-1D네트워크", "sw_id": "SAS-01", "field": "2차유로(SAS)", "x": 105.66251239819971, "y": 274.25, "z": 125.13284033617916, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "CLI 인자", "kind": "자체개발", "freq": "매일", "users": 6, "isolated": false}, {"id": "2차유로(SAS)/SAS-02", "name": "Microsoft Excel", "sw_id": "SAS-02", "field": "2차유로(SAS)", "x": 31.801482042001794, "y": 237.25, "z": 40.00950994086922, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "모름", "kind": "상용", "freq": "주 1회 이상", "users": 3, "isolated": false}, {"id": "2차유로(SAS)/SAS-03", "name": "가상-열해석", "sw_id": "SAS-03", "field": "2차유로(SAS)", "x": 163.0198202004772, "y": 200.25, "z": 64.91297730180399, "auto": false, "airgap": "가능", "op": "GUI 전용", "auto_if": "없음", "kind": "자체개발", "freq": "주 1회 이상", "users": "약 4명", "isolated": false}, {"id": "2차유로(SAS)/SAS-04", "name": "ANSYS FLUENT", "sw_id": "SAS-04", "field": "2차유로(SAS)", "x": 63.107404451716995, "y": 163.25, "z": 117.05645591720885, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "월 1회 이상", "users": 2, "isolated": false}, {"id": "구조/STR-01", "name": "HyperMesh", "sw_id": "STR-01", "field": "구조", "x": -181.89400369614026, "y": 211.75, "z": 55.28459693504897, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "매일", "users": 5, "isolated": false}, {"id": "구조/STR-02", "name": "ANSYS Mechanical", "sw_id": "STR-02", "field": "구조", "x": -255.7550340523382, "y": 174.75, "z": -29.838733460260972, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "주 1회 이상", "users": 6, "isolated": false}, {"id": "구조/STR-03", "name": "NASTRAN", "sw_id": "STR-03", "field": "구조", "x": -124.53669589386278, "y": 137.75, "z": -4.935266099326199, "auto": true, "airgap": "가능", "op": "CLI 지원", "auto_if": "CLI 인자", "kind": "상용", "freq": "주 1회 이상", "users": 3, "isolated": false}, {"id": "구조/STR-04", "name": "가상-수명평가툴", "sw_id": "STR-04", "field": "구조", "x": -224.449111642623, "y": 100.75, "z": 47.20821251607866, "auto": true, "airgap": "불가", "op": "CLI 지원", "auto_if": "REST API", "kind": "상용", "freq": "월 1회 이상", "users": 2, "isolated": false}, {"id": "성능/PERF-01", "name": "가상-성능덱", "sw_id": "PERF-01", "field": "성능", "x": 177.3196950350736, "y": 149.25, "z": -116.36272082746885, "auto": true, "airgap": "가능", "op": "CLI 지원", "auto_if": "CLI 인자", "kind": "자체개발", "freq": "매일", "users": 8, "isolated": false}, {"id": "성능/PERF-02", "name": "MATLAB", "sw_id": "PERF-02", "field": "성능", "x": 103.45866467887568, "y": 112.25, "z": -201.4860512227788, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "주 1회 이상", "users": 4, "isolated": false}, {"id": "성능/PERF-03", "name": "Excel", "sw_id": "PERF-03", "field": "성능", "x": 234.6770028373511, "y": 75.25, "z": -176.58258386184403, "auto": true, "airgap": "가능", "op": "GUI 전용", "auto_if": "COM·OLE", "kind": "상용", "freq": "매일", "users": 10, "isolated": false}, {"id": "성능/PERF-04", "name": "Python", "sw_id": "PERF-04", "field": "성능", "x": 134.76458708859087, "y": 38.25, "z": -124.43910524643917, "auto": true, "airgap": "가능", "op": "CLI 지원", "auto_if": "SDK·라이브러리", "kind": "오픈소스", "freq": "주 1회 이상", "users": 3, "isolated": false}, {"id": "시험/STR-05", "name": "Excel", "sw_id": "STR-05", "field": "시험", "x": 2.220632514831193, "y": 107.91666666666667, "z": 296.77952200531297, "auto": true, "airgap": "가능", "op": "GUI 전용", "auto_if": "COM·OLE", "kind": "상용", "freq": "주 1회 이상", "users": 3, "isolated": false}, {"id": "시험/TEST-01", "name": "LabVIEW", "sw_id": "TEST-01", "field": "시험", "x": -78.95635731246003, "y": 77.25, "z": 205.56599521806373, "auto": true, "airgap": "가능", "op": "GUI 전용", "auto_if": "SDK·라이브러리", "kind": "상용", "freq": "매일", "users": 5, "isolated": false}, {"id": "시험/TEST-02", "name": "가상-데이터수집기", "sw_id": "TEST-02", "field": "시험", "x": 77.81123673163125, "y": 46.58333333333333, "z": 231.2467465084093, "auto": true, "airgap": "가능", "op": "CLI 지원", "auto_if": "파일 폴링", "kind": "자체개발", "freq": "매일", "users": 2, "isolated": false}, {"id": "시험/TEST-03", "name": "MATLAB", "sw_id": "TEST-03", "field": "시험", "x": -65.98544693259784, "y": 15.91666666666666, "z": 320.217217343455, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "주 1회 이상", "users": 3, "isolated": false}, {"id": "시험/TEST-04", "name": "Excel", "sw_id": "TEST-04", "field": "시험", "x": -18.997892736762996, "y": -14.75, "z": 168.4682493736428, "auto": true, "airgap": "가능", "op": "GUI 전용", "auto_if": "COM·OLE", "kind": "상용", "freq": "주 1회 이상", "users": 8, "isolated": false}, {"id": "시험/TEST-05", "name": "가상-진동계측기", "sw_id": "TEST-05", "field": "시험", "x": 26.39570729907241, "y": -45.41666666666666, "z": 281.82182109582095, "auto": false, "airgap": "가능", "op": null, "auto_if": null, "kind": "자체개발", "freq": "주 1회 이상", "users": 3, "isolated": false}, {"id": "압축기/COM-01", "name": "가상-공력설계툴", "sw_id": "COM-01", "field": "압축기", "x": -145.88496304146955, "y": 24.25, "z": -143.2300786505168, "auto": true, "airgap": "가능", "op": "CLI 지원", "auto_if": "CLI 인자", "kind": "자체개발", "freq": "주 1회 이상", "users": 3, "isolated": false}, {"id": "압축기/COM-02", "name": "STAR-CCM+", "sw_id": "COM-02", "field": "압축기", "x": -219.74599339766746, "y": -12.75, "z": -228.35340904582674, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "매일", "users": 5, "isolated": false}, {"id": "압축기/COM-03", "name": "Excel", "sw_id": "COM-03", "field": "압축기", "x": -88.52765523919207, "y": -49.75, "z": -203.44994168489197, "auto": true, "airgap": "가능", "op": "GUI 전용", "auto_if": "COM·OLE", "kind": "상용", "freq": "주 1회 이상", "users": 4, "isolated": false}, {"id": "압축기/COM-05", "name": "CATIA V5", "sw_id": "COM-05", "field": "압축기", "x": -188.44007098795228, "y": -86.75, "z": -151.3064630694871, "auto": false, "airgap": "가능", "op": "GUI 전용", "auto_if": "없음", "kind": "상용", "freq": "주 1회 이상", "users": 3, "isolated": false}, {"id": "연소기/COM-01", "name": "가상-연소해석기", "sw_id": "COM-01", "field": "연소기", "x": 242.7888438937673, "y": -38.25, "z": 77.99782629695258, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "파일 폴링", "kind": "자체개발", "freq": "주 1회 이상", "users": 3, "isolated": true}, {"id": "연소기/COM-02", "name": "Fluent", "sw_id": "COM-02", "field": "연소기", "x": 168.92781353756936, "y": -75.25, "z": -7.125504098357357, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "주 1회 이상", "users": 2, "isolated": false}, {"id": "연소기/COM-03", "name": "MATLAB", "sw_id": "COM-03", "field": "연소기", "x": 300.1461516960448, "y": -112.25, "z": 17.777963262577416, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "주 1회 이상", "users": 2, "isolated": false}, {"id": "연소기/COM-04", "name": "가상-연소계측기", "sw_id": "COM-04", "field": "연소기", "x": 200.23373594728457, "y": -149.25, "z": 69.92144187798228, "auto": true, "airgap": "가능", "op": "GUI 전용", "auto_if": "파일 폴링", "kind": "자체개발", "freq": "매일", "users": 2, "isolated": false}, {"id": "제어/MATLAB", "name": "MATLAB", "sw_id": "MATLAB", "field": "제어", "x": -147.20233639605252, "y": -112.91666666666666, "z": 158.190542710992, "auto": true, "airgap": "가능", "op": "GUI+CLI(일부)", "auto_if": "내장 스크립팅", "kind": "프리웨어", "freq": "매일", "users": 4, "isolated": false}, {"id": "제어/Simulink", "name": "MATLAB Simulink", "sw_id": "Simulink", "field": "제어", "x": -215.28992533280848, "y": -156.25, "z": 77.07061919616146, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "주 1회 이상", "users": 4, "isolated": false}, {"id": "제어/가상-제어로직툴", "name": "가상-제어로직툴", "sw_id": "가상-제어로직툴", "field": "제어", "x": -112.52527963683892, "y": -199.58333333333334, "z": 102.67900362889068, "auto": false, "airgap": "가능", "op": "GUI 전용", "auto_if": "모름", "kind": "자체개발", "freq": "주 1회 이상", "users": 3, "isolated": true}, {"id": "터빈/TURB-01", "name": "CATIA V5", "sw_id": "TURB-01", "field": "터빈", "x": 39.85002660747236, "y": -152.35, "z": -70.1023617489835, "auto": true, "airgap": "부분 가능(비고 기재)", "op": "GUI 전용", "auto_if": "COM·OLE", "kind": "상용", "freq": "매일", "users": 5, "isolated": false}, {"id": "터빈/TURB-02", "name": "ANSYS Fluent 2024R1", "sw_id": "TURB-02", "field": "터빈", "x": -37.9885080721735, "y": -185.55, "z": -158.39022317815449, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "주 1회 이상", "users": 4, "isolated": false}, {"id": "터빈/TURB-03", "name": "Tecplot", "sw_id": "TURB-03", "field": "터빈", "x": 108.13875321667581, "y": -218.75, "z": -133.2130489343034, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "주 1회 이상", "users": 6, "isolated": false}, {"id": "터빈/TURB-04", "name": "MATLAB", "sw_id": "TURB-04", "field": "터빈", "x": -19.260215214108552, "y": -251.95, "z": -57.3409892716259, "auto": true, "airgap": "가능", "op": "GUI+CLI", "auto_if": "내장 스크립팅", "kind": "상용", "freq": "주 1회 이상", "users": 2, "isolated": false}, {"id": "터빈/TURB-05", "name": "Excel", "sw_id": "TURB-05", "field": "터빈", "x": 21.76893700329076, "y": -285.15, "z": -167.6595852794269, "auto": true, "airgap": "가능", "op": "GUI 전용", "auto_if": "COM·OLE", "kind": "상용", "freq": "주 1회 이상", "users": 6, "isolated": false}], "edges": [{"s": 8, "t": 1, "n": 2, "kind": "manual", "grade": "A", "items": ["성능 경계조건 표 → 성능 경계조건 [csv]", "성능 요약 → 해석 요약 표 [xlsx]"]}, {"s": 8, "t": 10, "n": 1, "kind": "auto", "grade": null, "items": ["성능 요약 → 해석 요약 표 [xlsx]"]}, {"s": 8, "t": 33, "n": 1, "kind": "auto", "grade": null, "items": ["성능 요약 → 해석 요약 표 [xlsx]"]}, {"s": 8, "t": 20, "n": 1, "kind": "auto", "grade": null, "items": ["성능 요약 → 해석 요약 표 [xlsx]"]}, {"s": 8, "t": 12, "n": 1, "kind": "auto", "grade": null, "items": ["성능 요약 → 해석 요약 표 [xlsx]"]}, {"s": 8, "t": 16, "n": 1, "kind": "auto", "grade": null, "items": ["성능 요약 → 해석 요약 표 [xlsx]"]}, {"s": 8, "t": 11, "n": 1, "kind": "auto", "grade": null, "items": ["성능 요약 데이터 → 성능 요약 데이터 [json]"]}, {"s": 9, "t": 26, "n": 1, "kind": "auto", "grade": null, "items": ["성능 모델 계수 → 성능 모델 계수 [mat]"]}, {"s": 9, "t": 27, "n": 1, "kind": "auto", "grade": null, "items": ["성능 모델 계수 → 제어 게인 표 [mat]"]}, {"s": 0, "t": 2, "n": 2, "kind": "auto", "grade": null, "items": ["유량 분배 결과 → 유량 분배 결과 [dat]", "유량 분배 결과 → 유량 분배 결과 [dat]"]}, {"s": 0, "t": 10, "n": 1, "kind": "auto", "grade": null, "items": ["유량 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 0, "t": 1, "n": 1, "kind": "auto", "grade": null, "items": ["유량 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 0, "t": 33, "n": 1, "kind": "auto", "grade": null, "items": ["유량 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 0, "t": 20, "n": 1, "kind": "auto", "grade": null, "items": ["유량 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 0, "t": 12, "n": 1, "kind": "auto", "grade": null, "items": ["유량 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 0, "t": 16, "n": 1, "kind": "auto", "grade": null, "items": ["유량 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 1, "t": 0, "n": 1, "kind": "manual", "grade": "A", "items": ["보정 경계조건 → 보정 경계조건 [xlsx]"]}, {"s": 2, "t": 5, "n": 1, "kind": "manual", "grade": "B", "items": ["금속 온도 결과 → 금속 온도 결과 [tres]"]}, {"s": 3, "t": 31, "n": 1, "kind": "note", "grade": "A", "items": ["2차유로 유동장 → 유동장 결과 [cas.h5/dat.h5]"]}, {"s": 30, "t": 2, "n": 1, "kind": "manual", "grade": "B", "items": ["벽면 온도 조건 → 벽면 온도 조건 [txt]"]}, {"s": 30, "t": 31, "n": 1, "kind": "note", "grade": "A", "items": ["터빈 유동장 → 유동장 결과 [cas.h5/dat.h5]"]}, {"s": 18, "t": 4, "n": 1, "kind": "auto", "grade": null, "items": ["익형 형상 → 익형 형상 [stp]"]}, {"s": 18, "t": 5, "n": 1, "kind": "auto", "grade": null, "items": ["익형 형상 → 익형 형상 [stp]"]}, {"s": 18, "t": 10, "n": 1, "kind": "auto", "grade": null, "items": ["설계 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 18, "t": 1, "n": 1, "kind": "auto", "grade": null, "items": ["설계 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 18, "t": 33, "n": 1, "kind": "auto", "grade": null, "items": ["설계 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 18, "t": 20, "n": 1, "kind": "auto", "grade": null, "items": ["설계 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 18, "t": 12, "n": 1, "kind": "auto", "grade": null, "items": ["설계 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 18, "t": 16, "n": 1, "kind": "auto", "grade": null, "items": ["설계 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 19, "t": 31, "n": 1, "kind": "auto", "grade": null, "items": ["압축기 유동장 → 외부 유동장 [plt]"]}, {"s": 19, "t": 10, "n": 1, "kind": "auto", "grade": null, "items": ["압축기 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 19, "t": 1, "n": 1, "kind": "auto", "grade": null, "items": ["압축기 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 19, "t": 33, "n": 1, "kind": "auto", "grade": null, "items": ["압축기 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 19, "t": 20, "n": 1, "kind": "auto", "grade": null, "items": ["압축기 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 19, "t": 12, "n": 1, "kind": "auto", "grade": null, "items": ["압축기 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 19, "t": 16, "n": 1, "kind": "auto", "grade": null, "items": ["압축기 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 23, "t": 31, "n": 1, "kind": "note", "grade": "A", "items": ["연소실 유동장 → 유동장 결과 [cas.h5/dat.h5]"]}, {"s": 25, "t": 9, "n": 1, "kind": "auto", "grade": null, "items": ["연소 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 25, "t": 32, "n": 1, "kind": "auto", "grade": null, "items": ["연소 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 25, "t": 24, "n": 1, "kind": "auto", "grade": null, "items": ["연소 계측 데이터 → 연소 계측 데이터 [csv]"]}, {"s": 25, "t": 26, "n": 1, "kind": "auto", "grade": null, "items": ["연소 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 25, "t": 15, "n": 1, "kind": "auto", "grade": null, "items": ["연소 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 25, "t": 13, "n": 1, "kind": "manual", "grade": "A", "items": ["연소 계측 원시 데이터 → 고속 계측 원시 데이터 [bin]"]}, {"s": 4, "t": 3, "n": 1, "kind": "auto", "grade": null, "items": ["해석 메시 → 해석 메시 [msh]"]}, {"s": 4, "t": 30, "n": 1, "kind": "auto", "grade": null, "items": ["해석 메시 → 해석 메시 [msh]"]}, {"s": 4, "t": 23, "n": 1, "kind": "auto", "grade": null, "items": ["해석 메시 → 해석 메시 [msh]"]}, {"s": 4, "t": 6, "n": 1, "kind": "auto", "grade": null, "items": ["구조 메시 → 구조 메시 [bdf]"]}, {"s": 5, "t": 10, "n": 1, "kind": "auto", "grade": null, "items": ["구조 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 5, "t": 1, "n": 1, "kind": "auto", "grade": null, "items": ["구조 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 5, "t": 33, "n": 1, "kind": "auto", "grade": null, "items": ["구조 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 5, "t": 20, "n": 1, "kind": "auto", "grade": null, "items": ["구조 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 5, "t": 12, "n": 1, "kind": "auto", "grade": null, "items": ["구조 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 5, "t": 16, "n": 1, "kind": "auto", "grade": null, "items": ["구조 요약 표 → 해석 요약 표 [xlsx]"]}, {"s": 6, "t": 7, "n": 1, "kind": "manual", "grade": "제외", "items": ["구조 해석 결과 → 구조 해석 결과 [op2]"]}, {"s": 7, "t": 5, "n": 1, "kind": "manual", "grade": "제외", "items": ["수명 평가 결과 → 수명 평가 결과 [json]"]}, {"s": 26, "t": 27, "n": 1, "kind": "auto", "grade": null, "items": ["제어 게인 표 → 제어 게인 표 [mat]"]}, {"s": 13, "t": 9, "n": 1, "kind": "auto", "grade": null, "items": ["시험 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 13, "t": 32, "n": 1, "kind": "auto", "grade": null, "items": ["시험 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 13, "t": 24, "n": 1, "kind": "auto", "grade": null, "items": ["시험 계측 데이터 → 연소 계측 데이터 [csv]"]}, {"s": 13, "t": 26, "n": 1, "kind": "auto", "grade": null, "items": ["시험 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 13, "t": 15, "n": 1, "kind": "auto", "grade": null, "items": ["시험 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 14, "t": 13, "n": 1, "kind": "manual", "grade": "A", "items": ["고속 계측 원시 데이터 → 고속 계측 원시 데이터 [bin]"]}, {"s": 14, "t": 15, "n": 1, "kind": "note", "grade": "A", "items": ["시험 조건 기록 → 시험 조건 기록 [txt]"]}, {"s": 17, "t": 2, "n": 1, "kind": "manual", "grade": "C", "items": ["계측 온도 보정표 → 계측 온도 보정표 [cal]"]}, {"s": 17, "t": 9, "n": 1, "kind": "auto", "grade": null, "items": ["진동 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 17, "t": 32, "n": 1, "kind": "auto", "grade": null, "items": ["진동 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 17, "t": 24, "n": 1, "kind": "auto", "grade": null, "items": ["진동 계측 데이터 → 연소 계측 데이터 [csv]"]}, {"s": 17, "t": 26, "n": 1, "kind": "auto", "grade": null, "items": ["진동 계측 데이터 → 시험 계측 데이터 [csv]"]}, {"s": 17, "t": 15, "n": 1, "kind": "auto", "grade": null, "items": ["진동 계측 데이터 → 시험 계측 데이터 [csv]"]}], "clusters": [{"field": "2차유로(SAS)", "x": 92.56940793217744, "y": 218.75, "z": 77.97013668761987, "r": 74.0}, {"field": "구조", "x": -194.98710816216254, "y": 156.25, "z": 8.121893286489676, "r": 74.0}, {"field": "성능", "x": 164.22659056905133, "y": 93.75, "z": -163.52542447602815, "r": 74.0}, {"field": "시험", "x": -11.38299726341464, "y": 31.25, "z": 247.77785387984355, "r": 92.0}, {"field": "압축기", "x": -158.97806750749183, "y": -31.25, "z": -190.3927822990761, "r": 74.0}, {"field": "연소기", "x": 229.69573942774502, "y": -93.75, "z": 30.83512264839329, "r": 74.0}, {"field": "제어", "x": -160.16215696468564, "y": -156.25, "z": 111.50794131549289, "r": 65.0}, {"field": "터빈", "x": 26.52858494196791, "y": -218.75, "z": -118.0875593827597, "r": 83.0}], "ranked": [{"rank": 1, "grade": "A", "kind": "수기", "s": 1, "t": 0, "data": "보정 경계조건"}, {"rank": 2, "grade": "A", "kind": "수기", "s": 14, "t": 13, "data": "고속 계측 원시 데이터"}, {"rank": 3, "grade": "A", "kind": "수기", "s": 25, "t": 13, "data": "고속 계측 원시 데이터, 연소 계측 원시 데이터"}, {"rank": 4, "grade": "A", "kind": "변환", "s": 29, "t": 5, "data": "블레이드 형상, 터빈 블레이드 3D 모델"}, {"rank": 5, "grade": "A", "kind": "수기", "s": 8, "t": 1, "data": "성능 경계조건, 성능 경계조건 표"}, {"rank": 6, "grade": "A", "kind": "비고", "s": 30, "t": 31, "data": "유동장 결과, 터빈 유동장"}, {"rank": 7, "grade": "A", "kind": "비고", "s": 23, "t": 31, "data": "연소실 유동장, 유동장 결과"}, {"rank": 8, "grade": "A", "kind": "비고", "s": 3, "t": 31, "data": "2차유로 유동장, 유동장 결과"}, {"rank": 9, "grade": "A", "kind": "비고", "s": 14, "t": 15, "data": "시험 조건 기록"}, {"rank": 10, "grade": "B", "kind": "변환", "s": 21, "t": 5, "data": "블레이드 형상, 압축기 케이싱 3D 모델"}, {"rank": 11, "grade": "B", "kind": "수기", "s": 2, "t": 5, "data": "금속 온도 결과"}, {"rank": 12, "grade": "B", "kind": "수기", "s": 30, "t": 2, "data": "벽면 온도 조건"}, {"rank": 13, "grade": "C", "kind": "수기", "s": 17, "t": 2, "data": "계측 온도 보정표"}, {"rank": 14, "grade": "제외", "kind": "수기", "s": 7, "t": 5, "data": "수명 평가 결과"}, {"rank": 15, "grade": "제외", "kind": "수기", "s": 6, "t": 7, "data": "구조 해석 결과"}], "counts": {"fields": 8, "usages": 34, "feeds": 71, "manual": 9, "note": 4, "isolated": 2, "auto": 58}};
+const N = DATA.nodes, E = DATA.edges, C = DATA.clusters;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const tip = document.getElementById('tip'), side = document.getElementById('side'), sideBody = document.getElementById('sideBody');
+// 회전은 3x3 행렬을 누적한다 (트랙볼): 드래그 방향이 화면 기준이라 위아래로도 끝없이 돈다
+function rotX(a) { const c = Math.cos(a), s = Math.sin(a); return [1, 0, 0, 0, c, -s, 0, s, c]; }
+function rotY(a) { const c = Math.cos(a), s = Math.sin(a); return [c, 0, s, 0, 1, 0, -s, 0, c]; }
+function mul(A, B) { const M = new Array(9); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i * 3 + j] = A[i * 3] * B[j] + A[i * 3 + 1] * B[3 + j] + A[i * 3 + 2] * B[6 + j]; return M; }
+function initR() { return mul(rotX(0.35), rotY(0.6)); }
+const S = { R: initR(), dist: 900, fov: 700, panX: 0, panY: 0, hover: -1, sel: -1, spin: true, dirty: true };
+function orbit(dx, dy) { S.R = mul(mul(rotX(dy * 0.006), rotY(dx * 0.006)), S.R); }
+const COL = { manual: '#ff9a2e', note: '#c9925a', auto: '#7f8c99', ok: '#3fbf73', no: '#aab3bc', iso: '#ff5a5a', fg: '#e6edf3', muted: '#9fb0c0' };
+const ui = id => document.getElementById(id);
+const adj = N.map(() => new Set());
+E.forEach((e, k) => { adj[e.s].add(k); adj[e.t].add(k); });
+const rankedByNode = N.map(() => []);
+DATA.ranked.forEach(r => { rankedByNode[r.s].push(r); rankedByNode[r.t].push(r); });
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.floor(innerWidth * dpr); cv.height = Math.floor(innerHeight * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); S.dirty = true;
+}
+addEventListener('resize', resize); resize();
+
+// ---- 투영: 회전(yaw: Y축, pitch: X축) → 카메라 거리 dist 원근
+let P = [];   // 노드 투영 결과 {x,y,s,d}
+let PC = [];  // 묶음 투영
+function rot(x, y, z) {
+  const R = S.R;
+  return [R[0] * x + R[1] * y + R[2] * z, R[3] * x + R[4] * y + R[5] * z, R[6] * x + R[7] * y + R[8] * z];
+}
+function proj(x, y, z) {
+  const [rx, ry, rz] = rot(x, y, z);
+  const depth = S.dist - rz;                    // 카메라는 +z 쪽에서 원점을 본다
+  const s = S.fov / Math.max(80, depth);
+  return { x: innerWidth / 2 + S.panX + rx * s, y: innerHeight / 2 + S.panY - ry * s, s, d: rz };
+}
+function project() {
+  P = N.map(n => proj(n.x, n.y, n.z));
+  PC = C.map(c => Object.assign(proj(c.x, c.y, c.z), { r: c.r }));
+}
+
+// ---- 필터
+function edgeVisible(e) {
+  if (e.kind === 'manual' && !ui('fManual').checked) return false;
+  if (e.kind === 'note' && !ui('fNote').checked) return false;
+  if (e.kind === 'auto' && !ui('fAuto').checked) return false;
+  const g = ui('fGrade').value;
+  if (g && e.kind !== 'auto') { if (g === 'A' && e.grade !== 'A') return false; if (g === 'AB' && e.grade !== 'A' && e.grade !== 'B') return false; }
+  return true;
+}
+function focusNode() { return S.sel >= 0 ? S.sel : S.hover; }
+function isNeighbor(i, f) { if (f < 0) return true; if (i === f) return true; for (const k of adj[f]) { const e = E[k]; if (e.s === i || e.t === i) return true; } return false; }
+
+// ---- 그리기
+function depthAlpha(d) { // 가까울수록 진하게
+  const t = Math.max(0, Math.min(1, (d + 420) / 840));
+  return 0.35 + 0.65 * t;
+}
+function draw() {
+  project();
+  ctx.clearRect(0, 0, innerWidth, innerHeight);
+  const f = focusNode();
+  const labelMode = ui('fLabel').value;
+  // 묶음 (뒤에서 앞으로)
+  if (ui('fCluster').checked) {
+    [...PC.keys()].sort((a, b) => PC[a].d - PC[b].d).forEach(i => {
+      const c = PC[i]; const r = c.r * c.s * 1.35;
+      const g = ctx.createRadialGradient(c.x, c.y, r * 0.2, c.x, c.y, r);
+      g.addColorStop(0, 'rgba(120,150,190,0.22)'); g.addColorStop(1, 'rgba(120,150,190,0.02)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(200,215,230,' + (0.55 * depthAlpha(c.d) + 0.2) + ')'; ctx.font = '700 ' + Math.max(11, 15 * c.s) + 'px sans-serif';
+      ctx.textAlign = 'center'; ctx.fillText(C[i].field, c.x, c.y - r - 4);
+    });
+  }
+  // 선: 뒤에서 앞으로, 자동 → 비고 → 수기 순 (수기가 위)
+  const order = { auto: 0, note: 1, manual: 2 };
+  const es = E.map((e, k) => k).filter(k => edgeVisible(E[k]))
+    .sort((a, b) => (order[E[a].kind] - order[E[b].kind]) || ((P[E[a].s].d + P[E[a].t].d) - (P[E[b].s].d + P[E[b].t].d)));
+  for (const k of es) {
+    const e = E[k], a = P[e.s], b = P[e.t];
+    const touches = f >= 0 && (e.s === f || e.t === f);
+    let alpha = depthAlpha((a.d + b.d) / 2) * (e.kind === 'auto' ? 0.45 : 0.95);
+    if (f >= 0 && !touches) alpha *= 0.12;
+    if (touches) alpha = 1;
+    const w = ((e.kind === 'manual' ? 3 : e.kind === 'note' ? 2 : 1.1) + Math.min(2, (e.n - 1) * 0.4)) * Math.max(0.6, Math.min(1.6, (a.s + b.s) / 2)) * (touches ? 1.4 : 1);
+    ctx.strokeStyle = COL[e.kind]; ctx.globalAlpha = alpha; ctx.lineWidth = w;
+    ctx.setLineDash(e.kind === 'note' ? [7, 5] : []);
+    // 양방향 겹침 방지: 진행 방향 오른쪽으로 살짝 휨
+    const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L, bend = Math.min(22, L * 0.1);
+    const mx = (a.x + b.x) / 2 + nx * bend, my = (a.y + b.y) / 2 + ny * bend;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(mx, my, b.x, b.y); ctx.stroke();
+    // 화살촉 (소비 쪽)
+    const tx = b.x - mx, ty = b.y - my, tl = Math.hypot(tx, ty) || 1, ux = tx / tl, uy = ty / tl, rb = nodeR(e.t) + 2, hs = 5 + w * 1.2;
+    const px = b.x - ux * rb, py = b.y - uy * rb;
+    ctx.setLineDash([]); ctx.fillStyle = COL[e.kind]; ctx.beginPath();
+    ctx.moveTo(px, py); ctx.lineTo(px - ux * hs - (-uy) * hs * 0.55, py - uy * hs - ux * hs * 0.55); ctx.lineTo(px - ux * hs + (-uy) * hs * 0.55, py - uy * hs + ux * hs * 0.55); ctx.closePath(); ctx.fill();
+  }
+  ctx.globalAlpha = 1; ctx.setLineDash([]);
+  // 노드: 뒤에서 앞으로
+  const ns = [...N.keys()].sort((a, b) => P[a].d - P[b].d);
+  for (const i of ns) {
+    const n = N[i], p = P[i], r = nodeR(i);
+    const dim = f >= 0 && !isNeighbor(i, f);
+    ctx.globalAlpha = dim ? 0.18 : depthAlpha(p.d);
+    ctx.fillStyle = n.auto ? COL.ok : COL.no;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = n.isolated ? 3 : 1.2; ctx.strokeStyle = n.isolated ? COL.iso : (i === f ? '#ffffff' : '#0f1720');
+    ctx.setLineDash(n.airgap === '불가' ? [3, 2] : []); ctx.stroke(); ctx.setLineDash([]);
+    if (i === f) { ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.beginPath(); ctx.arc(p.x, p.y, r + 4, 0, Math.PI * 2); ctx.stroke(); }
+    const showLabel = labelMode === 'all' || (labelMode === 'near' && (p.s > 0.78 || i === f || (f >= 0 && isNeighbor(i, f)))) || (labelMode === 'sel' && f >= 0 && isNeighbor(i, f));
+    if (showLabel && !dim) {
+      ctx.font = (i === f ? '700 ' : '') + Math.max(10, 11.5 * Math.min(1.4, p.s)) + 'px sans-serif';
+      ctx.textAlign = 'left'; ctx.fillStyle = COL.fg; ctx.globalAlpha = Math.min(1, depthAlpha(p.d) + 0.15);
+      ctx.fillText(n.name, p.x + r + 4, p.y + 4);
+      ctx.fillStyle = COL.muted; ctx.font = Math.max(9, 9.5 * Math.min(1.4, p.s)) + 'px sans-serif';
+      ctx.fillText(n.sw_id, p.x + r + 6 + ctx.measureText(n.name).width * 1.15, p.y + 4);
+    }
+  }
+  ctx.globalAlpha = 1;
+  const c = DATA.counts;
+  ui('counts').innerHTML = `분야 ${c.fields} · 툴사용 ${c.usages} · 연결 ${c.feeds} (<b class="m">수기 ${c.manual}</b> · <b class="n">비고 ${c.note}</b> · 자동 ${c.auto}) · <b class="i">고립 ${c.isolated}</b>` + (S.sel >= 0 ? ` · 선택: ${N[S.sel].name}` : '');
+}
+function nodeR(i) { return Math.max(3, 7 * Math.min(1.8, P[i].s)); }
+
+// ---- 조작
+let drag = null, moved = 0, lastT = 0;
+cv.addEventListener('contextmenu', ev => ev.preventDefault());
+cv.addEventListener('mousedown', ev => {
+  drag = { x: ev.clientX, y: ev.clientY, btn: ev.button, shift: ev.shiftKey }; moved = 0; cv.classList.add('drag'); S.spin = false; ui('fSpin').checked = false;
+});
+addEventListener('mousemove', ev => {
+  if (drag) {
+    const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y; drag.x = ev.clientX; drag.y = ev.clientY; moved += Math.abs(dx) + Math.abs(dy);
+    if (drag.btn === 0 && !drag.shift) orbit(dx, dy);
+    else { S.panX += dx; S.panY += dy; }
+    S.dirty = true; tip.style.display = 'none'; return;
+  }
+  // 호버
+  const best = hit(ev.clientX, ev.clientY);
+  if (best !== S.hover) { S.hover = best; S.dirty = true; }
+  if (best >= 0) {
+    const n = N[best];
+    tip.innerText = `${n.name}  (${n.sw_id}, ${n.field})\n조작 ${n.op} · 자동화 IF ${n.auto_if} · 폐쇄망 ${n.airgap}\n자동화 ${n.auto ? '가능' : '불가/모름'} · 연결 ${adj[best].size}쌍` + (n.isolated ? '\n고립: 어떤 연결에도 없음' : '') + '\n클릭하면 연결 목록';
+    tip.style.display = 'block'; tip.style.left = Math.min(innerWidth - 350, ev.clientX + 14) + 'px'; tip.style.top = (ev.clientY + 14) + 'px';
+  } else tip.style.display = 'none';
+});
+function hit(x, y) { // 화면 좌표에서 가장 가까운 노드 (12px 안)
+  let best = -1, bd = 12 * 12;
+  for (let i = 0; i < N.length; i++) { const p = P[i]; const d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < bd) { bd = d; best = i; } }
+  return best;
+}
+addEventListener('mouseup', ev => {
+  if (drag && moved < 4 && drag.btn === 0) { // 클릭 = 선택 (마우스 이동 없이 바로 클릭해도 좌표로 찾는다)
+    const h = hit(ev.clientX, ev.clientY);
+    S.sel = (h >= 0 && h !== S.sel) ? h : -1; S.hover = h; showSide(); S.dirty = true;
+  }
+  drag = null; cv.classList.remove('drag');
+});
+cv.addEventListener('wheel', ev => { ev.preventDefault(); S.dist = Math.max(220, Math.min(3200, S.dist * (ev.deltaY > 0 ? 1.1 : 0.9))); S.dirty = true; }, { passive: false });
+cv.addEventListener('dblclick', resetView);
+ui('reset').addEventListener('click', resetView);
+function resetView() { S.R = initR(); S.dist = 900; S.panX = 0; S.panY = 0; S.sel = -1; showSide(); S.dirty = true; }
+['fManual', 'fNote', 'fAuto', 'fGrade', 'fLabel', 'fCluster'].forEach(id => ui(id).addEventListener('change', () => { S.dirty = true; }));
+ui('fSpin').addEventListener('change', ev => { S.spin = ev.target.checked; });
+ui('closeSide').addEventListener('click', () => { S.sel = -1; showSide(); S.dirty = true; });
+// 터치: 한 손가락 회전, 두 손가락 핀치 줌
+let touches = null;
+cv.addEventListener('touchstart', ev => { touches = [...ev.touches].map(t => ({ x: t.clientX, y: t.clientY })); S.spin = false; ui('fSpin').checked = false; }, { passive: true });
+cv.addEventListener('touchmove', ev => {
+  const t = [...ev.touches].map(t => ({ x: t.clientX, y: t.clientY }));
+  if (touches && t.length === 1 && touches.length === 1) orbit(t[0].x - touches[0].x, t[0].y - touches[0].y);
+  else if (touches && t.length === 2 && touches.length === 2) { const d0 = Math.hypot(touches[0].x - touches[1].x, touches[0].y - touches[1].y), d1 = Math.hypot(t[0].x - t[1].x, t[0].y - t[1].y); S.dist = Math.max(220, Math.min(3200, S.dist * d0 / Math.max(1, d1))); }
+  touches = t; S.dirty = true; ev.preventDefault();
+}, { passive: false });
+
+function showSide() {
+  if (S.sel < 0) { side.style.display = 'none'; return; }
+  const n = N[S.sel];
+  const out = [], inn = [];
+  for (const k of adj[S.sel]) { const e = E[k]; (e.s === S.sel ? out : inn).push(e); }
+  const li = (e, other) => `<li><b style="color:${COL[e.kind]}">${e.kind === 'manual' ? '수기' : e.kind === 'note' ? '비고' : '자동'}</b>${e.grade ? ' <span class="g' + e.grade + '">' + e.grade + '</span>' : ''} ${N[other].field} / ${N[other].name} <span class="m">(${e.n}건)</span><div class="m">${e.items.join('<br>')}</div></li>`;
+  const rk = rankedByNode[S.sel].map(r => `<li><span class="g${r.grade}">${r.grade}</span> #${r.rank} ${r.kind} — ${N[r.s].name} → ${N[r.t].name} <span class="m">${r.data}</span></li>`);
+  sideBody.innerHTML = `<h2>${n.name} <span class="m">${n.sw_id} · ${n.field}</span></h2>
+   <div class="m">${n.kind} · 조작 ${n.op} · 자동화 IF ${n.auto_if} · 폐쇄망 ${n.airgap} · 사용 ${n.users ?? '?'}명 · ${n.freq}</div>
+   <h2>이 툴이 내놓는 것 → ${out.length}쌍</h2><ul>${out.map(e => li(e, e.t)).join('') || '<li class="m">없음</li>'}</ul>
+   <h2>이 툴이 받는 것 ← ${inn.length}쌍</h2><ul>${inn.map(e => li(e, e.s)).join('') || '<li class="m">없음</li>'}</ul>
+   <h2>착수 순위에 오른 구간</h2><ul>${rk.join('') || '<li class="m">없음</li>'}</ul>`;
+  side.style.display = 'block';
+}
+
+function loop(t) {
+  if (S.spin) { S.R = mul(rotY(0.0025), S.R); S.dirty = true; }
+  if (S.dirty) { draw(); S.dirty = false; }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script></body></html>
