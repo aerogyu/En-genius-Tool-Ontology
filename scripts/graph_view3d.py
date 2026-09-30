@@ -4,7 +4,7 @@
     → output/<실행ID>/graph3d.html   ※ 적재한 데이터를 그대로 담는다 — 실데이터로 만들면 사내에만 둔다 (반출 금지)
 
 그래프에서 SPARQL(표준 1.1, rdflib)로 읽는 것:
-  2층 배치 (v3): 아래층 = 파트(eg:Field) 묶음과 그 툴사용(eg:ToolUsage), 위층 = 툴(eg:Tool — 공용일수록 가운데)
+  배치: 파트(eg:Field) 묶음을 큰 원 둘레에, 그 툴사용(eg:ToolUsage)은 묶음 원판에, 툴(eg:Tool)은 살짝 위 — 공용일수록 가운데
   선   = 사용(툴사용 → 툴, eg:usage_tool) · 신고된 주고받음(입출력 행의 eg:io_owner ↔ eg:partner_tools, 방향·전달 방법 그대로)
 확장자·데이터명을 맞춰 계산하는 연결(Feed)은 M4 도출(derive) 뒤 derived.ttl 에서 더한다 — 아직 없다.
 자동화 가능 색·수기 판정 값은 config/rules.yaml (docs/02 7장). 외부 JS·CDN 없음 — canvas 원근 투영 (preview_map3d 와 같은 조작).
@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from engenius_onto.config import SCHEMA_FILE, load_yaml, namespaces  # noqa: E402
 
-VIEW_VERSION = "v4"  # 판 번호. v4 2026-09-30: 층 판·파트 색·구슬·빛 (fancy) · v3: 파트 층·툴 층 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
+VIEW_VERSION = "v6"  # 판 번호. v6 2026-09-30: 색 최소(회색 + 수기 주황) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 SKOS = "http://www.w3.org/2004/02/skos/core#"
 HIDDEN = {"source_row"}  # 패널에 안 보이는 속성
@@ -143,11 +143,11 @@ def build(run: Path) -> tuple[dict, Path]:
     for key, u in usages.items():
         by_field[u["field"]].append(key)
     fields = sorted(by_field)
-    spacing = 30.0                                                    # 툴사용 사이 대략 간격
+    spacing = 46.0                                                    # 툴사용 사이 대략 간격 (v5: 더 넓게)
     radius = {f: spacing * (0.8 + math.sqrt(len(by_field[f]))) for f in fields}
     rmax = max(radius.values(), default=40.0)
-    ring_r = max(3.0 * rmax, 1.35 * sum(2 * r for r in radius.values()) / (2 * math.pi))
-    height = 0.55 * ring_r
+    ring_r = max(3.4 * rmax, 1.7 * sum(2 * r for r in radius.values()) / (2 * math.pi))
+    height = 0.28 * ring_r                                            # 툴은 살짝 위에 (층 표현은 하지 않는다)
     golden = math.pi * (3 - math.sqrt(5))
     centers, clusters, nodes, index = {}, [], [], {}
     ang = 0.0
@@ -200,8 +200,22 @@ def build(run: Path) -> tuple[dict, Path]:
         nodes[n]["ios"] = ios.get(key, [])
         nodes[n]["noio"] = nodes[n]["type"] == "u" and not ios.get(key)
 
+    parts_of_tool: dict[str, set] = defaultdict(set)
+    for key, u in usages.items():
+        parts_of_tool[u["tool"]].add(u["field"])
+    rank = []
+    for key, u in usages.items():
+        declared = {pt for (uu, pt, d) in agg if uu == key}
+        mentioned = {usages[v]["tool"] for (v, pt, d) in agg if pt == u["tool"] and v != key}
+        partners = (declared | mentioned) - {u["tool"]}
+        manual = sum(e["n"] for (uu, pt, d), e in agg.items() if e["kind"] == "manual" and (uu == key or (pt == u["tool"] and uu != key)))
+        rank.append({"i": index[key], "partners": len(partners), "declared": len(declared - {u["tool"]}),
+                     "mentioned": len(mentioned - {u["tool"]}), "manual": manual, "auto": u["auto"],
+                     "parts": len(parts_of_tool[u["tool"]])})
+    rank.sort(key=lambda r: (-r["partners"], -r["manual"], not r["auto"], -r["parts"], nodes[r["i"]]["name"]))
+
     kinds = Counter(e["kind"] for e in edges)
-    data = {"nodes": nodes, "edges": edges, "clusters": clusters, "run": run.name, "extent": ring_r + rmax * 1.2, "height": height,
+    data = {"nodes": nodes, "edges": edges, "clusters": clusters, "run": run.name, "rank": rank, "extent": ring_r + rmax * 1.2, "height": height,
             "counts": {"fields": len(fields), "tools": len(tools), "usages": len(usages), "ios": io_count,
                        "no_partner": no_partner, "pairs": len(agg), "manual": kinds["manual"], "note": kinds["note"],
                        "auto": kinds["auto"], "noio": sum(1 for n in nodes if n["noio"])}}
@@ -214,7 +228,7 @@ def build(run: Path) -> tuple[dict, Path]:
 PAGE = r"""<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8"><title>내 온톨로지 3D __VER__</title>
 <style>
- :root{--bg:#0f1720;--line:#2a3a4a;--fg:#e6edf3;--muted:#9fb0c0;--manual:#ff9a2e;--note:#c9925a;--auto:#8a98a6;--use:#4f8fd6;--ok:#3fbf73;--no:#aab3bc;--tool:#79b8ff;--iso:#ff5a5a}
+ :root{--bg:#0f1720;--line:#2a3a4a;--fg:#e6edf3;--muted:#9fb0c0;--manual:#f0a04b;--note:#8f9aa6;--auto:#6f7b87;--use:#4a5663;--ok:#e6edf3;--no:#9aa7b4;--tool:#e6edf3;--iso:#9aa7b4}
  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:13px;overflow:hidden}
  #top{position:absolute;left:0;right:0;top:0;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;background:rgba(22,33,44,.92);border-bottom:1px solid var(--line);z-index:5}
  #top h1{font-size:15px;margin:0 10px 0 0;font-weight:700}
@@ -228,6 +242,9 @@ PAGE = r"""<!DOCTYPE html>
  #side h2{font-size:14px;margin:8px 0 4px;padding-right:56px} #side h3{font-size:13px;margin:10px 0 4px}
  #side .m{color:var(--muted);font-size:12px} #side ul{padding-left:16px;margin:4px 0} #side li{margin:3px 0}
  #side .close{position:absolute;right:10px;top:10px;cursor:pointer;color:var(--muted)}
+ #side.wide{width:min(660px,76vw)}
+ #side tr[data-r]{cursor:pointer} #side tr[data-r]:hover{background:rgba(255,255,255,.05)} #side tr.on{background:rgba(255,154,46,.18)}
+ #side th{color:var(--muted);font-weight:400;text-align:left;border-bottom:1px solid var(--line);padding:3px 4px} #side td.n{text-align:right}
  #side table{border-collapse:collapse;width:100%;font-size:12px} #side td{border-bottom:1px solid var(--line);padding:3px 4px;vertical-align:top}
  #side td:first-child{color:var(--muted);white-space:nowrap;width:34%}
  #side [data-n]{cursor:pointer;text-decoration:underline dotted}
@@ -244,13 +261,14 @@ PAGE = r"""<!DOCTYPE html>
  <label>이름 <select id="fLabel"><option value="near">가까운 것</option><option value="all">전부</option><option value="sel">선택·연결만</option><option value="none">없음</option></select></label>
  <label><input type="checkbox" id="fCluster" checked>분야 묶음</label>
  <label><input type="checkbox" id="fSpin" checked>자동 회전</label>
+ <button id="rankBtn">툴 기준 후보</button>
  <button id="reset">시점 초기화</button>
 </div>
 <canvas id="c"></canvas>
 <div id="tip"></div>
 <div id="side"><span class="close" id="closeSide">✕ 닫기</span><div id="sideBody"></div></div>
 <div id="help">왼쪽 드래그 회전 · 휠 줌 · 휠(가운데)/오른쪽 드래그 이동 · 더블클릭 초기화 · 노드 클릭 = 그래프에 적힌 속성·입출력 ·
- 아래층 동그라미 = 파트별 툴사용(초록 자동화 가능, 회색 불가·모름, 빨간 테두리 입출력 없음) · 위층 파란 네모 = 툴(공용일수록 가운데) · 선 = 조사표에 '연계 툴'로 신고된 주고받음 (계산된 연결은 M4)</div>
+ 회색 점 = 파트별 툴사용 · 흰 점 = 툴(여러 파트가 쓸수록 가운데, 클수록 많이 쓰임) · 주황 선 = 수기 전달 · 회색 선 = 그 밖의 전달(점선 = 비고 신호) · 선 = 조사표에 '연계 툴'로 신고된 주고받음 (계산된 연결은 M4)</div>
 <div id="counts"></div>
 <script>
 const DATA = __DATA__;
@@ -263,12 +281,13 @@ function rotX(a) { const c = Math.cos(a), s = Math.sin(a); return [1, 0, 0, 0, c
 function rotY(a) { const c = Math.cos(a), s = Math.sin(a); return [c, 0, s, 0, 1, 0, -s, 0, c]; }
 function mul(A, B) { const M = new Array(9); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i * 3 + j] = A[i * 3] * B[j] + A[i * 3 + 1] * B[3 + j] + A[i * 3 + 2] * B[6 + j]; return M; }
 function initR() { return mul(rotX(0.62), rotY(0.3)); }   // 비스듬히 내려다보기 — 아래 파트 층과 위 툴 층이 갈라져 보이게
-const S = { R: initR(), dist: 950, dist0: 950, sref: 700 / 950, fov: 700, panX: 0, panY: 0, hover: -1, sel: -1, spin: true, dirty: true };
+const S = { R: initR(), dist: 950, dist0: 950, sref: 700 / 950, fov: 700, panX: 0, panY: 0, hover: -1, sel: -1, rankSel: -1, panel: null, spin: true, dirty: true };
 // 처음 거리 = 전체(DATA.extent)가 화면 짧은 변의 약 45% 에 들어오게. 크기·글자는 처음 배율(sref) 대비로 — 데이터가 많아도 같은 느낌 (2026-09-30)
-function fitDist() { return S.fov * DATA.extent / (0.45 * Math.max(300, Math.min(innerWidth, innerHeight - 60))) + DATA.extent * 0.5; }
+function fitDist() { return S.fov * DATA.extent / (0.40 * Math.max(300, Math.min(innerWidth, (innerHeight - 60) / 0.62))) + DATA.extent * 0.15; }   // 비스듬히 보면 원이 세로로 약 0.62 로 눌린다
 const rs = p => p.s / S.sref;   // 처음 배율 대비 크기 (반복문 변수 k 와 겹치지 않게)
 function orbit(dx, dy) { S.R = mul(mul(rotX(dy * 0.006), rotY(dx * 0.006)), S.R); }
-const COL = { manual: '#ff9a2e', note: '#c9925a', auto: '#8a98a6', use: '#4f8fd6', ok: '#3fbf73', no: '#aab3bc', tool: '#79b8ff', iso: '#ff5a5a', fg: '#e6edf3', muted: '#9fb0c0' };
+// 색은 회색 계열 + 강조 하나(수기 전달) — v6 (Leo 2026-09-30 "색이 다양할수록 촌스럽다")
+const COL = { manual: '#f0a04b', note: '#8f9aa6', auto: '#6f7b87', use: '#4a5663', usage: '#9aa7b4', tool: '#e6edf3', fg: '#e6edf3', muted: '#9fb0c0' };
 const adj = N.map(() => new Set()), nb = N.map(() => new Set());
 E.forEach((e, k) => { adj[e.s].add(k); adj[e.t].add(k); nb[e.s].add(e.t); nb[e.t].add(e.s); });
 
@@ -279,7 +298,7 @@ function resize() {
   side.style.top = ui('top').offsetHeight + 'px';
 }
 addEventListener('resize', resize); resize();
-S.dist0 = S.dist = fitDist(); S.sref = S.fov / S.dist0;
+S.dist0 = S.dist = fitDist(); S.sref = S.fov / S.dist0; S.panY = -innerHeight * 0.04;   // 아래 설명 글에 덜 가리게 조금 위로
 
 let P = [], PC = [];
 function rot(x, y, z) { const R = S.R; return [R[0] * x + R[1] * y + R[2] * z, R[3] * x + R[4] * y + R[5] * z, R[6] * x + R[7] * y + R[8] * z]; }
@@ -293,57 +312,24 @@ function edgeVisible(e) {
   return !((e.kind === 'manual' && !ui('fManual').checked) || (e.kind === 'note' && !ui('fNote').checked) ||
            (e.kind === 'auto' && !ui('fAuto').checked) || (e.kind === 'use' && !ui('fUse').checked));
 }
-function focusSet() { return S.sel >= 0 ? new Set([S.sel]) : S.hover >= 0 ? new Set([S.hover]) : new Set(); }
+function focusSet() { const f = S.sel >= 0 ? S.sel : S.rankSel >= 0 ? S.rankSel : S.hover; return f >= 0 ? new Set([f]) : new Set(); }
 function isNeighbor(i, F) { if (F.size === 0 || F.has(i)) return true; for (const f of F) if (nb[f].has(i)) return true; return false; }
 function depthAlpha(d) { const t = Math.max(0, Math.min(1, (d + 440) / 880)); return 0.35 + 0.65 * t; }
 function nodeR(i) { const b = 6.5 * Math.min(1.8, rs(P[i])); return Math.max(3, N[i].type === 't' ? b * (0.75 + 0.22 * Math.sqrt(N[i].uses || 1)) : b); }
 
-// ---- 꾸밈 (Leo 2026-09-30 "최대한 fancy 하게") — 층 판·파트 색·구슬 노드·빛나는 선택·별빛 배경
-const HUE = {}; C.forEach((c, i) => { HUE[c.field] = Math.round(i * 360 / Math.max(1, C.length)); });
-const partColor = (f, a) => `hsla(${HUE[f] ?? 210}, 70%, 62%, ${a})`;
-const STARS = Array.from({ length: 180 }, (_, i) => [((i * 7919) % 1000) / 1000, ((i * 104729) % 997) / 997, 0.3 + ((i * 31) % 70) / 100]);
-function circlePath(cx, y, cz, r, steps) {       // 3D 수평 원(중심 cx,y,cz · 반지름 r)을 투영한 닫힌 경로
-  ctx.beginPath();
-  for (let i = 0; i <= steps; i++) {
-    const a = i / steps * Math.PI * 2, q = proj(cx + r * Math.cos(a), y, cz + r * Math.sin(a));
-    if (i) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y);
-  }
-  ctx.closePath();
-}
-function layer(y, r, rgb, label) {
-  circlePath(0, y, 0, r, 96);
-  const c = proj(0, y, 0), g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, Math.max(1, r * c.s * 1.1));
-  g.addColorStop(0, `rgba(${rgb},0.10)`); g.addColorStop(1, `rgba(${rgb},0.02)`);
-  ctx.fillStyle = g; ctx.fill();
-  ctx.strokeStyle = `rgba(${rgb},0.35)`; ctx.lineWidth = 1.2; ctx.setLineDash([6, 6]); ctx.stroke(); ctx.setLineDash([]);
-  const q = proj(-r * 0.98, y, 0);
-  ctx.font = '700 13px sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = `rgba(${rgb},0.9)`; ctx.fillText(label, q.x + 6, q.y - 6);
-}
+// ---- 그리기 (v5 — Leo 2026-09-30: 꾸밈은 걷고 v2 처럼 담백하게. 파트 이름은 흰 회색 한 색, 노드는 점)
 function draw() {
   project();
-  const bg = ctx.createRadialGradient(innerWidth / 2, innerHeight / 2, 0, innerWidth / 2, innerHeight / 2, Math.max(innerWidth, innerHeight) * 0.75);
-  bg.addColorStop(0, '#16263a'); bg.addColorStop(1, '#0a1018');
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, innerWidth, innerHeight);
-  for (const [x, y, a] of STARS) { ctx.globalAlpha = a * 0.5; ctx.fillStyle = '#cfe3ff'; ctx.fillRect(x * innerWidth, y * innerHeight, 1.2, 1.2); }
-  ctx.globalAlpha = 1;
+  ctx.clearRect(0, 0, innerWidth, innerHeight);
   const F = focusSet(), has = F.size > 0, labelMode = ui('fLabel').value;
-  const rmax = Math.max(0, ...C.map(c => c.r)), R0 = DATA.extent - rmax * 1.2;
-  // 층 판: 아래 = 파트 층, 위 = 툴 층 (카메라에서 먼 층부터)
-  const layers = [[0, R0 + rmax * 1.3, '120,200,160', '파트 층 — 파트별 툴사용'],
-                  [DATA.height || 0, R0 * 0.8, '120,170,255', '툴 층 — 가운데일수록 여러 파트 공용']];
-  layers.sort((a, b) => proj(0, a[0], 0).d - proj(0, b[0], 0).d).forEach(l => layer(...l));
   if (ui('fCluster').checked) {
     [...PC.keys()].sort((a, b) => PC[a].d - PC[b].d).forEach(i => {
-      const c = C[i], pc = PC[i];
-      circlePath(c.x, 0, c.z, c.r * 1.12, 48);
-      ctx.fillStyle = partColor(c.field, 0.10); ctx.fill();
-      ctx.strokeStyle = partColor(c.field, 0.6); ctx.lineWidth = 1.4; ctx.stroke();
-      const top = proj(c.x, 0, c.z - c.r * 1.3);
-      ctx.fillStyle = partColor(c.field, 0.5 * depthAlpha(pc.d) + 0.45);
-      ctx.font = '700 ' + Math.max(11, Math.min(20, 14 * rs(pc))) + 'px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,16,24,0.8)'; ctx.strokeText(c.field, top.x, top.y - 4);
-      ctx.fillText(c.field, top.x, top.y - 4);
+      const c = PC[i], r = c.r * c.s * 1.3, g = ctx.createRadialGradient(c.x, c.y, r * 0.2, c.x, c.y, Math.max(1, r));
+      g.addColorStop(0, 'rgba(120,150,190,0.16)'); g.addColorStop(1, 'rgba(120,150,190,0.01)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(214,222,230,' + (0.5 * depthAlpha(c.d) + 0.35) + ')';
+      ctx.font = '700 ' + Math.max(11, Math.min(20, 14 * rs(c))) + 'px sans-serif';
+      ctx.textAlign = 'center'; ctx.fillText(C[i].field, c.x, c.y - r - 4);
     });
   }
   const order = { use: 0, auto: 1, note: 2, manual: 3 };
@@ -352,29 +338,18 @@ function draw() {
   const crowd = Math.max(0.15, Math.min(1, 160 / Math.max(1, es.length)));
   // '가까운 것' 이름표: 앞쪽(가까운) 노드 중 최대 28개만 — 많으면 글자가 겹친다
   const near = new Set([...N.keys()].filter(i => rs(P[i]) > 1.05).sort((a, b) => P[b].s - P[a].s).slice(0, 28));
-  const lift = (DATA.height || 0) * 0.25;
+  const lift = (DATA.height || 0) * 0.3;
   for (const k of es) {
     const e = E[k], a = P[e.s], b = P[e.t], touches = has && (F.has(e.s) || F.has(e.t));
     let alpha = depthAlpha((a.d + b.d) / 2) * (e.kind === 'use' ? 0.3 : e.kind === 'auto' ? 0.5 : 0.9) * crowd;
     if (has && !touches) alpha *= 0.1;
     if (touches) alpha = 1;
     const w = ((e.kind === 'manual' ? 2.6 : e.kind === 'note' ? 2 : e.kind === 'use' ? 1 : 1.3) + Math.min(2, (e.n - 1) * 0.4))
-      * Math.max(0.6, Math.min(1.6, (rs(a) + rs(b)) / 2)) * (touches ? 1.5 : 1);
-    // 층 사이 선은 위로 부푼 곡선 — 제어점을 두 끝의 3D 가운데보다 위로
-    const A = N[e.s], B = N[e.t], m = proj((A.x + B.x) / 2, (A.y + B.y) / 2 + lift, (A.z + B.z) / 2);
-    if (e.kind === 'use') ctx.strokeStyle = COL.use;
-    else {                                       // 파트 색에서 전달 종류 색으로 번지는 선
-      const g = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-      g.addColorStop(0, A.type === 'u' ? partColor(A.field, 1) : COL[e.kind]);
-      g.addColorStop(1, B.type === 'u' ? partColor(B.field, 1) : COL[e.kind]);
-      g.addColorStop(0.5, COL[e.kind]);
-      ctx.strokeStyle = g;
-    }
-    ctx.globalAlpha = alpha; ctx.lineWidth = w;
+      * Math.max(0.6, Math.min(1.6, (rs(a) + rs(b)) / 2)) * (touches ? 1.4 : 1);
+    const A = N[e.s], B = N[e.t], m = proj((A.x + B.x) / 2, (A.y + B.y) / 2 + lift, (A.z + B.z) / 2);   // 위로 살짝 부푼 곡선
+    ctx.strokeStyle = COL[e.kind]; ctx.globalAlpha = alpha; ctx.lineWidth = w;
     ctx.setLineDash(e.kind === 'note' ? [7, 5] : e.kind === 'use' ? [2, 4] : []);
-    if (touches) { ctx.shadowColor = COL[e.kind]; ctx.shadowBlur = 12; }
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(m.x, m.y, b.x, b.y); ctx.stroke();
-    ctx.shadowBlur = 0;
     if (e.kind !== 'use') { // 화살촉 = 데이터를 받는 쪽
       const tx = b.x - m.x, ty = b.y - m.y, tl = Math.hypot(tx, ty) || 1, ux = tx / tl, uy = ty / tl, rb = nodeR(e.t) + 2, hs = 5 + w * 1.2;
       const px = b.x - ux * rb, py = b.y - uy * rb;
@@ -386,31 +361,19 @@ function draw() {
   ctx.globalAlpha = 1; ctx.setLineDash([]);
   for (const i of [...N.keys()].sort((a, b) => P[a].d - P[b].d)) {
     const n = N[i], p = P[i], r = nodeR(i), dim = has && !isNeighbor(i, F), on = F.has(i);
-    ctx.globalAlpha = dim ? 0.16 : depthAlpha(p.d);
-    if (on) { ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 18; }
-    if (n.type === 't') {                         // 툴: 빛나는 마름모, 한 파트 전용이면 그 파트 색 테두리
-      const g = ctx.createLinearGradient(p.x - r, p.y - r, p.x + r, p.y + r);
-      g.addColorStop(0, '#e3efff'); g.addColorStop(1, COL.tool);
-      ctx.beginPath(); ctx.moveTo(p.x, p.y - r * 1.25); ctx.lineTo(p.x + r * 1.25, p.y); ctx.lineTo(p.x, p.y + r * 1.25); ctx.lineTo(p.x - r * 1.25, p.y); ctx.closePath();
-      ctx.fillStyle = g; ctx.fill();
-      ctx.lineWidth = 1.6; ctx.strokeStyle = n.home ? partColor(n.home, 0.95) : '#ffffff'; ctx.stroke();
-    } else {                                      // 툴사용: 빛 받은 구슬, 테두리 = 파트 색
-      const base = n.auto ? COL.ok : COL.no, g = ctx.createRadialGradient(p.x - r * 0.35, p.y - r * 0.35, r * 0.1, p.x, p.y, r);
-      g.addColorStop(0, '#ffffff'); g.addColorStop(0.35, base); g.addColorStop(1, n.auto ? '#1f7a45' : '#5f6770');
-      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
-      ctx.lineWidth = n.noio ? 2.6 : 1.4; ctx.strokeStyle = n.noio ? COL.iso : partColor(n.field, 0.9); ctx.stroke();
-    }
-    ctx.shadowBlur = 0;
-    if (on) { ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.beginPath(); ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.globalAlpha = dim ? 0.18 : depthAlpha(p.d);
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = n.type === 't' ? COL.tool : COL.usage; ctx.fill();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = on ? '#ffffff' : '#0f1720'; ctx.stroke();
+    if (on) { ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.beginPath(); ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2); ctx.stroke(); }
     const show = labelMode === 'all' || (labelMode === 'near' && (near.has(i) || on || (has && isNeighbor(i, F)))) || (labelMode === 'sel' && has && isNeighbor(i, F));
     if (show && !dim) {
       ctx.globalAlpha = Math.min(1, depthAlpha(p.d) + 0.15); ctx.textAlign = 'left';
-      ctx.font = (on || n.type === 't' ? '700 ' : '') + Math.max(10, 11.5 * Math.min(1.4, rs(p))) + 'px sans-serif';
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,16,24,0.85)'; ctx.strokeText(n.name, p.x + r + 5, p.y + 4);   // 글자 외곽선 — 선 위에서도 읽히게
-      ctx.fillStyle = n.type === 't' ? '#cfe4ff' : COL.fg; ctx.fillText(n.name, p.x + r + 5, p.y + 4);
+      ctx.font = (on ? '700 ' : '') + Math.max(10, 11.5 * Math.min(1.4, rs(p))) + 'px sans-serif';
+      ctx.fillStyle = n.type === 't' ? COL.tool : COL.fg; ctx.fillText(n.name, p.x + r + 4, p.y + 4);
       if (n.type === 'u') {
         ctx.fillStyle = COL.muted; ctx.font = Math.max(9, 9.5 * Math.min(1.4, rs(p))) + 'px sans-serif';
-        ctx.fillText(n.sw_id, p.x + r + 7 + ctx.measureText(n.name).width * 1.15, p.y + 4);
+        ctx.fillText(n.sw_id, p.x + r + 6 + ctx.measureText(n.name).width * 1.15, p.y + 4);
       }
     }
   }
@@ -447,11 +410,35 @@ addEventListener('mouseup', ev => {
 cv.addEventListener('wheel', ev => { ev.preventDefault(); S.dist = Math.max(S.dist0 * 0.12, Math.min(S.dist0 * 4, S.dist * (ev.deltaY > 0 ? 1.1 : 0.9))); S.dirty = true; }, { passive: false });
 cv.addEventListener('dblclick', resetView);
 ui('reset').addEventListener('click', resetView);
-function resetView() { S.R = initR(); S.dist = S.dist0; S.panX = 0; S.panY = 0; select(-1); }
+function resetView() { S.R = initR(); S.dist = S.dist0; S.panX = 0; S.panY = -innerHeight * 0.04; S.panel = null; S.rankSel = -1; select(-1); }
 ['fManual', 'fNote', 'fAuto', 'fUse', 'fLabel', 'fCluster'].forEach(id => ui(id).addEventListener('change', () => { S.dirty = true; }));
 ui('fSpin').addEventListener('change', ev => { S.spin = ev.target.checked; });
-ui('closeSide').addEventListener('click', () => select(-1));
-sideBody.addEventListener('click', ev => { const a = ev.target.closest('[data-n]'); if (a) select(+a.dataset.n); });
+ui('closeSide').addEventListener('click', () => { S.panel = null; S.rankSel = -1; select(-1); });
+ui('rankBtn').addEventListener('click', () => {
+  S.panel = S.panel === 'rank' && S.sel < 0 ? null : 'rank'; S.sel = -1; S.rankSel = -1; S.spin = false; ui('fSpin').checked = false;
+  if (S.panel) renderRank(); else { side.style.display = 'none'; side.classList.remove('wide'); }
+  S.dirty = true;
+});
+function renderRank() {
+  const rows = DATA.rank.map((r, k) => { const n = N[r.i]; return `<tr data-r="${r.i}" class="${r.i === S.rankSel ? 'on' : ''}"><td class="n">${k + 1}</td>
+    <td>${esc(n.name)} <span class="m">(${esc(n.field)})</span></td><td class="n"><b>${r.partners}</b></td><td class="n">${r.manual}</td>
+    <td>${r.auto ? '가능' : '<span class="m">불가·모름</span>'}</td><td class="n">${r.parts}</td></tr>`; }).join('');
+  sideBody.innerHTML = `<h2>툴 기준 에이전트 후보 <span class="m">잠정 · 조사표에 신고된 연결 기준</span></h2>
+   <p class="m">한 툴사용(파트 × 툴)을 에이전트가 다룰 수 있게 감싸면 그 툴사용에 걸린 연결 전부에 쓸 수 있다 — 연결 상대가 많을수록 효과가 크다.
+   정렬: <b>연결 상대 툴 수</b> → 걸린 수기 전달 → 자동화 가능 → 같은 툴을 쓰는 파트 수. 행을 누르면 그 툴사용과 연결이 강조된다.
+   M4 에서 확장자·데이터명으로 계산한 연결로 바뀐다 (지금은 '연계 Tool명' 으로 적어 준 것만).</p>
+   <table><tr><th>#</th><th>툴사용 (파트)</th><th>연결 상대</th><th>수기 전달</th><th>자동화</th><th>같은 툴 쓰는 파트</th></tr>${rows}</table>`;
+  side.classList.add('wide'); side.style.display = 'block';
+}
+sideBody.addEventListener('click', ev => {
+  const r = ev.target.closest('[data-r]');
+  if (r) {
+    const i = +r.dataset.r; S.rankSel = S.rankSel === i ? -1 : i; renderRank();
+    if (S.rankSel >= 0) { project(); const q = P[i]; S.panX += (innerWidth - side.offsetWidth) / 2 - q.x; S.panY += innerHeight / 2 - q.y; }
+    S.dirty = true; return;
+  }
+  const a = ev.target.closest('[data-n]'); if (a) select(+a.dataset.n);
+});
 let touches = null;
 cv.addEventListener('touchstart', ev => { touches = [...ev.touches].map(t => ({ x: t.clientX, y: t.clientY })); S.spin = false; ui('fSpin').checked = false; }, { passive: true });
 cv.addEventListener('touchmove', ev => {
@@ -467,7 +454,8 @@ function link(i) { return `<span data-n="${i}">${esc(N[i].type === 't' ? N[i].na
 function toolLink(n) { const t = N.findIndex(x => x.type === 't' && x.id === n.tool.split('/').pop()); return t >= 0 ? link(t) : esc(n.tool_name); }
 function select(i) {
   S.sel = i; S.dirty = true;
-  if (i < 0) { side.style.display = 'none'; return; }
+  side.classList.remove('wide'); S.rankSel = -1;
+  if (i < 0) { if (S.panel === 'rank') renderRank(); else side.style.display = 'none'; return; }
   const n = N[i];
   const rows = n.props.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('');
   let body = '';
