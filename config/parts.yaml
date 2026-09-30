@@ -16,7 +16,10 @@ parts:
   TA:   {name: "터빈공력 파트", parts: [터빈공력], domains: [터빈], status: 확정}
   CL:   {name: "고정체 냉각·회전체 냉각 파트", parts: [고정체 냉각, 회전체 냉각], domains: [기타], status: 확정}
   SAS:  {name: "2차유로 파트", parts: [2차유로], domains: ["2차유로(SAS)"], status: 확정}
-  CD:   {name: "터빈 형상설계·압축기 형상설계 파트", parts: [터빈 형상설계, 압축기 형상설계], domains: [터빈, 압축기], status: 분할예정}
+  CD:   {name: "터빈 형상설계·압축기 형상설계 파트", parts: [터빈 형상설계, 압축기 형상설계], domains: [터빈, 압축기], status: 분할됨,
+         file_split_by_id_prefix: [MDT, MDC]}   # 2026-09-30: 파일은 하나, 시트 안 Tool ID 가 MDT-n·MDC-n 으로 나뉨 (Leo)
+  MDT:  {name: "터빈 형상설계 파트", parts: [터빈 형상설계], domains: [터빈], status: 확정, succeeds: [CD]}   # 도메인 추정 — 확인
+  MDC:  {name: "압축기 형상설계 파트", parts: [압축기 형상설계], domains: [압축기], status: 확정, succeeds: [CD]}
         # 분할 요청 예정 → 예: CDT·CDC1·CDC2. 분할 파일이 오면 CD 는 폐기, 새 항목에 succeeds: [CD]. domains 는 추정 — Leo 확인
   IPS:  {name: "RAMS-C·엔진IPS요소개발·항공시스템IPS요소개발 파트", parts: [RAMS-C, 엔진IPS요소개발, 항공시스템IPS요소개발], domains: [기타], status: 확정}
   RSP:  {name: "형상관리·RSP·열전달 파트", parts: [형상관리, RSP, 열전달], domains: [기타], status: 확정}
@@ -29,7 +32,7 @@ parts:
   PE:   {name: "특수공정·AM 파트", parts: [특수공정, AM], domains: [기타], status: 확정}
   # 약칭 미정 2개 — 약칭이 오면 키를 바꾼다 (임시 코드로 적재했다면 field_renames.yaml, docs/09 #25b)
   전기전자제어:      {name: "전기·전자·제어 파트", parts: [전기, 전자, 제어], domains: [제어, 기타], status: 미정}
-  연료윤활기어박스:  {name: "연료·윤활·기어박스 파트", parts: [연료, 윤활, 기어박스], domains: [제어], status: 미정}
+  GBLB: {name: "연료·윤활·기어박스 파트", parts: [연료, 윤활, 기어박스], domains: [제어], status: 확정}   # 약칭 회신 2026-09-30
 
 # 합성 데이터(data/synthetic)용 — 파일명 분야 = 담당 부서 값 체계. M3.1 T 에서 골든 값을 유지하려고 둔다.
 synthetic_parts_are_domains: true
