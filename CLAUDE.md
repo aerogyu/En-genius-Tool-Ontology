@@ -53,7 +53,8 @@
 - [x] M3 적재 파이프라인 (2026-09-24 — 스키마 v0.2(파생 3종), `load`·`push`·`apply-review`·`template-examples`, 골든 적재 층 전부 일치·입출력 77/툴사용 34 참조 계산과 건별 일치, Pydantic=SHACL 5건, 재적재 ID 불변, rdflib·Fuseki 일치, pytest 180. `docs/07`)
 - [~] **M3.1 적재기 보강** — **1차 완료 (2026-09-30, `1874bc7`)**: 양식 v1.1·파트 단위(MD 묶음)·스키마 v0.3·안전장치(#4~#9·#11·#13·#18~#24)·
   value_aliases·수정 요청표·diag → **실데이터 적재 가능**. 사내 반입은 텍스트 업데이트 파일(`scripts/build_update.py`, README_offline 6-1) —
-  **`EnGenius_update_f3a4f55_to_4423d92.py.txt` (Leo 적용 확인) → `EnGenius_update_4423d92_to_62114a9.py.txt` (3D 뷰어 v4) 를 import-package 에 올림 (2026-09-30). 이어서 `EnGenius_update_62114a9_to_630ec66.py.txt` (3D 뷰어 v6, import-package 9df9fdb). 다음 업데이트는 `--from 630ec66`** (Leo 가 적용했는지 확인).
+  **`EnGenius_update_f3a4f55_to_4423d92.py.txt` (Leo 적용 확인) → `EnGenius_update_4423d92_to_62114a9.py.txt` (3D 뷰어 v4) 를 import-package 에 올림 (2026-09-30). 이어서 `EnGenius_update_62114a9_to_630ec66.py.txt` (3D 뷰어 v6, import-package 9df9fdb). 이어서 `…630ec66_to_f1a2a08` (검토용 diag 확장 + 뷰어 v7, import-package 79194c4). 다음 업데이트는 `--from f1a2a08`** (Leo 가 적용했는지 확인).
+  **1차 적재 검토 진행 중 (2026-09-30)**: Leo 가 재적재 후 diag.txt (값 없음) 를 보내면 검토 → M4 전에 고칠 것 정리
   **2차 남음 (M4 전)**: #1 교차 파일 병합(파트 키로 대부분 해소)·#2·#3·#10·#12·#14~#17·#25a~c·B3(#15) — docs/09 표.
   이전 문구: (`docs/09` — 독립 검토 28건 수리, 결정 13건 전부 권장안 승인 2026-09-28; 수리 전 실데이터 적재 금지)
   + **묶음 T: 양식 v1.1 + 파트 단위 조직 반영** (`reference/양식_v1.1_변경분.md` 5장 — 시트명 설정화(#13)·header_map·스키마 v0.3·예시 행 갱신·v1.1 합성 파일 추가;
