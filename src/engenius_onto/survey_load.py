@@ -157,6 +157,22 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
     return LoadOutput(run_id, out_dir, res, ttl, log, issues)
 
 
+def run_dataset(run_dir: Path) -> str:
+    """실행 폴더가 어떤 데이터로 만든 것인지 — load_log.json 의 input (real | synthetic | custom), 모르면 '?'."""
+    try:
+        return json.loads((Path(run_dir) / "load_log.json").read_text(encoding="utf-8")).get("input", "?")
+    except (OSError, ValueError):
+        return "?"
+
+
+def latest_run(root: Path, prefer: str | None = "real") -> Path | None:
+    """output/ 의 최근 실행 폴더 — 실데이터 실행이 있으면 그중 최근 것을 먼저 (Leo 2026-09-30: 합성 적재가 최근이면 실데이터 지도가 안 떴다)."""
+    root = Path(root)
+    runs = sorted(p for p in root.glob("*T*") if p.is_dir() and (p / "survey.ttl").is_file()) if root.is_dir() else []
+    chosen = [r for r in runs if run_dataset(r) == prefer] if prefer else []
+    return (chosen or runs)[-1] if runs else None
+
+
 def run_shacl(ttl: str) -> dict:
     """Jena SHACL (Fuseki jar) 이 있으면 survey 그래프를 검증한다 — 위반은 경고 보고서 (D4). 없으면 건너뜀.
     SHACL 도구가 실패해도 적재는 계속한다 (docs/09 #22)."""

@@ -109,8 +109,10 @@ def cmd_push(args: argparse.Namespace) -> int:
 
 
 def _latest_run(root):
-    runs = sorted(p for p in root.glob("*T*") if p.is_dir()) if root.is_dir() else []
-    return runs[-1] if runs else None
+    """최근 실행 폴더 — 실데이터 실행이 있으면 그것을 먼저 (survey_load.latest_run)."""
+    from engenius_onto.survey_load import latest_run
+
+    return latest_run(root)
 
 
 def cmd_apply_review(args: argparse.Namespace) -> int:

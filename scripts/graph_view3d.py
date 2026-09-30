@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from engenius_onto.config import SCHEMA_FILE, load_yaml, namespaces  # noqa: E402
 
-VIEW_VERSION = "v7"  # 판 번호. v7 2026-09-30: 선은 전달 방식별 색 복원 · v6 점 색 최소(회색·흰색) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
+VIEW_VERSION = "v8"  # 판 번호. v8 2026-09-30: 실데이터 실행 우선·제목에 데이터 종류 · v7 선은 전달 방식별 색 복원 · v6 점 색 최소(회색·흰색) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 SKOS = "http://www.w3.org/2004/02/skos/core#"
 HIDDEN = {"source_row"}  # 패널에 안 보이는 속성
@@ -36,8 +36,13 @@ FIXED = {"label": "이름", "prefLabel": "대표 이름", "altLabel": "다른 �
 
 
 def latest_run(root: Path) -> Path | None:
-    runs = sorted(p for p in root.glob("*T*") if (p / "survey.ttl").is_file()) if root.is_dir() else []
-    return runs[-1] if runs else None
+    """최근 실행 — 실데이터 실행이 있으면 그것을 먼저 (적재 명령과 같은 규칙)."""
+    from engenius_onto.survey_load import latest_run as pick
+
+    return pick(root)
+
+
+DATASET_LABEL = {"real": "실데이터", "synthetic": "합성 데이터", "custom": "지정 폴더"}
 
 
 def fib_sphere(n: int, radius: float, phase: float = 0.0) -> list[tuple[float, float, float]]:
@@ -220,7 +225,10 @@ def build(run: Path) -> tuple[dict, Path]:
                        "no_partner": no_partner, "pairs": len(agg), "manual": kinds["manual"], "note": kinds["note"],
                        "auto": kinds["auto"], "noio": sum(1 for n in nodes if n["noio"])}}
     out = run / "graph3d.html"
-    out.write_text(PAGE.replace("__VER__", VIEW_VERSION).replace("__DATA__", json.dumps(data, ensure_ascii=False)),
+    from engenius_onto.survey_load import run_dataset
+
+    ds = DATASET_LABEL.get(run_dataset(run), "데이터 종류 모름")
+    out.write_text(PAGE.replace("__VER__", VIEW_VERSION).replace("__DS__", ds).replace("__DATA__", json.dumps(data, ensure_ascii=False)),
                    encoding="utf-8", newline="\n")
     return data, out
 
@@ -253,7 +261,7 @@ PAGE = r"""<!DOCTYPE html>
  b.m{color:var(--manual)} b.n{color:var(--note)} b.i{color:var(--iso)} .km{color:var(--manual);font-weight:700} .kn{color:var(--note)} .ka{color:var(--muted)}
 </style></head><body>
 <div id="top">
- <h1>내 온톨로지 3D <span style="color:var(--muted);font-weight:400;font-size:12px">__VER__ · 적재 결과 그대로 (survey.ttl)</span></h1>
+ <h1>내 온톨로지 3D <span style="color:var(--muted);font-weight:400;font-size:12px">__VER__ · <b style="color:var(--fg)">__DS__</b> · 적재 결과 그대로 (survey.ttl)</span></h1>
  <label><input type="checkbox" id="fManual" checked><span class="sw" style="background:var(--manual)"></span>수기 전달</label>
  <label><input type="checkbox" id="fNote" checked><span class="sw" style="height:0;border-top:3px dashed var(--note)"></span>비고 신호</label>
  <label><input type="checkbox" id="fAuto" checked><span class="sw" style="background:var(--auto)"></span>그 밖의 전달</label>
@@ -496,7 +504,7 @@ def main() -> int:
         return 1
     data, out = build(run)
     c = data["counts"]
-    print(f"[OK] {out} — 분야 {c['fields']} · 툴 {c['tools']} · 툴사용 {c['usages']} · 입출력 {c['ios']} · 신고된 주고받음 {c['pairs']}쌍 (수기 {c['manual']})")
+    print(f"[OK] {out} ({data['run']}) — 분야 {c['fields']} · 툴 {c['tools']} · 툴사용 {c['usages']} · 입출력 {c['ios']} · 신고된 주고받음 {c['pairs']}쌍 (수기 {c['manual']})")
     print("     적재한 데이터가 그대로 들어 있다 — 실데이터로 만들었으면 밖으로 가져가지 않는다.")
     if args.open:
         webbrowser.open(out.resolve().as_uri())

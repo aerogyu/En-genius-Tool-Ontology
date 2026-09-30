@@ -1,5 +1,6 @@
 @echo off
 rem Load survey xlsx files into a survey graph (TTL) + warnings + tool_review.csv.
+rem   scripts\load.bat             -> real if data\real\survey has files, else synthetic
 rem   scripts\load.bat synthetic   -> data\synthetic\survey  (practice data shipped with the repo)
 rem   scripts\load.bat real        -> data\real\survey       (in-house files; registry in data\real\registry)
 rem Output goes to output\<run id>\ ; the run id is printed at the end.
@@ -8,7 +9,10 @@ setlocal
 cd /d "%~dp0.."
 call "%~dp0env.bat"
 set DATASET=%1
+rem No argument: real if data\real\survey has xlsx files, otherwise synthetic (double-click safe, 2026-09-30)
+if "%DATASET%"=="" if exist data\real\survey\*.xlsx set DATASET=real
 if "%DATASET%"=="" set DATASET=synthetic
+echo [load] dataset = %DATASET%
 if not "%DATASET%"=="synthetic" if not "%DATASET%"=="real" (
   echo [NG] usage: load.bat synthetic ^| real
   exit /b 1
