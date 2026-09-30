@@ -11,7 +11,8 @@
 | 파일 | 크기 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|---|
 | `En-genius-Ontology-2d6e8c6.zip` | 0.7 MB | 저장소 — 코드·스키마·설정·합성 데이터·설치 스크립트·안내 (첫 반입본) | 사내 소유 코드 (의존성은 docs/04) | git archive 2d6e8c6 |
-| `En-genius-Ontology-f3a4f55.zip` | 0.7 MB | 저장소 **최신** — 위 + 적재한 온톨로지 3D 뷰어(`scripts\graph_view.bat`) · doctor Java 확인 수정 (2026-09-30 추가) | 사내 소유 코드 | git archive f3a4f55 |
+| `En-genius-Ontology-f3a4f55.zip` | 0.7 MB | 저장소 — 위 + 적재한 온톨로지 3D 뷰어(`scripts\graph_view.bat`) · doctor Java 확인 수정 (2026-09-30 추가) | 사내 소유 코드 | git archive f3a4f55 |
+| `EnGenius_update_f3a4f55_to_4423d92.py.txt` | 1.3 MB | **업데이트 (최신, M3.1 1차 — 실데이터 적재 가능)**. f3a4f55 가 설치된 사내 PC 용. 확장자를 `.py` 로 바꿔 실행 → 바뀐 47개 파일만 씀, 원래 파일은 `offline\backup_…` 에 남김 | 사내 소유 코드 | git f3a4f55..4423d92 |
 | `wheels_win_amd64_cp310.zip` | 56.9 MB | 파이썬 패키지 wheel 93개 (Windows x64 · Python 3.10) — 풀지 말고 저장소의 offline\ 에 | Apache·MIT·BSD 계열 (docs/04 부록 A) | PyPI (antlr4 4.9.3 은 sdist 를 빌드) |
 | `OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip` | 205.1 MB | Java 21 (Temurin JDK) — Fuseki 실행용 런타임 | GPLv2 + Classpath Exception | https://github.com/adoptium/temurin21-binaries/releases |
 | `apache-jena-fuseki-6.2.0.zip` | 51.4 MB | Apache Jena Fuseki 6.2.0 — 그래프 DB | Apache 2.0 | https://dlcdn.apache.org/jena/binaries/ |
@@ -33,6 +34,15 @@ JDK·Fuseki 는 공급자 원본 그대로다 — 반입 심사에서 원 출처
 | 2026-09-29 | 패키지 v0.1 | 저장소 zip `2d6e8c6` · wheels · JDK · Fuseki · 지도 2D v1 · 3D v1 | 연습용 첫 판 (합성 데이터) |
 | 2026-09-29 | 지도 3D v2 | `maps/preview_map3d_v2.html` | '툴 기준 후보' 버튼 — 연결 많은 툴 순위표(행 클릭 = 그 툴의 모든 사용처·연결 강조), '연결 수로 크기' 토글. 제안 시안 (docs/02 7.5, Leo 확인 대기) |
 | 2026-09-30 | 저장소 `f3a4f55` | `En-genius-Ontology-f3a4f55.zip` | **적재한 온톨로지 3D 뷰어** `scripts\graph_view.bat` (최신 `output\<실행ID>\survey.ttl` → `graph3d.html`, 골든 계산이 아니라 적재 그래프 그대로) · doctor 가 JAVA_HOME 의 Java 를 찾음. **사내 갱신: 풀어서 기존 `engenius-tool-ontology` 에 덮어쓰기** (`.venv`·`output`·`fuseki-data` 는 zip 에 없어 그대로 남는다 — 재설치 불필요) |
+
+| 2026-09-30 | 업데이트 `f3a4f55 → 4423d92` | `EnGenius_update_f3a4f55_to_4423d92.py.txt` | **M3.1 1차** — 양식 v1.1 읽기 · 파트 단위(MD = MDT+MDC 분할) · 스키마 v0.3 · 인명 보호 · 병합 셀·깨진 파일·빈 행 안전장치 · 드롭다운 대응표(`config\value_aliases.yaml`) · 파일별 수정 요청표 · 반출용 `diag.txt`. **zip 대신 텍스트 한 개** (Leo 요청). 적용법은 아래 '업데이트 적용' |
+
+## 업데이트 적용 (zip 대신 텍스트, 2026-09-30~)
+
+1. `EnGenius_update_<이전>_to_<새>.py.txt` 를 받아 반입 → 확장자를 `.py` 로 바꿔 **아무 폴더**에 둔다.
+2. cmd: `C:\EnGenius\engenius-tool-ontology\.venv\Scripts\python EnGenius_update_<이전>_to_<새>.py` (저장소가 다른 곳이면 끝에 그 경로)
+3. `[OK] 업데이트 … 추가 7 · 변경 40` 이 나오면 끝. 원래 파일은 `offline\backup_<이전>_<일시>\`, 기록은 `offline\applied_updates.txt`. 이어서 `scripts\doctor.bat`.
+   `<이전>` 은 지금 사내에 설치된 판이다 — 이번 파일은 `f3a4f55` 가 설치된 곳용 (두 번 돌려도 '이미 같음' 으로 끝난다).
 
 ## 들여간 뒤
 
