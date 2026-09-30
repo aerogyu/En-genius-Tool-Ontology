@@ -34,5 +34,5 @@ parts:
 file_bundles:
   MD: [MDT, MDC]      # 형상설계 — Tool조사_MD_<날짜>.xlsx 안에 MDT-1~9 · MDC-1~8
 
-# 합성 데이터(data/synthetic)용 — 파일명 분야 = 담당 부서 값 체계. M3.1 T 에서 골든 값을 유지하려고 둔다.
-synthetic_parts_are_domains: true
+# 합성 데이터(data/synthetic) 파트 — 파일명 약칭이 곧 '담당 부서' 값인 체계 (골든 유지용). 실데이터 약칭과 겹치지 않는다.
+synthetic_parts: [2차유로(SAS), 구조, 성능, 시험, 압축기, 연소기, 제어, 터빈]

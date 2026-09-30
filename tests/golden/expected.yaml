@@ -4,7 +4,8 @@
 # 명세를 바꾸면 python tests/golden/make_expected.py 로 다시 만든다 (손으로 쓴 부분은 이 머리말 파일에서 유지).
 #
 # 키 규칙 (골든 전용 표기)
-#   툴사용  = "<분야>/<SW ID>"            분야 = 행의 '담당 부서' (파일 분야와 다를 수 있음 — P17)
+#   툴사용  = "<분야>/<SW ID>"            분야 = 파일 분야(파트, v0.3 — docs/10). 행의 '담당 부서' 가 달라도 파일 분야이고 경고만
+#                                         (P17 개정 2026-09-30: 구조 파일 STR-05 의 담당 부서 '시험' → 키는 구조/STR-05)
 #   입출력  = "<툴사용>/<in|out>/<명칭>"  같은 파일에서 이 키가 겹치면 달라지는 필드(분류|확장자|전달|연계)를 [..] 로, 완전히 같으면 #순번
 #   고아    = "<파일 분야>/<SW ID>(고아)/..."
 #   툴      = 정규화 키 (docs/02 6.1) — 대표 이름(prefLabel)은 M3 가 정하므로 골든에서 검사하지 않는다
@@ -181,9 +182,9 @@ cases:
       - {from: 압축기/COM-01/out/익형 형상, to: 구조/STR-01/in/익형 형상, matched: [stp]}
       - {from: 압축기/COM-01/out/익형 형상, to: 구조/STR-02/in/익형 형상, matched: [stp]}
   P7:
-    title: 허브 — Excel·MATLAB 5개 분야 사용, 연결 상대 툴 수 최상위, 착수 순위에는 영향 없음
+    title: 허브 — Excel 6·MATLAB 5개 분야 사용 (P17 개정으로 Excel 6), 연결 상대 툴 수 최상위, 착수 순위에는 영향 없음
     top_hubs: [excel, matlab]
-    fields_using: {excel: 5, matlab: 5}
+    fields_using: {excel: 6, matlab: 5}
     ranking_independent_of_hub: 착수 순위는 aggregates.handoff_ranking 과 같고, 정렬 키(I18)에 허브 값이 없다
   P8:
     title: GUI 전용 끝단의 수기 구간
@@ -235,7 +236,7 @@ cases:
       - {io: 제어/MATLAB/in/제어 요구 사양, tool: matlabsimulink, verdict: 확장자 미기재}
   I9:
     title: 고아 입출력은 분류·확장자가 맞아도 연결하지 않는다
-    orphan: "터빈/TURB-3(고아)/in/냉각 공기 조건"
+    orphan: "터빈/TURB-9(고아)/in/냉각 공기 조건"
   I5:
     title: 정렬 키 동률 — 공급 키 문자열 순
     order: [[시험/TEST-02, 시험/TEST-01], [연소기/COM-04, 시험/TEST-01]]
@@ -490,9 +491,9 @@ aggregates:
     연소기/COM-04: 6
     2차유로(SAS)/SAS-02: 5
     구조/STR-01: 5
+    구조/STR-05: 5
     성능/PERF-02: 5
     성능/PERF-03: 5
-    시험/STR-05: 5
     시험/TEST-04: 5
     압축기/COM-03: 5
     제어/MATLAB: 5
@@ -521,9 +522,9 @@ aggregates:
   - 연소기/COM-04
   - 2차유로(SAS)/SAS-02
   - 구조/STR-01
+  - 구조/STR-05
   - 성능/PERF-02
   - 성능/PERF-03
-  - 시험/STR-05
   - 시험/TEST-04
   - 압축기/COM-03
   - 제어/MATLAB
@@ -598,21 +599,22 @@ aggregates:
           프리웨어: 1
   field_matrix:
     2차유로(SAS) → 2차유로(SAS): 4
-    2차유로(SAS) → 구조: 1
+    2차유로(SAS) → 구조: 2
     2차유로(SAS) → 성능: 1
-    2차유로(SAS) → 시험: 2
+    2차유로(SAS) → 시험: 1
     2차유로(SAS) → 압축기: 1
     2차유로(SAS) → 터빈: 2
     구조 → 2차유로(SAS): 2
-    구조 → 구조: 3
+    구조 → 구조: 4
     구조 → 성능: 1
-    구조 → 시험: 2
+    구조 → 시험: 1
     구조 → 압축기: 1
     구조 → 연소기: 1
     구조 → 터빈: 2
     성능 → 2차유로(SAS): 2
+    성능 → 구조: 1
     성능 → 성능: 2
-    성능 → 시험: 2
+    성능 → 시험: 1
     성능 → 압축기: 1
     성능 → 제어: 2
     성능 → 터빈: 1
@@ -623,9 +625,9 @@ aggregates:
     시험 → 제어: 2
     시험 → 터빈: 2
     압축기 → 2차유로(SAS): 2
-    압축기 → 구조: 2
+    압축기 → 구조: 4
     압축기 → 성능: 2
-    압축기 → 시험: 4
+    압축기 → 시험: 2
     압축기 → 압축기: 2
     압축기 → 터빈: 3
     연소기 → 성능: 1
@@ -650,8 +652,8 @@ aggregates:
   - 2차유로(SAS)/SAS-02
   - 2차유로(SAS)/SAS-03
   - 구조/STR-02
+  - 구조/STR-05
   - 성능/PERF-03
-  - 시험/STR-05
   - 시험/TEST-04
   - 압축기/COM-03
   - 터빈/TURB-05
@@ -661,8 +663,8 @@ aggregates:
     downstream_1:
     - 2차유로(SAS)/SAS-02
     - 2차유로(SAS)/SAS-03
+    - 구조/STR-05
     - 성능/PERF-03
-    - 시험/STR-05
     - 시험/TEST-04
     - 압축기/COM-03
     - 터빈/TURB-05
@@ -682,8 +684,8 @@ aggregates:
     - 2차유로(SAS)/SAS-02
     - 2차유로(SAS)/SAS-03
     - 구조/STR-02
+    - 구조/STR-05
     - 성능/PERF-03
-    - 시험/STR-05
     - 시험/TEST-04
     - 압축기/COM-03
     - 터빈/TURB-05
@@ -716,7 +718,7 @@ aggregates:
     basis: null
     grade: null
   - from: 2차유로(SAS)/SAS-01/out/유량 요약 표
-    to: 성능/PERF-03/in/해석 요약 표
+    to: 구조/STR-05/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -725,7 +727,7 @@ aggregates:
     basis: null
     grade: null
   - from: 2차유로(SAS)/SAS-01/out/유량 요약 표
-    to: 시험/STR-05/in/해석 요약 표
+    to: 성능/PERF-03/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -834,7 +836,7 @@ aggregates:
     basis: null
     grade: null
   - from: 구조/STR-02/out/구조 요약 표
-    to: 성능/PERF-03/in/해석 요약 표
+    to: 구조/STR-05/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -843,7 +845,7 @@ aggregates:
     basis: null
     grade: null
   - from: 구조/STR-02/out/구조 요약 표
-    to: 시험/STR-05/in/해석 요약 표
+    to: 성능/PERF-03/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -915,7 +917,7 @@ aggregates:
     basis: null
     grade: null
   - from: 성능/PERF-01/out/성능 요약
-    to: 성능/PERF-03/in/해석 요약 표
+    to: 구조/STR-05/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -924,7 +926,7 @@ aggregates:
     basis: null
     grade: null
   - from: 성능/PERF-01/out/성능 요약
-    to: 시험/STR-05/in/해석 요약 표
+    to: 성능/PERF-03/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -1113,7 +1115,7 @@ aggregates:
     basis: null
     grade: null
   - from: 압축기/COM-01/out/설계 요약 표
-    to: 성능/PERF-03/in/해석 요약 표
+    to: 구조/STR-05/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -1122,7 +1124,7 @@ aggregates:
     basis: null
     grade: null
   - from: 압축기/COM-01/out/설계 요약 표
-    to: 시험/STR-05/in/해석 요약 표
+    to: 성능/PERF-03/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -1185,7 +1187,7 @@ aggregates:
     basis: null
     grade: null
   - from: 압축기/COM-02/out/압축기 요약 표
-    to: 성능/PERF-03/in/해석 요약 표
+    to: 구조/STR-05/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -1194,7 +1196,7 @@ aggregates:
     basis: null
     grade: null
   - from: 압축기/COM-02/out/압축기 요약 표
-    to: 시험/STR-05/in/해석 요약 표
+    to: 성능/PERF-03/in/해석 요약 표
     matched:
     - xlsx
     confidence: 낮음
@@ -1418,6 +1420,21 @@ aggregates:
   - io: 구조/STR-04/out/수명 평가 결과
     tool: mechanical
     verdict: 확정
+  - io: 구조/STR-05/in/해석 요약 표
+    tool: mechanical
+    verdict: 잠재(연계 미기재)
+  - io: 구조/STR-05/in/해석 요약 표
+    tool: starccm
+    verdict: 잠재(연계 미기재)
+  - io: 구조/STR-05/in/해석 요약 표
+    tool: 가상1d네트워크
+    verdict: 잠재(연계 미기재)
+  - io: 구조/STR-05/in/해석 요약 표
+    tool: 가상공력설계툴
+    verdict: 잠재(연계 미기재)
+  - io: 구조/STR-05/in/해석 요약 표
+    tool: 가상성능덱
+    verdict: 잠재(연계 미기재)
   - io: 성능/PERF-01/out/성능 경계조건 표
     tool: excel
     verdict: 확정
@@ -1460,21 +1477,6 @@ aggregates:
   - io: 성능/PERF-04/in/성능 요약 데이터
     tool: 가상성능덱
     verdict: 확정
-  - io: 시험/STR-05/in/해석 요약 표
-    tool: mechanical
-    verdict: 잠재(연계 미기재)
-  - io: 시험/STR-05/in/해석 요약 표
-    tool: starccm
-    verdict: 잠재(연계 미기재)
-  - io: 시험/STR-05/in/해석 요약 표
-    tool: 가상1d네트워크
-    verdict: 잠재(연계 미기재)
-  - io: 시험/STR-05/in/해석 요약 표
-    tool: 가상공력설계툴
-    verdict: 잠재(연계 미기재)
-  - io: 시험/STR-05/in/해석 요약 표
-    tool: 가상성능덱
-    verdict: 잠재(연계 미기재)
   - io: 시험/TEST-01/in/고속 계측 원시 데이터
     tool: 가상데이터수집기
     verdict: 확정
@@ -1642,7 +1644,7 @@ aggregates:
     verdict: 잠재(연계 미기재)
   warnings:
   - 'SW ID 없는 내용 행: SW조사_압축기_20260924.xlsx SW입출력 ''형상 검토 메모'' — 건너뜀'
-  - '고아 입출력: SW조사_터빈_20260924.xlsx SW ID ''TURB-3'' (냉각 공기 조건) — SW기본정보에 없음'
+  - '고아 입출력: SW조사_터빈_20260924.xlsx SW ID ''TURB-9'' (냉각 공기 조건) — SW기본정보에 없음'
   - '날짜 셀: SW조사_구조_20260924.xlsx SW기본정보 STR-03 버전 * → 2023-01-01'
   - '매핑 안 된 헤더: SW조사_터빈_20260924.xlsx SW입출력 ''내부 메모'''
   - '사용 인원수 정수 변환 실패: SW조사_2차유로(SAS)_20260924.xlsx SAS-03 ''약 4명'' — 원문 보존'

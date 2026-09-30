@@ -32,7 +32,7 @@ URI: [eg:AirgapSupport](http://en-genius.local/onto/AirgapSupport)
 
 | Name | Description |
 | ---  | --- |
-| [airgap_ok](airgap_ok.md) | 폐쇄망 구동 |
+| [airgap_ok](airgap_ok.md) | 폐쇄망 구동 (양식 v1 |
 
 
 

@@ -84,21 +84,27 @@ def write_review(path: Path, res: LoadResult) -> None:
 def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_dir: Path | None = None,
              out_root: Path | None = None, now: dt.datetime | None = None, config_dir: Path | None = None,
              shacl: bool = True, save_registry: bool = True) -> LoadOutput:
+    if input_dir is not None and registry_dir is None:          # docs/09 #9 — 합성 레지스트리를 실데이터로 더럽히지 않게
+        raise ValueError("--input 을 쓰면 --registry 도 지정한다 (또는 --data real — data/real/survey + data/real/registry)")
     inp, regdir = DATA_SETS[data]
     inp, regdir = Path(input_dir or inp), Path(registry_dir or regdir)
     now = (now or dt.datetime.now()).astimezone().replace(microsecond=0)
     run_id = now.strftime("%Y%m%dT%H%M%S")
     out_dir = Path(out_root or REPO_ROOT / "output") / run_id
     loader = Loader(config_dir=config_dir or CONFIG_DIR)
+    if not inp.is_dir():
+        raise FileNotFoundError(f"조사 파일 폴더가 없다: {inp}")
     paths = loader.discover(inp)
     if not paths:
-        raise FileNotFoundError(f"조사 파일이 없다: {inp} ({loader.lcfg['file_pattern']})")
+        raise FileNotFoundError(f"조사 파일이 없다: {inp} (*.xlsx)")
+    reg = Registry(regdir)
+    if save_registry:
+        reg.check_writable()                                  # #23 — 적재 전에 확인
     res = loader.load(paths)
 
-    reg = Registry(regdir)
     terms = SchemaTerms.load()
     writer = SurveyWriter(terms)
-    loads = writer.write(res, reg, run_id, now)
+    loads = writer.write(res, reg, run_id, now, retire=res.complete)
     ttl = writer.turtle()
     issues = validate_rows(res, terms)
 
@@ -115,7 +121,8 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
         "rule_version": loader.rules.get("rule_version"),
         "input": data if input_dir is None else "custom",
         "files": [{"name": f.name, "sha256": f.sha256, "field": f.field, "date": f.date,
-                   "load_id": loads.get(f.name), "superseded_by": f.superseded_by, **f.stats()} for f in res.files],
+                   "load_id": loads.get(f.name), "superseded_by": f.superseded_by, "unreadable": f.unreadable,
+                   **f.stats()} for f in res.files],
         "counts": {"usages": len(res.usages), "io_specs": len(res.ios),
                    "orphan_io_specs": sum(1 for x in res.ios if x.owner is None), "tools": len(res.tools),
                    "fields": len({u.field for u in res.usages if u.field}),
@@ -124,6 +131,8 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
                    "triples": len(writer.g)},
         "excluded_rows": res.excluded_rows,
         "warnings": sorted(res.warnings),
+        "issues": res.issues,
+        "complete": res.complete,
         "schema_issues": issues,
         "tool_merge_candidates": res.merge_candidates,
         "tool_attribute_conflicts": res.attribute_conflicts,
@@ -135,27 +144,105 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
     if shacl:
         log["shacl"] = run_shacl(ttl)
 
+    if save_registry:
+        reg.save()                                            # #23 — 산출물보다 먼저, 원자적으로
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "survey.ttl").write_text(ttl, encoding="utf-8", newline="\n")
     (out_dir / "load_log.json").write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8",
                                            newline="\n")
     write_review(out_dir / "tool_review.csv", res)
-    if save_registry:
-        reg.save()
+    write_fix_requests(out_dir / "fix_requests", res)
+    (out_dir / "diag.txt").write_text(diag_text(out_dir), encoding="utf-8", newline="\n")
     return LoadOutput(run_id, out_dir, res, ttl, log, issues)
 
 
 def run_shacl(ttl: str) -> dict:
-    """Jena SHACL (Fuseki jar) 이 있으면 survey 그래프를 검증한다 — 위반은 경고 보고서 (D4). 없으면 건너뜀."""
+    """Jena SHACL (Fuseki jar) 이 있으면 survey 그래프를 검증한다 — 위반은 경고 보고서 (D4). 없으면 건너뜀.
+    SHACL 도구가 실패해도 적재는 계속한다 (docs/09 #22)."""
     from engenius_onto import schema_gen
     from engenius_onto.shacl_check import find_tools, validate
 
     tools = find_tools()
     if not tools:
         return {"ran": False, "reason": "FUSEKI_HOME/JAVA 없음 — SHACL 검증 건너뜀"}
-    r = validate(schema_gen.GEN_DIR / "engenius_tool.shacl.ttl", ttl, *tools)
+    try:
+        r = validate(schema_gen.GEN_DIR / "engenius_tool.shacl.ttl", ttl, *tools)
+    except Exception as e:  # noqa: BLE001 — 도구 오류는 보고만
+        return {"ran": False, "reason": f"SHACL 도구 실패 — {type(e).__name__}: {str(e)[:200]}"}
     return {"ran": True, "conforms": r.conforms, "violations": len(r.results),
             "results": [{"focus": f, "path": p, "message": msg} for f, p, msg in r.results]}
+
+
+FIX_COLUMNS = ["시트", "행", "Tool ID", "열", "적힌 값", "문제", "고치는 법"]
+SHEET_SHOWN = {"SW기본정보": "Tool 기본정보", "SW입출력": "Tool 입출력"}
+
+
+def write_fix_requests(folder: Path, res: LoadResult) -> list[Path]:
+    """파일별 수정 요청표 (M3.1, Leo 2026-09-30) — 담당자에게 보낼 사내 전용 파일. 행 순서대로, 인명 의심 칸은 값을 싣지 않는다."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    by_file: dict[str, list[dict]] = {}
+    for i in res.issues:
+        by_file.setdefault(i["file"], []).append(i)
+    folder.mkdir(parents=True, exist_ok=True)
+    out = []
+    for fname, items in sorted(by_file.items()):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "수정 요청"
+        ws.append([f"{fname} — 조사표 수정 요청 {len(items)}건 (En-Genius 툴 조사, 적재 자동 점검)"])
+        ws["A1"].font = Font(bold=True, size=12)
+        ws.append(FIX_COLUMNS)
+        for c in ws[2]:
+            c.font, c.fill = Font(bold=True), PatternFill("solid", fgColor="DDE6F0")
+        for i in sorted(items, key=lambda x: (x["sheet"], x["row"] or 0)):
+            ws.append([SHEET_SHOWN.get(i["sheet"], i["sheet"]), i["row"], i["tool_id"], i["column"],
+                       _safe_cell(i["value"]), i["kind"], i["hint"]])
+        for col, width in zip("ABCDEFG", (14, 6, 12, 22, 28, 22, 60)):
+            ws.column_dimensions[col].width = width
+        for row in ws.iter_rows(min_row=3):
+            row[6].alignment = Alignment(wrap_text=True, vertical="top")
+        ws.freeze_panes = "A3"
+        path = folder / (Path(fname).stem + "_수정요청.xlsx")
+        wb.save(path)
+        out.append(path)
+    return out
+
+
+def _safe_cell(v: str) -> str:
+    """엑셀이 수식으로 읽지 않게 (= + - @ 로 시작하면 앞에 ' ) — docs/09 #25d."""
+    return "'" + v if v and v[0] in "=+-@" else v
+
+
+def diag_text(run_dir: Path) -> str:
+    """진단 요약 — 밖으로 가져가도 되는 것만: 경고 종류·열·파일(약칭)별 건수. 셀 값·툴명·데이터명·경로·인명은 넣지 않는다."""
+    from collections import Counter
+
+    log = json.loads((Path(run_dir) / "load_log.json").read_text(encoding="utf-8"))
+    c = log["counts"]
+    lines = [f"[diag] 실행 {log['run_id']} · 스키마 v{log['schema_version']} · 규칙 {log['rule_version']} · "
+             f"완전 적재 {'예' if log.get('complete', True) else '아니오 (읽지 못한 파일 있음)'}",
+             f"파일 {len(log['files'])} (적재 {sum(1 for f in log['files'] if not f['superseded'] and not f.get('unreadable'))}"
+             f" · 재발송 대체 {sum(1 for f in log['files'] if f['superseded'])}"
+             f" · 읽지 못함 {sum(1 for f in log['files'] if f.get('unreadable'))})",
+             f"툴사용 {c['usages']} · 입출력 {c['io_specs']} (고아 {c['orphan_io_specs']}) · 툴 {c['tools']} · 파트 {c['fields']} · "
+             f"제외 행 {c['excluded_rows']} · 경고 {c['warnings']}", "", "경고 종류별 건수:"]
+    kinds = Counter(w.split(":", 1)[0] for w in log["warnings"])
+    lines += [f"  {k}: {n}" for k, n in kinds.most_common()]
+    issues = log.get("issues") or []
+    if issues:
+        lines += ["", "수정 요청 — 문제 · 열별 건수:"]
+        by = Counter((i["kind"], SHEET_SHOWN.get(i["sheet"], i["sheet"]), i["column"]) for i in issues)
+        lines += [f"  {k} · {s} · {col or '-'}: {n}" for (k, s, col), n in by.most_common()]
+        lines += ["", "수정 요청 — 파일(약칭)별 건수:"]
+        byf = Counter(i["part"] or "(규칙 밖 파일)" for i in issues)
+        lines += [f"  {p}: {n}" for p, n in sorted(byf.items())]
+    sh = log.get("shacl") or {}
+    if sh:
+        lines += ["", f"SHACL: {'건너뜀' if not sh.get('ran') else ('적합' if sh.get('conforms') else '위반 ' + str(sh.get('violations')) + '건')}"]
+    lines += ["", "※ 이 요약에는 셀 값·툴명·데이터명·경로·인명이 없다 — 밖으로 가져올 수 있다 (docs/08 8장)."]
+    return "\n".join(lines) + "\n"
 
 
 def _rel(p: Path) -> str:

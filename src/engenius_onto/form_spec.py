@@ -74,7 +74,7 @@ def load_form_spec(schema_file: Path | None = None, config_dir: Path | None = No
             elif rng in NODE_RANGES:
                 kind, lst = "node", _ann(d, "form_list")
             else:
-                kind, lst = "text", None
+                kind, lst = "text", _ann(d, "form_list")   # 문자열 슬롯도 선택지 검사 (예: reported_domain → 담당부서, v0.3)
             columns[sheet].append(Column(sheet, name, _ann(d, "form_header"), bool(d.get("required")), kind, lst))
         order = {name: i for i, name in enumerate(defs)}
         columns[sheet].sort(key=lambda col: _col_index(_ann(defs[col.slot], "form_column"), order[col.slot]))

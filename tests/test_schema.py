@@ -52,14 +52,17 @@ def test_form_mapping_complete():
 
 
 def test_form_mapping_counts():
-    """원본 양식: SW기본정보 33열 = 적재 32 + 제외 1, SW입출력 13열 = 적재 12 + 제외 1."""
+    """양식 v1.0: SW기본정보 33열 = 적재 32 + 제외 1, SW입출력 13열 = 적재 12 + 제외 1.
+    v0.3 스키마는 v1.1 도 담는다: 슬롯 = v1.0 32 + 필수 Tool 구분 1, 제외 = 문의처·No. / 수식 열 2개 (SW명·Tool명 자동)."""
     rows = schema_gen.form_mapping()
     excl = schema_gen.excluded_columns()
     xlsx = schema_gen.form_headers_xlsx()
-    for sheet, total in (("SW기본정보", 33), ("SW입출력", 13)):
+    for sheet, total, slots in (("SW기본정보", 33, 33), ("SW입출력", 13, 12)):
         assert len(xlsx[sheet]) == total
-        assert len([r for r in rows if r.sheet == sheet]) + len([e for e in excl if e[0] == sheet]) == total
-    assert {h for _, h, _ in excl} == {"실무 문의처(선택)", "SW명(자동)"}
+        assert len([r for r in rows if r.sheet == sheet]) == slots
+    assert {h for _, h, _ in excl} == {"실무 문의처(선택)", "SW명(자동)", "No.", "Tool명(자동)"}
+    v11 = schema_gen.form_headers_xlsx(schema_gen.FORM_XLSX_V11)
+    assert (len(v11["SW기본정보"]), len(v11["SW입출력"])) == (33, 13)   # 시트 이름이 달라도 설정으로 찾는다
 
 
 def test_person_column_not_in_schema():
@@ -111,7 +114,7 @@ def test_owl_reserved_vocab_not_redeclared(owl):
 
 def test_owl_enums_are_literal_datatypes(owl):
     enums = [e for e in owl.subjects(RDF.type, RDFS.Datatype) if isinstance(e, URIRef)]
-    assert len(enums) == 28  # 양식 선택지 21 + 스키마 정의 7 (v0.2: 대조 판정·고립 유형·착수 종류)
+    assert len(enums) == 29  # 양식 선택지 22 (v0.3: SW 필수 여부) + 스키마 정의 7 (v0.2: 대조 판정·고립 유형·착수 종류)
     for e in enums:
         assert (e, RDF.type, OWL.Class) not in owl
         eq = owl.value(e, OWL.equivalentClass)
@@ -211,7 +214,7 @@ def _sample():
             "reported_tool_name": "ANSYS Fluent 2024R1", "usage_tool": "egid:TOOL-000001",
             "version": "2024R1", "reported_vendor": "ANSYS", "reported_kind": "상용",
             "purpose_class": "해석", "purpose_detail": "합성 예시", "phase": "기본~상세",
-            "task_summary": "합성 예시", "usage_field": "egid:FLD-001", "user_count": 3,
+            "task_summary": "합성 예시", "usage_field": "egid:FLD-001", "reported_domain": "2차유로(SAS)", "user_count": 3,
             "runtime_env": "Windows PC", "airgap_ok": "부분 가능(비고 기재)", "operation_mode": "GUI+CLI",
             "batch_capable": "가능", "automation_if": "내장 스크립팅", "validation_status": "완료",
             "certification_use": "모름", "automation_wish": "합성 예시", "license_expiry": "2027-03",
@@ -281,7 +284,7 @@ def test_pydantic_required_field_missing():
     from engenius_onto.schema_model import Dataset
 
     d = _sample()
-    del d["tool_usages"][0]["airgap_ok"]
+    del d["tool_usages"][0]["reported_domain"]   # v0.3: airgap_ok 는 선택, 담당 부서는 필수
     with pytest.raises(ValidationError):
         Dataset(**d)
 

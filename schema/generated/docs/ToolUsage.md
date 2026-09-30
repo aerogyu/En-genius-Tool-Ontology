@@ -30,7 +30,7 @@ URI: [eg:ToolUsage](http://en-genius.local/onto/ToolUsage)
     
         
         
-        ToolUsage --> "1" AirgapSupport : airgap_ok
+        ToolUsage --> "0..1" AirgapSupport : airgap_ok
         click AirgapSupport href "../AirgapSupport/"
     
 
@@ -98,6 +98,17 @@ URI: [eg:ToolUsage](http://en-genius.local/onto/ToolUsage)
         
         ToolUsage --> "1" YesNoUnknown : certification_use
         click YesNoUnknown href "../YesNoUnknown/"
+    
+
+        
+      ToolUsage : essential_tool
+        
+          
+    
+        
+        
+        ToolUsage --> "0..1" EssentialTool : essential_tool
+        click EssentialTool href "../EssentialTool/"
     
 
         
@@ -299,6 +310,17 @@ URI: [eg:ToolUsage](http://en-genius.local/onto/ToolUsage)
     
 
         
+      ToolUsage : reported_domain
+        
+          
+    
+        
+        
+        ToolUsage --> "1" String : reported_domain
+        click String href "../http://www.w3.org/2001/XMLSchema#string/"
+    
+
+        
       ToolUsage : reported_kind
         
           
@@ -491,7 +513,8 @@ URI: [eg:ToolUsage](http://en-genius.local/onto/ToolUsage)
 | [purpose_detail](purpose_detail.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 용도 상세 원문 | direct |
 | [phase](phase.md) | 1 <br/> [DevPhase](DevPhase.md) | 이 SW 를 주로 쓰는 개발 단계 (걸치면 범위로) | direct |
 | [task_summary](task_summary.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 이 SW 로 실제 수행하는 업무 1~2문장 | direct |
-| [usage_field](usage_field.md) | 1 <br/> [ResearchField](ResearchField.md) | 담당 부서 값으로 만든 Field (문자열이 아니라 노드) | direct |
+| [usage_field](usage_field.md) | 1 <br/> [ResearchField](ResearchField.md) | 이 응답을 낸 파트 (Field 노드) | direct |
+| [reported_domain](reported_domain.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 행의 '담당 부서' 원문 (양식 드롭다운 10개 + 목록 밖 파트는 '기타') | direct |
 | [user_count](user_count.md) | 0..1 <br/> [xsd:integer](http://www.w3.org/2001/XMLSchema#integer) | 사용 인원수 (정수 변환 성공 시) | direct |
 | [user_count_raw](user_count_raw.md) | 0..1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 사용 인원수 원문 — 정수 변환에 실패했을 때만 보존 (경고와 함께) | direct |
 | [frequency](frequency.md) | 0..1 <br/> [UsageFrequency](UsageFrequency.md) | 사용 빈도 — 착수 순위 정렬 키 (docs/02 7 | direct |
@@ -500,7 +523,7 @@ URI: [eg:ToolUsage](http://en-genius.local/onto/ToolUsage)
 | [license_count_raw](license_count_raw.md) | 0..1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 보유 수량 원문 — 정수 변환에 실패했을 때만 보존 (경고와 함께) | direct |
 | [license_expiry](license_expiry.md) | 0..1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 만료 시기 YYYY-MM | direct |
 | [runtime_env](runtime_env.md) | 1 <br/> [RuntimeEnv](RuntimeEnv.md) | 실행 환경 (복수면 대표 1개 + 비고) | direct |
-| [airgap_ok](airgap_ok.md) | 1 <br/> [AirgapSupport](AirgapSupport.md) | 폐쇄망 구동 | direct |
+| [airgap_ok](airgap_ok.md) | 0..1 <br/> [AirgapSupport](AirgapSupport.md) | 폐쇄망 구동 (양식 v1 | direct |
 | [operation_mode](operation_mode.md) | 1 <br/> [OperationMode](OperationMode.md) | 조작 방식 | direct |
 | [batch_capable](batch_capable.md) | 1 <br/> [BatchCapability](BatchCapability.md) | 배치/스크립트 실행 — 사람이 클릭하지 않고 실행 가능한가 | direct |
 | [automation_if](automation_if.md) | 1 <br/> [AutomationInterface](AutomationInterface.md) | 자동화 인터페이스 (대표 1개) | direct |
@@ -513,6 +536,7 @@ URI: [eg:ToolUsage](http://en-genius.local/onto/ToolUsage)
 | [certification_use](certification_use.md) | 1 <br/> [YesNoUnknown](YesNoUnknown.md) | 감항·인증 업무 사용 — 인증 근거 생산에 쓰이는가 | direct |
 | [automation_wish](automation_wish.md) | 1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 자동화 희망 작업 — 반복적이라 AI/에이전트가 대신하면 좋을 일 | direct |
 | [pain_points](pain_points.md) | 0..1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 현재 수작업·애로 구간 — 타 SW 와 데이터를 주고받을 때 수작업 구간 등 | direct |
+| [essential_tool](essential_tool.md) | 0..1 <br/> [EssentialTool](EssentialTool.md) | 필수 Tool 구분 (O/X) — 양식 v1 | direct |
 | [priority_opinion](priority_opinion.md) | 0..1 <br/> [Priority](Priority.md) | 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7 | direct |
 | [roadmap_note](roadmap_note.md) | 0..1 <br/> [xsd:string](http://www.w3.org/2001/XMLSchema#string) | 대체/업그레이드 계획 — 단종·버전업·전환 예정 | direct |
 | [feeds](feeds.md) | * <br/> [ToolUsage](ToolUsage.md) | (파생) 이 툴사용이 데이터를 공급하는 툴사용 — Feed 의 지름길, 경로 질의(eg:feeds+)용 | direct |
@@ -782,6 +806,17 @@ attributes:
     required: true
   usage_field:
     name: usage_field
+    description: 이 응답을 낸 파트 (Field 노드). v0.3 부터 파일명의 약칭(docs/10 5장)에서 정한다 — 한 파일에
+      여러 파트가 든 묶음 파일은 행의 Tool ID 앞부분으로 (config/parts.yaml file_bundles). v0.2 까지는
+      행의 '담당 부서' 값이었다.
+    from_schema: http://en-genius.local/onto/
+    rank: 1000
+    domain_of:
+    - ToolUsage
+    range: ResearchField
+    required: true
+  reported_domain:
+    name: reported_domain
     annotations:
       form_sheet:
         tag: form_sheet
@@ -795,12 +830,12 @@ attributes:
       form_list:
         tag: form_list
         value: 담당부서
-    description: 담당 부서 값으로 만든 Field (문자열이 아니라 노드).
+    description: 행의 '담당 부서' 원문 (양식 드롭다운 10개 + 목록 밖 파트는 '기타'). 파트의 분류 속성일 뿐 키가 아니다
+      — config/parts.yaml 의 그 파트 domains 와 다르면 경고만 (v0.3, docs/10).
     from_schema: http://en-genius.local/onto/
     rank: 1000
     domain_of:
     - ToolUsage
-    range: ResearchField
     required: true
   user_count:
     name: user_count
@@ -939,13 +974,13 @@ attributes:
       form_column:
         tag: form_column
         value: R
-    description: 폐쇄망 구동. '불가'가 낀 수기 구간은 착수 등급 '제외' (docs/02 7.4).
+    description: 폐쇄망 구동 (양식 v1.0 에만 있음 — v1.1 에서 열 삭제, v0.3 에서 선택으로). '제외' 등급 규칙은
+      폐지 결정 (Leo 2026-09-29) — M4 에서 반영.
     from_schema: http://en-genius.local/onto/
     rank: 1000
     domain_of:
     - ToolUsage
     range: AirgapSupport
-    required: true
   operation_mode:
     name: operation_mode
     annotations:
@@ -1164,6 +1199,27 @@ attributes:
     rank: 1000
     domain_of:
     - ToolUsage
+  essential_tool:
+    name: essential_tool
+    annotations:
+      form_sheet:
+        tag: form_sheet
+        value: SW기본정보
+      form_header:
+        tag: form_header
+        value: 필수 Tool 구분
+      form_column:
+        tag: form_column
+        value: O
+      form_list:
+        tag: form_list
+        value: SW 필수 여부
+    description: 필수 Tool 구분 (O/X) — 양식 v1.1 에서 추가된 열 (v0.3).
+    from_schema: http://en-genius.local/onto/
+    rank: 1000
+    domain_of:
+    - ToolUsage
+    range: EssentialTool
   priority_opinion:
     name: priority_opinion
     annotations:
@@ -1176,7 +1232,7 @@ attributes:
       form_column:
         tag: form_column
         value: AE
-    description: 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4).
+    description: 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4). 양식 v1.1 에서 열 삭제.
     from_schema: http://en-genius.local/onto/
     rank: 1000
     domain_of:
@@ -1431,6 +1487,18 @@ attributes:
     required: true
   usage_field:
     name: usage_field
+    description: 이 응답을 낸 파트 (Field 노드). v0.3 부터 파일명의 약칭(docs/10 5장)에서 정한다 — 한 파일에
+      여러 파트가 든 묶음 파일은 행의 Tool ID 앞부분으로 (config/parts.yaml file_bundles). v0.2 까지는
+      행의 '담당 부서' 값이었다.
+    from_schema: http://en-genius.local/onto/
+    rank: 1000
+    owner: ToolUsage
+    domain_of:
+    - ToolUsage
+    range: ResearchField
+    required: true
+  reported_domain:
+    name: reported_domain
     annotations:
       form_sheet:
         tag: form_sheet
@@ -1444,13 +1512,14 @@ attributes:
       form_list:
         tag: form_list
         value: 담당부서
-    description: 담당 부서 값으로 만든 Field (문자열이 아니라 노드).
+    description: 행의 '담당 부서' 원문 (양식 드롭다운 10개 + 목록 밖 파트는 '기타'). 파트의 분류 속성일 뿐 키가 아니다
+      — config/parts.yaml 의 그 파트 domains 와 다르면 경고만 (v0.3, docs/10).
     from_schema: http://en-genius.local/onto/
     rank: 1000
     owner: ToolUsage
     domain_of:
     - ToolUsage
-    range: ResearchField
+    range: string
     required: true
   user_count:
     name: user_count
@@ -1600,14 +1669,14 @@ attributes:
       form_column:
         tag: form_column
         value: R
-    description: 폐쇄망 구동. '불가'가 낀 수기 구간은 착수 등급 '제외' (docs/02 7.4).
+    description: 폐쇄망 구동 (양식 v1.0 에만 있음 — v1.1 에서 열 삭제, v0.3 에서 선택으로). '제외' 등급 규칙은
+      폐지 결정 (Leo 2026-09-29) — M4 에서 반영.
     from_schema: http://en-genius.local/onto/
     rank: 1000
     owner: ToolUsage
     domain_of:
     - ToolUsage
     range: AirgapSupport
-    required: true
   operation_mode:
     name: operation_mode
     annotations:
@@ -1842,6 +1911,28 @@ attributes:
     domain_of:
     - ToolUsage
     range: string
+  essential_tool:
+    name: essential_tool
+    annotations:
+      form_sheet:
+        tag: form_sheet
+        value: SW기본정보
+      form_header:
+        tag: form_header
+        value: 필수 Tool 구분
+      form_column:
+        tag: form_column
+        value: O
+      form_list:
+        tag: form_list
+        value: SW 필수 여부
+    description: 필수 Tool 구분 (O/X) — 양식 v1.1 에서 추가된 열 (v0.3).
+    from_schema: http://en-genius.local/onto/
+    rank: 1000
+    owner: ToolUsage
+    domain_of:
+    - ToolUsage
+    range: EssentialTool
   priority_opinion:
     name: priority_opinion
     annotations:
@@ -1854,7 +1945,7 @@ attributes:
       form_column:
         tag: form_column
         value: AE
-    description: 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4).
+    description: 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4). 양식 v1.1 에서 열 삭제.
     from_schema: http://en-genius.local/onto/
     rank: 1000
     owner: ToolUsage

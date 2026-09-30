@@ -6,7 +6,7 @@ search:
 # Slot: usage_field 
 
 
-_담당 부서 값으로 만든 Field (문자열이 아니라 노드)._
+_이 응답을 낸 파트 (Field 노드). v0.3 부터 파일명의 약칭(docs/10 5장)에서 정한다 — 한 파일에 여러 파트가 든 묶음 파일은 행의 Tool ID 앞부분으로 (config/parts.yaml file_bundles). v0.2 까지는 행의 '담당 부서' 값이었다._
 
 
 
@@ -67,16 +67,6 @@ URI: [eg:usage_field](http://en-genius.local/onto/usage_field)
 
 
 
-### Annotations
-
-| property | value |
-| --- | --- |
-| form_sheet | SW기본정보 |
-| form_header | 담당 부서 * |
-| form_column | J |
-| form_list | 담당부서 |
-
-
 
 
 ### Schema Source
@@ -102,20 +92,9 @@ URI: [eg:usage_field](http://en-genius.local/onto/usage_field)
 <details>
 ```yaml
 name: usage_field
-annotations:
-  form_sheet:
-    tag: form_sheet
-    value: SW기본정보
-  form_header:
-    tag: form_header
-    value: 담당 부서 *
-  form_column:
-    tag: form_column
-    value: J
-  form_list:
-    tag: form_list
-    value: 담당부서
-description: 담당 부서 값으로 만든 Field (문자열이 아니라 노드).
+description: 이 응답을 낸 파트 (Field 노드). v0.3 부터 파일명의 약칭(docs/10 5장)에서 정한다 — 한 파일에 여러 파트가
+  든 묶음 파일은 행의 Tool ID 앞부분으로 (config/parts.yaml file_bundles). v0.2 까지는 행의 '담당 부서'
+  값이었다.
 from_schema: http://en-genius.local/onto/
 rank: 1000
 owner: ToolUsage

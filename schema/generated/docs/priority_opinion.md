@@ -6,7 +6,7 @@ search:
 # Slot: priority_opinion 
 
 
-_우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4)._
+_우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4). 양식 v1.1 에서 열 삭제._
 
 
 
@@ -110,7 +110,7 @@ annotations:
   form_column:
     tag: form_column
     value: AE
-description: 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4).
+description: 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4). 양식 v1.1 에서 열 삭제.
 from_schema: http://en-genius.local/onto/
 rank: 1000
 owner: ToolUsage

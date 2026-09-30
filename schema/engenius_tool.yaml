@@ -1,7 +1,7 @@
 id: http://en-genius.local/onto/
 name: engenius_tool
 title: En-Genius 툴 온톨로지
-version: 0.2.0
+version: 0.3.0
 description: >-
   연구소 분야별 SW 조사(SW기본정보·SW입출력)를 담아 툴 간 데이터 연결을 계산하기 위한 스키마.
   설계 기준은 docs/02_툴온톨로지_설계.md (3·4·7장). 클래스 10종: Field, Tool, ToolUsage, IOSpec,
@@ -15,10 +15,14 @@ description: >-
   예약(미구현): WbsTask —uses_tool→ ToolUsage/Tool (지멘스 PoC 의 WBS Lv.6 연결).
 license: 사내 전용 — 개발은 합성 데이터로만
 annotations:
-  form_source: reference/SW조사양식_EnGenius_v1.0.xlsx (원본 양식 — 사내 배포본은 헤더·선택지가 다를 수 있음)
+  form_source: >-
+    reference/SW조사양식_EnGenius_v1.0.xlsx (원본 양식) · reference/Tool조사양식_EnGenius_v1.1.xlsx (사내 배포본 v1.1 —
+    시트·열 이름이 다르다: config/rules.yaml loader.sheets·choice_list_aliases, config/header_map.yaml 이 흡수, v0.3)
   form_excluded_columns: >-
     SW기본정보|실무 문의처(선택)|인명 — 읽지도 저장하지도 않는다 (CLAUDE.md 절대 규칙 5);
-    SW입출력|SW명(자동)|VLOOKUP 수식 열 — SW명은 SW ID 로 SW기본정보에서 찾는다
+    SW입출력|SW명(자동)|VLOOKUP 수식 열 — SW명은 SW ID 로 SW기본정보에서 찾는다;
+    SW기본정보|No.|양식 v1.1 일련번호 열 — 행 번호일 뿐이다;
+    SW입출력|Tool명(자동)|양식 v1.1 의 VLOOKUP 수식 열
 
 prefixes:
   linkml: https://w3id.org/linkml/
@@ -197,7 +201,14 @@ classes:
       usage_field:
         range: ResearchField
         required: true
-        description: 담당 부서 값으로 만든 Field (문자열이 아니라 노드).
+        description: >-
+          이 응답을 낸 파트 (Field 노드). v0.3 부터 파일명의 약칭(docs/10 5장)에서 정한다 — 한 파일에 여러 파트가 든 묶음
+          파일은 행의 Tool ID 앞부분으로 (config/parts.yaml file_bundles). v0.2 까지는 행의 '담당 부서' 값이었다.
+      reported_domain:
+        required: true
+        description: >-
+          행의 '담당 부서' 원문 (양식 드롭다운 10개 + 목록 밖 파트는 '기타'). 파트의 분류 속성일 뿐 키가 아니다 —
+          config/parts.yaml 의 그 파트 domains 와 다르면 경고만 (v0.3, docs/10).
         annotations: {form_sheet: SW기본정보, form_header: "담당 부서 *", form_column: J, form_list: 담당부서}
       user_count:
         range: integer
@@ -232,8 +243,9 @@ classes:
         annotations: {form_sheet: SW기본정보, form_header: "실행 환경 *", form_column: Q}
       airgap_ok:
         range: AirgapSupport
-        required: true
-        description: 폐쇄망 구동. '불가'가 낀 수기 구간은 착수 등급 '제외' (docs/02 7.4).
+        description: >-
+          폐쇄망 구동 (양식 v1.0 에만 있음 — v1.1 에서 열 삭제, v0.3 에서 선택으로). '제외' 등급 규칙은 폐지 결정
+          (Leo 2026-09-29) — M4 에서 반영.
         annotations: {form_sheet: SW기본정보, form_header: "폐쇄망 구동 *", form_column: R}
       operation_mode:
         range: OperationMode
@@ -285,8 +297,12 @@ classes:
       pain_points:
         description: 현재 수작업·애로 구간 — 타 SW 와 데이터를 주고받을 때 수작업 구간 등.
         annotations: {form_sheet: SW기본정보, form_header: "현재 수작업·애로 구간", form_column: AD}
+      essential_tool:
+        range: EssentialTool
+        description: 필수 Tool 구분 (O/X) — 양식 v1.1 에서 추가된 열 (v0.3).
+        annotations: {form_sheet: SW기본정보, form_header: "필수 Tool 구분", form_column: O, form_list: SW 필수 여부}
       priority_opinion:
-        description: 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4).
+        description: 우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4). 양식 v1.1 에서 열 삭제.
         range: Priority
         annotations: {form_sheet: SW기본정보, form_header: "우선순위 의견", form_column: AE}
       roadmap_note:
@@ -556,7 +572,8 @@ enums:
   DevPhase:
     description: 원본 양식 '선택지' 시트의 '사용단계' 목록.
     annotations: {form_list: 사용단계}
-    permissible_values: {전 단계: {}, 개념설계: {}, 기본설계: {}, 상세설계: {}, 개념~기본: {}, 기본~상세: {}, 상세~시험: {}, 시험·인증 이후: {}}
+    permissible_values: {전 단계: {}, 개념설계: {}, 기본설계: {}, 상세설계: {}, 개념~기본: {}, 기본~상세: {}, 상세~시험: {},
+                         시험·인증 이후: {}, 개념&기본: {}, 기본&상세: {}, 상세&시험: {}}   # & 표기 = 양식 v1.1 '사용 기간' (v0.3)
   UsageFrequency:
     description: 원본 양식 '선택지' 시트의 '사용빈도' 목록.
     annotations: {form_list: 사용빈도}
@@ -576,7 +593,7 @@ enums:
   OperationMode:
     description: 원본 양식 '선택지' 시트의 '조작방식' 목록.
     annotations: {form_list: 조작방식}
-    permissible_values: {GUI 전용: {}, CLI 지원: {}, GUI+CLI: {}}
+    permissible_values: {GUI 전용: {}, CLI 지원: {}, GUI+CLI: {}, 모름: {}}   # 모름 = 양식 v1.1 (v0.3)
   BatchCapability:
     description: 원본 양식 '선택지' 시트의 '배치실행' 목록.
     annotations: {form_list: 배치실행}
@@ -605,6 +622,10 @@ enums:
     description: 원본 양식 '선택지' 시트의 '예아니오모름' 목록.
     annotations: {form_list: 예아니오모름}
     permissible_values: {예: {}, 아니오: {}, 모름: {}}
+  EssentialTool:
+    description: 양식 v1.1 '선택지(수정금지)' 시트의 'SW 필수 여부' 목록 (v0.3).
+    annotations: {form_list: SW 필수 여부}
+    permissible_values: {O: {}, X: {}}
   Priority:
     description: 원본 양식 '선택지' 시트의 '우선순위' 목록.
     annotations: {form_list: 우선순위}

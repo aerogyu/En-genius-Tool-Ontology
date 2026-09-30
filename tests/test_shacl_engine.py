@@ -42,7 +42,7 @@ egid:TOOL-000002 a eg:Tool ; rdfs:label "가상-1D네트워크"@ko ; skos:prefLa
 egid:USE-000001 a eg:ToolUsage ; rdfs:label "가상-성능덱 @ 성능"@ko ; eg:source_key "PF-01" ;
     eg:reported_tool_name "가상-성능덱 v2" ; eg:usage_tool egid:TOOL-000001 ; eg:version "v2" ;
     eg:reported_vendor "자체개발" ; eg:reported_kind "자체개발" ; eg:purpose_class "해석" ;
-    eg:purpose_detail "합성" ; eg:phase "전 단계" ; eg:task_summary "합성" ; eg:usage_field egid:FLD-002 ;
+    eg:purpose_detail "합성" ; eg:phase "전 단계" ; eg:task_summary "합성" ; eg:usage_field egid:FLD-002 ; eg:reported_domain "합성" ;
     eg:runtime_env "Windows PC" ; eg:airgap_ok "가능" ; eg:operation_mode "CLI 지원" ;
     eg:batch_capable "가능" ; eg:automation_if "CLI 인자" ; eg:validation_status "완료" ;
     eg:certification_use "아니오" ; eg:automation_wish "합성" ; eg:user_count 4 ;
@@ -51,7 +51,7 @@ egid:USE-000001 a eg:ToolUsage ; rdfs:label "가상-성능덱 @ 성능"@ko ; eg:
 egid:USE-000002 a eg:ToolUsage ; rdfs:label "가상-1D네트워크 @ 2차유로(SAS)"@ko ; eg:source_key "SA-01" ;
     eg:reported_tool_name "가상-1D네트워크" ; eg:usage_tool egid:TOOL-000002 ; eg:version "1.0" ;
     eg:reported_vendor "자체개발" ; eg:reported_kind "자체개발" ; eg:purpose_class "해석" ;
-    eg:purpose_detail "합성" ; eg:phase "기본~상세" ; eg:task_summary "합성" ; eg:usage_field egid:FLD-001 ;
+    eg:purpose_detail "합성" ; eg:phase "기본~상세" ; eg:task_summary "합성" ; eg:usage_field egid:FLD-001 ; eg:reported_domain "합성" ;
     eg:runtime_env "Windows PC" ; eg:airgap_ok "부분 가능(비고 기재)" ; eg:operation_mode "GUI+CLI" ;
     eg:batch_capable "가능" ; eg:automation_if "내장 스크립팅" ; eg:validation_status "진행중" ;
     eg:certification_use "모름" ; eg:automation_wish "합성" .
@@ -109,7 +109,7 @@ VIOLATIONS = [
                  id="선택지-밖-값"),
     pytest.param('eg:operation_mode "GUI+CLI"', 'eg:operation_mode "GUI+CLI"@ko', "InConstraint",
                  id="선택지-값에-언어태그"),
-    pytest.param('eg:airgap_ok "부분 가능(비고 기재)" ;', "", "MinCount", id="필수값-누락"),
+    pytest.param('eg:usage_field egid:FLD-001 ; eg:reported_domain "합성" ;', 'eg:usage_field egid:FLD-001 ;', "MinCount", id="필수값-누락"),   # v0.3: 담당 부서(필수) 빠짐
     pytest.param("eg:usage_tool egid:TOOL-000002", "eg:usage_tool egid:FLD-001", "Class", id="참조-클래스-불일치"),
     pytest.param('eg:extensions "xlsx", "tar.gz"', 'eg:extensions "xlsx", ".STP"', "Pattern", id="확장자-정규화"),
     pytest.param('eg:inhouse_format false', 'eg:inhouse_format false ; eg:unknown_prop "x"', "Closed",

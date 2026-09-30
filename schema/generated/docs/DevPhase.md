@@ -28,6 +28,9 @@ URI: [eg:DevPhase](http://en-genius.local/onto/DevPhase)
 | 기본~상세 | None |  |
 | 상세~시험 | None |  |
 | 시험·인증 이후 | None |  |
+| 개념&기본 | None |  |
+| 기본&상세 | None |  |
+| 상세&시험 | None |  |
 
 
 
@@ -99,6 +102,12 @@ permissible_values:
     text: 상세~시험
   시험·인증 이후:
     text: 시험·인증 이후
+  개념&기본:
+    text: 개념&기본
+  기본&상세:
+    text: 기본&상세
+  상세&시험:
+    text: 상세&시험
 
 ```
 </details>

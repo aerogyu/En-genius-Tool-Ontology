@@ -139,8 +139,9 @@ files:
       - {sw_id: TURB-03, dir: in, name: 유동장 결과, cat: 해석-결과, ext: "cas.h5, dat.h5", transfer: 메일,
          partner: ANSYS Fluent, note: 결과 파일 복사 후 후처리, cases: [CHOICE-OUT, NOTE-INPUT]}  # '메일' 은 수기 값 아님
       - {sw_id: TURB-03, dir: in, name: 외부 유동장, cat: 해석-결과, ext: plt, cases: [P3]}
-      - {sw_id: TURB-3, dir: in, name: 냉각 공기 조건, cat: 해석-결과, ext: csv, transfer: 메일·수기 전달,
-         cases: [P18, I9]}                   # SW ID 오타 — 고아. 분류·확장자는 PERF-01 출력과 맞지만 연결하지 않는다
+      - {sw_id: TURB-9, dir: in, name: 냉각 공기 조건, cat: 해석-결과, ext: csv, transfer: 메일·수기 전달,
+         cases: [P18, I9]}                   # 없는 SW ID — 고아. 분류·확장자는 PERF-01 출력과 맞지만 연결하지 않는다
+                                             # (M3.1: TURB-3 → TURB-9. 'TURB-3' 은 이제 TURB-03 과 같은 ID 로 연결된다 — #18, Leo 2026-09-30)
       - {sw_id: TURB-04, dir: in, name: 시험 계측 데이터, cat: 시험-계측데이터, ext: csv, partner: LabVIEW, cases: [P7]}
       - {sw_id: TURB-05, dir: in, name: 해석 요약 표, cat: 보고서·문서, ext: xlsx, cases: [P7]}
 

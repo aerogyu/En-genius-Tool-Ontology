@@ -6,7 +6,7 @@ search:
 # Slot: airgap_ok 
 
 
-_폐쇄망 구동. '불가'가 낀 수기 구간은 착수 등급 '제외' (docs/02 7.4)._
+_폐쇄망 구동 (양식 v1.0 에만 있음 — v1.1 에서 열 삭제, v0.3 에서 선택으로). '제외' 등급 규칙은 폐지 결정 (Leo 2026-09-29) — M4 에서 반영._
 
 
 
@@ -45,7 +45,6 @@ URI: [eg:airgap_ok](http://en-genius.local/onto/airgap_ok)
 
 | Property | Value |
 | --- | --- |
-| Required | Yes |
 ### Slot Characteristics
 
 | Property | Value |
@@ -111,14 +110,14 @@ annotations:
   form_column:
     tag: form_column
     value: R
-description: 폐쇄망 구동. '불가'가 낀 수기 구간은 착수 등급 '제외' (docs/02 7.4).
+description: 폐쇄망 구동 (양식 v1.0 에만 있음 — v1.1 에서 열 삭제, v0.3 에서 선택으로). '제외' 등급 규칙은 폐지 결정
+  (Leo 2026-09-29) — M4 에서 반영.
 from_schema: http://en-genius.local/onto/
 rank: 1000
 owner: ToolUsage
 domain_of:
 - ToolUsage
 range: AirgapSupport
-required: true
 
 ```
 </details></div>

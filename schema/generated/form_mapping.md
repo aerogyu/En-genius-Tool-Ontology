@@ -1,9 +1,9 @@
 <!-- 자동 생성 — 직접 고치지 말 것. 원본: schema/engenius_tool.yaml, 명령: python -m engenius_onto schema -->
 # 양식 열 ↔ 스키마 슬롯 매핑표
 
-스키마 v0.2.0 · 원본 양식 `SW조사양식_EnGenius_v1.0.xlsx` 기준. 열 문자는 **원본** 양식의 위치다 — 사내 배포본은 위치가 다를 수 있어 적재기는 헤더 이름으로 매핑한다 (docs/02 5장).
+스키마 v0.3.0 · 원본 양식 `SW조사양식_EnGenius_v1.0.xlsx` 기준. 열 문자는 **원본** 양식의 위치다 — 사내 배포본은 위치가 다를 수 있어 적재기는 헤더 이름으로 매핑한다 (docs/02 5장).
 
-## SW기본정보 (32열 적재)
+## SW기본정보 (33열 적재)
 
 | 열 | 헤더 | 클래스.슬롯 | 범위 | 필수 |
 |---|---|---|---|---|
@@ -16,14 +16,15 @@
 | G | 용도 상세 * | `ToolUsage.purpose_detail` | string | 예 |
 | H | 주 사용 단계 * | `ToolUsage.phase` | DevPhase | 예 |
 | I | 주요 사용 업무 요약 * | `ToolUsage.task_summary` | string | 예 |
-| J | 담당 부서 * | `ToolUsage.usage_field` | ResearchField | 예 |
+| J | 담당 부서 * | `ToolUsage.reported_domain` | string | 예 |
 | L | 사용 인원수 | `ToolUsage.user_count` | integer |  |
 | M | 사용 빈도 | `ToolUsage.frequency` | UsageFrequency |  |
 | N | 라이선스 형태 | `ToolUsage.license_type` | LicenseType |  |
 | O | 보유 수량 | `ToolUsage.license_count` | integer |  |
+| O | 필수 Tool 구분 | `ToolUsage.essential_tool` | EssentialTool |  |
 | P | 만료 시기 | `ToolUsage.license_expiry` | string |  |
 | Q | 실행 환경 * | `ToolUsage.runtime_env` | RuntimeEnv | 예 |
-| R | 폐쇄망 구동 * | `ToolUsage.airgap_ok` | AirgapSupport | 예 |
+| R | 폐쇄망 구동 * | `ToolUsage.airgap_ok` | AirgapSupport |  |
 | S | 조작 방식 * | `ToolUsage.operation_mode` | OperationMode | 예 |
 | T | 배치/스크립트 실행 * | `ToolUsage.batch_capable` | BatchCapability | 예 |
 | U | 자동화 인터페이스 * | `ToolUsage.automation_if` | AutomationInterface | 예 |
@@ -63,6 +64,8 @@
 |---|---|---|
 | SW기본정보 | 실무 문의처(선택) | 인명 — 읽지도 저장하지도 않는다 (CLAUDE.md 절대 규칙 5) |
 | SW입출력 | SW명(자동) | VLOOKUP 수식 열 — SW명은 SW ID 로 SW기본정보에서 찾는다 |
+| SW기본정보 | No. | 양식 v1.1 일련번호 열 — 행 번호일 뿐이다 |
+| SW입출력 | Tool명(자동) | 양식 v1.1 의 VLOOKUP 수식 열 |
 
 ## 양식에서 직접 오지 않는 슬롯 (파생·해석·provenance)
 
@@ -84,6 +87,7 @@
 | ToolUsage | `source_row` | integer | 원천 엑셀 시트의 행 번호 (조사 보완 시 원본 행을 찾기 위한 추적 정보). |
 | ToolUsage | `loaded_in` | SurveyLoad | 이 노드를 만든 적재 기록 (provenance). |
 | ToolUsage | `usage_tool` | Tool | 통합된 Tool (reported_tool_name 을 정규화해 결정). |
+| ToolUsage | `usage_field` | ResearchField | 이 응답을 낸 파트 (Field 노드). v0.3 부터 파일명의 약칭(docs/10 5장)에서 정한다 — 한 파일에 여러 파트가 든 묶음 파일은 행의 Tool ID 앞부분으로 (config/parts.yaml file_bundles). v0.2 까지는 행의 '담당 부서' 값이었다. |
 | ToolUsage | `user_count_raw` | string | 사용 인원수 원문 — 정수 변환에 실패했을 때만 보존 (경고와 함께). |
 | ToolUsage | `license_count_raw` | string | 보유 수량 원문 — 정수 변환에 실패했을 때만 보존 (경고와 함께). |
 | ToolUsage | `feeds` | ToolUsage | (파생) 이 툴사용이 데이터를 공급하는 툴사용 — Feed 의 지름길, 경로 질의(eg:feeds+)용. derived 그래프에만 있다. |

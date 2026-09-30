@@ -10,12 +10,28 @@ loader:
   file_name_regex: '^(?:SW|Tool)조사_(?P<field>[^_]+)_(?P<date>\d{8})\.xlsx$'
   header_row: 2               # 1행 섹션 밴드, 2행 헤더
   data_start_row: 4           # 3행 작성 안내(회색), 4행부터 예시·응답 — 예시는 내용으로 판별 (I15)
-  blank_rows_end: 10          # 연속 빈 행이 이만큼이면 시트 끝으로 본다 (5장 2)
-  choices_sheet: 선택지        # 2행 목록 이름, 3행부터 값 (I28 — 파일마다 따로 읽는다)
-  sheets: {usage: SW기본정보, io: SW입출력}
+  blank_rows_end: 10          # 연속 빈 행이 이만큼이면 시트 끝으로 본다. 그 뒤 내용 행은 적재하지 않고 제외 행으로 남긴다 (docs/09 #6)
+  # 실제 파일의 시트 이름 후보 (앞에서부터 찾고, 없으면 공백·'*' 무시 비교). 양식 v1.1 이름을 앞에 (docs/09 #13, M3.1)
+  sheets:
+    usage: [Tool 기본정보, SW기본정보]
+    io: [Tool 입출력, SW입출력]
+  choices_sheet: [선택지(수정금지), 선택지]    # 2행 목록 이름, 3행부터 값 (I28 — 파일마다 따로 읽는다)
+  # 선택지 목록 이름이 양식판마다 다를 때: 스키마 목록 이름 → 실제 파일 목록 이름 후보
+  choice_list_aliases: {사용단계: [사용 기간]}
+  # 드롭다운 목록에는 없지만 양식 안내가 허용한 값 — 선택지 밖 경고를 내지 않는다
+  # (v1.1 작성안내: '담당 부서' 는 "목록에 없으면 '기타' 후 비고", Leo 2026-09-28 — 실제 파일 다수가 '기타')
+  extra_choice_values: {담당부서: [기타]}
+  # 양식판에 따라 없어도 되는 열 — 없으면 '양식 열 없음' 경고도, 필수값 누락도 내지 않는다
+  absent_ok_slots: [essential_tool, airgap_ok, priority_opinion]
 
-# 자유 텍스트 인명 유사 패턴 경고 (D6, I29) — 값은 보존하고 경고만
+# 인명 유사 패턴 경고 (D6, I29, docs/09 #20) — 값은 보존하고 경고만 (경고 문구에 값을 옮기지 않는다).
+# person_pattern 은 자유 텍스트 열(free_text_slots)에, person_patterns_all 은 적재하는 모든 문자열 열에 적용한다.
 person_pattern: '(책임|선임|수석|연구원|과장|차장|부장|대리|사원|팀장)\s*\(\s*내선'
+person_patterns_all:
+  - '(책임|선임|수석|연구원|과장|차장|부장|대리|사원|팀장|파트장|그룹장|센터장)\s*님'
+  - '[가-힣]{2,4}\s*(책임|선임|수석|과장|차장|부장|대리|팀장|파트장|그룹장)(님|\b|\s|$)'
+  - '내선\s*[:：]?\s*\d{3,5}'
+  - '01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}'
 free_text_slots: [purpose_detail, task_summary, automation_detail, automation_wish, pain_points, roadmap_note, note]
 
 # --- 정규화 (docs/02 6장) --------------------------------------------------------

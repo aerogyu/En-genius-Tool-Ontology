@@ -1,6 +1,6 @@
 """명령행 진입점: python -m engenius_onto <명령>.
 
-M3: load·push·apply-review·template-examples 구현. derive·report·query·all 은 M4.
+M3: load·push·apply-review·template-examples 구현, M3.1: diag. derive·report·query·all 은 M4.
 """
 
 from __future__ import annotations
@@ -61,6 +61,25 @@ def cmd_load(args: argparse.Namespace) -> int:
     print("\n".join(summary_lines(out)))
     for w in out.log["warnings"]:
         print(f"  [경고] {w}")
+    print(f"  수정 요청표(파일별): {out.out_dir / 'fix_requests'}")
+    print(f"  진단 요약(반출용, 값 없음): {out.out_dir / 'diag.txt'}")
+    return 0
+
+
+def cmd_diag(args: argparse.Namespace) -> int:
+    """적재 결과의 진단 요약 — 경고 종류·열·파트별 건수만 (셀 값·툴명·경로·인명 없음). 밖으로 가져갈 수 있는 것 (docs/08 8장)."""
+    from pathlib import Path
+
+    from engenius_onto.config import REPO_ROOT
+    from engenius_onto.survey_load import diag_text
+
+    run_dir = Path(args.run) if args.run else _latest_run(REPO_ROOT / "output")
+    if run_dir is None or not (run_dir / "load_log.json").is_file():
+        print("load_log.json 이 있는 실행 폴더가 없다 — 먼저 load 를 실행한다.", file=sys.stderr)
+        return 1
+    text = diag_text(run_dir)
+    (run_dir / "diag.txt").write_text(text, encoding="utf-8", newline="\n")
+    print(text)
     return 0
 
 
@@ -110,7 +129,9 @@ def cmd_template_examples(args: argparse.Namespace) -> int:
     from engenius_onto.config import REPO_ROOT
     from engenius_onto.loader import write_template_examples
 
-    path = write_template_examples(Path(args.form) if args.form else REPO_ROOT / "reference" / "SW조사양식_EnGenius_v1.0.xlsx")
+    forms = [Path(f) for f in args.form] if args.form else [REPO_ROOT / "reference" / "SW조사양식_EnGenius_v1.0.xlsx",
+                                                          REPO_ROOT / "reference" / "Tool조사양식_EnGenius_v1.1.xlsx"]
+    path = write_template_examples(forms)
     print(f"{path} 갱신")
     return 0
 
@@ -192,8 +213,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("csv")
     sp.set_defaults(func=cmd_apply_review)
     sp = sub.add_parser("template-examples", help="양식 xlsx 의 예시 행을 config/template_examples.yaml 로 추출")
-    sp.add_argument("--form", help="양식 xlsx (기본 reference/SW조사양식_EnGenius_v1.0.xlsx)")
+    sp.add_argument("--form", action="append", help="양식 xlsx, 여러 번 가능 (기본: reference 의 v1.0 + v1.1 양식)")
     sp.set_defaults(func=cmd_template_examples)
+    sp = sub.add_parser("diag", help="적재 진단 요약 — 경고 종류·열·파트별 건수만 (값 없음, 반출용)")
+    sp.add_argument("--run", help="실행 폴더 (기본 output/ 의 최신)")
+    sp.set_defaults(func=cmd_diag)
     sp = sub.add_parser("doctor", help="실행 환경 점검 (Python·Java·패키지·Fuseki)")
     sp.set_defaults(func=cmd_doctor)
     sp = sub.add_parser("licenses", help="설치 패키지 라이선스 표 (금지 항목 있으면 rc=1)")

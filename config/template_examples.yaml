@@ -1,7 +1,7 @@
-# 템플릿 예시 행 (docs/02 2장, 골든 I15) — SW조사양식_EnGenius_v1.0.xlsx 에서 추출.
-# 다시 만들기: python -m engenius_onto template-examples --form <양식 xlsx>
+# 템플릿 예시 행 (docs/02 2장, 골든 I15) — SW조사양식_EnGenius_v1.0.xlsx, Tool조사양식_EnGenius_v1.1.xlsx 에서 추출.
+# 다시 만들기: python -m engenius_onto template-examples --form <양식 xlsx> [--form <양식 xlsx> ...]
 # 적재 열(스키마 양식 열) 전체가 여기 한 행과 같으면 위치와 무관하게 적재에서 제외한다.
-# B 'SW명(자동)' 수식 열과 K '실무 문의처' 열은 적재 열이 아니라 여기에도 없다 (인명 미저장).
+# 수식 열(SW명·Tool명 자동)과 '실무 문의처' 열은 적재 열이 아니라 여기에도 없다 (인명 미저장).
 SW기본정보:
 - source_key: SAS-01
   reported_tool_name: SANTA
@@ -12,7 +12,7 @@ SW기본정보:
   purpose_detail: 이차유로 1D 유동 네트워크 해석
   phase: 기본~상세
   task_summary: SAS 유량 분배·압력 강하 해석 및 설계점 검토
-  usage_field: 2차유로(SAS)
+  reported_domain: 2차유로(SAS)
   user_count: 6
   frequency: 매일
   license_type: 영구
@@ -32,6 +32,66 @@ SW기본정보:
   automation_wish: 형상 리비전 변경 시 입력덱 자동 갱신·일괄 재해석
   pain_points: CFD 결과→경계조건 수작업 이관
   priority_opinion: 상
+  roadmap_note: v5.0 개발 예정(2027)
+  note: (예시 행 — 참고 후 그대로 두셔도 됩니다)
+- source_key: TA-01
+  reported_tool_name: Turbine Rig 상사
+  version: NA
+  reported_vendor: 자체개발(Excel)
+  reported_kind: 자체개발
+  purpose_class: 설계
+  phase: 개념설계
+  purpose_detail: 터빈부품의 지상성능시험을 위해, 고온/고압의 설계점(Design Point)을 묘사하기 위한, 유체/열 역학적 등가화를 통해 지상시험조건을 도출하기 위한 공력성능시험 상사 시험조건 도구.
+  task_summary: '터빈 시험 리그 조건 설계
+
+    터빈 개념설계 검토'
+  reported_domain: 터빈
+  user_count: NA
+  frequency: 분기 이하
+  essential_tool: O
+  license_type: 영구
+  runtime_env: Windows PC
+  operation_mode: 모름
+  batch_capable: 모름
+  automation_if: 모름
+  automation_detail: NA
+  headless: 모름
+  auth_method: 모름
+  output_storage: 개인 PC
+  validation_status: 해당없음
+  validation_ref: NA
+  certification_use: 모름
+  automation_wish: NA
+  pain_points: NA
+  roadmap_note: NA
+  note: (예시 행 — 참고 후 그대로 두셔도 됩니다)
+- source_key: SAS-01
+  reported_tool_name: SANTA
+  version: v4.2
+  reported_vendor: 자체개발
+  reported_kind: 자체개발
+  purpose_class: 설계
+  phase: 개념&기본
+  purpose_detail: 항공엔진의 기계적 성능을 유지하기 위해, 엔진 전체의 열 과 압력의 에너지 균형을 맞추는 이차유로 Path(망)을 설계하는 작업으로, 1차원 수식연결을 구성해 주는 Flownetwork 도구이며, 이를 가공하여 엔진 H/W 평면 (Layout, Cross-section) 기준으로 열분포를 생성하는 도구.
+  task_summary: SAS 유량 분배·압력 강하 해석 및 설계점 검토
+  reported_domain: 2차유로(SAS)
+  user_count: 6
+  frequency: 매일
+  essential_tool: X
+  license_type: 영구
+  runtime_env: Windows PC
+  operation_mode: GUI+CLI
+  batch_capable: 가능
+  automation_if: CLI 인자
+  automation_detail: 입력덱 기반 배치 실행, Python 후처리 스크립트 보유
+  headless: 가능
+  auth_method: 없음
+  output_storage: 개인 PC
+  validation_status: 진행중
+  validation_ref: 사내검증보고서 TR-2024-018 (v4.0 기준)
+  certification_use: 모름
+  automation_wish: 형상 리비전 변경 시 입력덱 자동 갱신·일괄 재해석
+  pain_points: CFD 결과→경계조건 수작업 이관
   roadmap_note: v5.0 개발 예정(2027)
   note: (예시 행 — 참고 후 그대로 두셔도 됩니다)
 SW입출력:
@@ -71,3 +131,55 @@ SW입출력:
   storage_path: \\share\sas\run
   security_grade: L3
   note: 보고서는 별도 .docx 작성
+- owner_source_key: SAS-01
+  direction: 입력(소비)
+  data_name: 유로 형상 정의
+  io_category: 설계-2D Layout
+  extensions_raw: .dwg
+  format_standard: 국제·업계 표준
+  data_nature: 3D·2D 형상
+  transfer_method: 메일·수기 전달
+  partner_raw: AutoCAD
+  security_grade: L3
+- owner_source_key: TA-01
+  direction: 입력(소비)
+  data_name: 설계점 유동조건
+  io_category: 해석-입력데이터
+  extensions_raw: NA
+  format_standard: 모름
+  data_nature: 수치·표
+  transfer_method: 메일·수기 전달
+  partner_raw: NA
+  security_grade: 미정
+- owner_source_key: TA-01
+  direction: 출력(생산)
+  data_name: 상사 유동조건
+  io_category: 해석-결과
+  extensions_raw: NA
+  format_standard: 모름
+  data_nature: 수치·표
+  transfer_method: 메일·수기 전달
+  partner_raw: NA
+  security_grade: 미정
+- owner_source_key: SAS-01
+  direction: 입력(소비)
+  data_name: 경계조건
+  io_category: 해석-입력데이터
+  extensions_raw: .xlsx
+  format_standard: 국제·업계 표준
+  data_nature: 수치·표
+  transfer_method: 메일·수기 전달
+  partner_raw: ANSYS
+  security_grade: L3
+  note: 경계조건 생성 Masterfile 필수 - 자동화 희망
+- owner_source_key: SAS-01
+  direction: 출력(생산)
+  data_name: 유량 분배 결과
+  io_category: 해석-결과
+  extensions_raw: .xlsx
+  format_standard: 국제·업계 표준
+  data_nature: 수치·표
+  transfer_method: 메일·수기 전달
+  partner_raw: ANSYS
+  security_grade: L3
+  note: 보고서는 별도 .ppt 작성

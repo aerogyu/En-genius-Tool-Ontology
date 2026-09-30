@@ -262,13 +262,16 @@ eg:DevPhase a rdfs:Datatype ;
     rdfs:label "DevPhase" ;
     eg:form_list "사용단계" ;
     owl:equivalentClass [ a rdfs:Datatype ;
-            owl:oneOf ( "전 단계" "개념설계" "기본설계" "상세설계" "개념~기본" "기본~상세" "상세~시험" "시험·인증 이후" ) ] ;
+            owl:oneOf ( "전 단계" "개념설계" "기본설계" "상세설계" "개념~기본" "기본~상세" "상세~시험" "시험·인증 이후" "개념&기본" "기본&상세" "상세&시험" ) ] ;
     skos:definition "원본 양식 '선택지' 시트의 '사용단계' 목록." ;
     skos:inScheme eg: ;
-    linkml:permissible_values "개념~기본",
+    linkml:permissible_values "개념&기본",
+        "개념~기본",
         "개념설계",
+        "기본&상세",
         "기본~상세",
         "기본설계",
+        "상세&시험",
         "상세~시험",
         "상세설계",
         "시험·인증 이후",
@@ -283,6 +286,16 @@ eg:EntityStatus a rdfs:Datatype ;
     linkml:permissible_values "통합됨",
         "폐기",
         "활성" .
+
+eg:EssentialTool a rdfs:Datatype ;
+    rdfs:label "EssentialTool" ;
+    eg:form_list "SW 필수 여부" ;
+    owl:equivalentClass [ a rdfs:Datatype ;
+            owl:oneOf ( "O" "X" ) ] ;
+    skos:definition "양식 v1.1 '선택지(수정금지)' 시트의 'SW 필수 여부' 목록 (v0.3)." ;
+    skos:inScheme eg: ;
+    linkml:permissible_values "O",
+        "X" .
 
 eg:FeedConfidence a rdfs:Datatype ;
     rdfs:label "FeedConfidence" ;
@@ -372,12 +385,13 @@ eg:OperationMode a rdfs:Datatype ;
     rdfs:label "OperationMode" ;
     eg:form_list "조작방식" ;
     owl:equivalentClass [ a rdfs:Datatype ;
-            owl:oneOf ( "GUI 전용" "CLI 지원" "GUI+CLI" ) ] ;
+            owl:oneOf ( "GUI 전용" "CLI 지원" "GUI+CLI" "모름" ) ] ;
     skos:definition "원본 양식 '선택지' 시트의 '조작방식' 목록." ;
     skos:inScheme eg: ;
     linkml:permissible_values "CLI 지원",
         "GUI 전용",
-        "GUI+CLI" .
+        "GUI+CLI",
+        "모름" .
 
 eg:Priority a rdfs:Datatype ;
     rdfs:label "Priority" ;
@@ -648,7 +662,7 @@ eg:airgap_ok a owl:DatatypeProperty ;
     eg:form_column "R" ;
     eg:form_header "폐쇄망 구동 *" ;
     eg:form_sheet "SW기본정보" ;
-    skos:definition "폐쇄망 구동. '불가'가 낀 수기 구간은 착수 등급 '제외' (docs/02 7.4)." ;
+    skos:definition "폐쇄망 구동 (양식 v1.0 에만 있음 — v1.1 에서 열 삭제, v0.3 에서 선택으로). '제외' 등급 규칙은 폐지 결정 (Leo 2026-09-29) — M4 에서 반영." ;
     skos:inScheme eg: .
 
 eg:auth_method a owl:DatatypeProperty ;
@@ -737,6 +751,15 @@ eg:direction a owl:DatatypeProperty ;
     eg:form_header "방향 *" ;
     eg:form_sheet "SW입출력" ;
     skos:definition "방향 — 이 SW 가 받는 것 = 입력(소비), 내놓는 것 = 출력(생산)." ;
+    skos:inScheme eg: .
+
+eg:essential_tool a owl:DatatypeProperty ;
+    rdfs:label "essential_tool" ;
+    eg:form_column "O" ;
+    eg:form_header "필수 Tool 구분" ;
+    eg:form_list "SW 필수 여부" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "필수 Tool 구분 (O/X) — 양식 v1.1 에서 추가된 열 (v0.3)." ;
     skos:inScheme eg: .
 
 eg:evidence_io a owl:ObjectProperty ;
@@ -954,7 +977,7 @@ eg:priority_opinion a owl:DatatypeProperty ;
     eg:form_column "AE" ;
     eg:form_header "우선순위 의견" ;
     eg:form_sheet "SW기본정보" ;
-    skos:definition "우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4)." ;
+    skos:definition "우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4). 양식 v1.1 에서 열 삭제." ;
     skos:inScheme eg: .
 
 eg:purpose_class a owl:DatatypeProperty ;
@@ -986,6 +1009,15 @@ eg:recon_io a owl:ObjectProperty ;
 eg:recon_partner a owl:ObjectProperty ;
     rdfs:label "recon_partner" ;
     skos:definition "대조한 상대 툴." ;
+    skos:inScheme eg: .
+
+eg:reported_domain a owl:DatatypeProperty ;
+    rdfs:label "reported_domain" ;
+    eg:form_column "J" ;
+    eg:form_header "담당 부서 *" ;
+    eg:form_list "담당부서" ;
+    eg:form_sheet "SW기본정보" ;
+    skos:definition "행의 '담당 부서' 원문 (양식 드롭다운 10개 + 목록 밖 파트는 '기타'). 파트의 분류 속성일 뿐 키가 아니다 — config/parts.yaml 의 그 파트 domains 와 다르면 경고만 (v0.3, docs/10)." ;
     skos:inScheme eg: .
 
 eg:reported_kind a owl:DatatypeProperty ;
@@ -1107,11 +1139,7 @@ eg:transfer_method a owl:DatatypeProperty ;
 
 eg:usage_field a owl:ObjectProperty ;
     rdfs:label "usage_field" ;
-    eg:form_column "J" ;
-    eg:form_header "담당 부서 *" ;
-    eg:form_list "담당부서" ;
-    eg:form_sheet "SW기본정보" ;
-    skos:definition "담당 부서 값으로 만든 Field (문자열이 아니라 노드)." ;
+    skos:definition "이 응답을 낸 파트 (Field 노드). v0.3 부터 파일명의 약칭(docs/10 5장)에서 정한다 — 한 파일에 여러 파트가 든 묶음 파일은 행의 Tool ID 앞부분으로 (config/parts.yaml file_bundles). v0.2 까지는 행의 '담당 부서' 값이었다." ;
     skos:inScheme eg: .
 
 eg:usage_tool a owl:ObjectProperty ;
@@ -1342,6 +1370,9 @@ eg:ToolUsage a owl:Class ;
             owl:allValuesFrom eg:UsageFrequency ;
             owl:onProperty eg:frequency ],
         [ a owl:Restriction ;
+            owl:allValuesFrom eg:EssentialTool ;
+            owl:onProperty eg:essential_tool ],
+        [ a owl:Restriction ;
             owl:allValuesFrom xsd:string ;
             owl:onProperty eg:license_count_raw ],
         [ a owl:Restriction ;
@@ -1386,6 +1417,9 @@ eg:ToolUsage a owl:Class ;
         [ a owl:Restriction ;
             owl:allValuesFrom xsd:string ;
             owl:onProperty eg:purpose_detail ],
+        [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:essential_tool ],
         [ a owl:Restriction ;
             owl:allValuesFrom xsd:string ;
             owl:onProperty eg:roadmap_note ],
@@ -1513,6 +1547,9 @@ eg:ToolUsage a owl:Class ;
             owl:onProperty eg:loaded_in ],
         [ a owl:Restriction ;
             owl:allValuesFrom xsd:string ;
+            owl:onProperty eg:reported_domain ],
+        [ a owl:Restriction ;
+            owl:allValuesFrom xsd:string ;
             owl:onProperty eg:task_summary ],
         [ a owl:Restriction ;
             owl:cardinality 1 ;
@@ -1551,14 +1588,17 @@ eg:ToolUsage a owl:Class ;
             owl:maxCardinality 1 ;
             owl:onProperty eg:source_row ],
         [ a owl:Restriction ;
+            owl:maxCardinality 1 ;
+            owl:onProperty eg:airgap_ok ],
+        [ a owl:Restriction ;
+            owl:cardinality 1 ;
+            owl:onProperty eg:reported_domain ],
+        [ a owl:Restriction ;
             owl:cardinality 1 ;
             owl:onProperty eg:task_summary ],
         [ a owl:Restriction ;
             owl:allValuesFrom eg:AuthMethod ;
             owl:onProperty eg:auth_method ],
-        [ a owl:Restriction ;
-            owl:cardinality 1 ;
-            owl:onProperty eg:airgap_ok ],
         [ a owl:Restriction ;
             owl:allValuesFrom eg:Field ;
             owl:onProperty eg:usage_field ] ;
@@ -1567,11 +1607,11 @@ eg:ToolUsage a owl:Class ;
 
 eg: a owl:Ontology ;
     rdfs:label "engenius_tool" ;
-    eg:form_excluded_columns "SW기본정보|실무 문의처(선택)|인명 — 읽지도 저장하지도 않는다 (CLAUDE.md 절대 규칙 5); SW입출력|SW명(자동)|VLOOKUP 수식 열 — SW명은 SW ID 로 SW기본정보에서 찾는다" ;
-    eg:form_source "reference/SW조사양식_EnGenius_v1.0.xlsx (원본 양식 — 사내 배포본은 헤더·선택지가 다를 수 있음)" ;
+    eg:form_excluded_columns "SW기본정보|실무 문의처(선택)|인명 — 읽지도 저장하지도 않는다 (CLAUDE.md 절대 규칙 5); SW입출력|SW명(자동)|VLOOKUP 수식 열 — SW명은 SW ID 로 SW기본정보에서 찾는다; SW기본정보|No.|양식 v1.1 일련번호 열 — 행 번호일 뿐이다; SW입출력|Tool명(자동)|양식 v1.1 의 VLOOKUP 수식 열" ;
+    eg:form_source "reference/SW조사양식_EnGenius_v1.0.xlsx (원본 양식) · reference/Tool조사양식_EnGenius_v1.1.xlsx (사내 배포본 v1.1 — 시트·열 이름이 다르다: config/rules.yaml loader.sheets·choice_list_aliases, config/header_map.yaml 이 흡수, v0.3)" ;
     dcterms:license "사내 전용 — 개발은 합성 데이터로만" ;
     dcterms:title "En-Genius 툴 온톨로지" ;
-    pav:version "0.2.0" ;
-    owl:versionInfo "0.2.0" ;
+    pav:version "0.3.0" ;
+    owl:versionInfo "0.3.0" ;
     skos:definition "연구소 분야별 SW 조사(SW기본정보·SW입출력)를 담아 툴 간 데이터 연결을 계산하기 위한 스키마. 설계 기준은 docs/02_툴온톨로지_설계.md (3·4·7장). 클래스 10종: Field, Tool, ToolUsage, IOSpec, DataCategory, SurveyLoad (survey 그래프) + Feed, Reconciliation, IsolationFinding, Handoff (파생 — derived 그래프, v0.2 에서 뒤의 셋 추가: docs/05 D1). ID 는 의미 없는 일련번호·해시(egid:TOOL-000001 등), 사람이 읽는 이름은 rdfs:label(@ko). 언어 태그(@ko)는 LinkML 이 데이터로 표현하지 못하므로 적재기(M3)가 RDF 를 만들 때 이름 속성(rdfs:label·skos:prefLabel·skos:altLabel)에만 붙인다 — 선택지 값은 태그 없는 문자열. 식별자는 노드 IRI 자체다(eg:id 트리플 없음). ID 규칙은 SHACL 노드 모양이 IRI 패턴으로 검사한다. 네임스페이스 정본은 이 파일의 prefixes (eg·egid) — 코드는 여기서 읽는다 (config.namespaces()). 예약(미구현): WbsTask —uses_tool→ ToolUsage/Tool (지멘스 PoC 의 WBS Lv.6 연결)." .
 

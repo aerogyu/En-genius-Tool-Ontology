@@ -31,6 +31,7 @@ DOCS_DIR = GEN_DIR / "docs"
 MODEL_PY = REPO_ROOT / "src" / "engenius_onto" / "schema_model.py"
 FORM_XLSX = REPO_ROOT / "reference" / "SW조사양식_EnGenius_v1.0.xlsx"
 FORM_SPEC_MD = REPO_ROOT / "reference" / "양식_명세.md"
+FORM_XLSX_V11 = REPO_ROOT / "reference" / "Tool조사양식_EnGenius_v1.1.xlsx"   # 사내 배포본 (v0.3, 2026-09-28)
 
 FORM_SHEETS = ("SW기본정보", "SW입출력")
 RDFS_LITERAL = "http://www.w3.org/2000/01/rdf-schema#Literal"
@@ -401,6 +402,30 @@ def internal_slots(sv=None) -> list[tuple[str, str, str, str]]:
     return out
 
 
+def _loader_cfg() -> dict:
+    from engenius_onto.config import load_yaml
+
+    return load_yaml("rules.yaml")["loader"]
+
+
+def resolve_sheet(names: list[str], candidates) -> str | None:
+    """실제 시트 이름 — 후보를 앞에서부터, 없으면 공백·'*' 무시 비교 (적재기와 같은 규칙, docs/09 #13)."""
+    cands = [candidates] if isinstance(candidates, str) else list(candidates)
+    for c in cands:
+        if c in names:
+            return c
+    norm = {_norm_header(n): n for n in names}
+    for c in cands:
+        if _norm_header(c) in norm:
+            return norm[_norm_header(c)]
+    return None
+
+
+def _sheet_candidates(sheet: str) -> list[str]:
+    cfg = _loader_cfg()["sheets"]
+    return list(cfg["usage"] if sheet == "SW기본정보" else cfg["io"])
+
+
 def form_headers_xlsx(path: Path = FORM_XLSX) -> dict[str, list[tuple[str, str]]]:
     import openpyxl
     from openpyxl.utils import get_column_letter
@@ -408,7 +433,7 @@ def form_headers_xlsx(path: Path = FORM_XLSX) -> dict[str, list[tuple[str, str]]
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     out = {}
     for sheet in FORM_SHEETS:
-        ws = wb[sheet]
+        ws = wb[resolve_sheet(wb.sheetnames, _sheet_candidates(sheet))]
         row2 = next(ws.iter_rows(min_row=2, max_row=2, values_only=True))
         out[sheet] = [(get_column_letter(i + 1), str(h)) for i, h in enumerate(row2) if h]
     wb.close()
@@ -440,6 +465,12 @@ def check_mapping(sv=None) -> list[str]:
     except ValueError as e:
         return [str(e)]
     problems = []
+    v11 = form_headers_xlsx(FORM_XLSX_V11) if FORM_XLSX_V11.is_file() else {}
+    aliases = _header_aliases()
+    v11_known = {}
+    for sheet in FORM_SHEETS:   # v1.1 헤더를 스키마 문구로 되돌린 집합 (header_map 추가 문구 → 슬롯의 스키마 문구)
+        slot_head = {r.slot: _norm_header(r.header) for r in rows if r.sheet == sheet}
+        v11_known[sheet] = {slot_head.get(aliases.get(sheet, {}).get(_norm_header(h)), _norm_header(h)) for _, h in v11.get(sheet, [])}
     for sheet, header, _ in excl:
         both = [r for r in rows if r.sheet == sheet and _norm_header(r.header) == _norm_header(header)]
         for r in both:
@@ -462,32 +493,55 @@ def check_mapping(sv=None) -> list[str]:
                     problems.append(f"[{source}] {sheet} '{h}': 열 표기 불일치 스키마 {hits[0].column} vs {col}")
             known = {_norm_header(h) for _, h in got}
             for r in mapped:
-                if _norm_header(r.header) not in known:
+                if _norm_header(r.header) not in known and _norm_header(r.header) not in v11_known[sheet]:
                     problems.append(f"[{source}] {sheet} 슬롯 {r.cls}.{r.slot}: 헤더 '{r.header}' 가 양식에 없음")
             for h in ex:
-                if _norm_header(h) not in known:
+                if _norm_header(h) not in known and _norm_header(h) not in v11_known[sheet]:
                     problems.append(f"[{source}] {sheet} 제외 열 '{h}' 가 양식에 없음")
+    # 양식 v1.1: 헤더 전부가 슬롯(스키마 문구 또는 config/header_map.yaml 추가 문구)이나 제외 열에 대응하는지. 열 문자는 v1.0 기준이라 보지 않는다
+    for sheet in FORM_SHEETS:
+        slot_heads = {_norm_header(r.header) for r in rows if r.sheet == sheet} | set(aliases.get(sheet, {}))
+        ex = {_norm_header(h) for sh, h, _ in excl if sh == sheet}
+        for col, h in v11.get(sheet, []):
+            if _norm_header(h) not in slot_heads | ex:
+                problems.append(f"[v1.1 xlsx] {sheet} {col} '{h}': 매핑 누락")
     return problems
 
 
+def _header_aliases() -> dict[str, dict[str, str]]:
+    from engenius_onto.config import load_yaml
+
+    out: dict[str, dict[str, str]] = {}
+    for sheet, m in (load_yaml("header_map.yaml") or {}).items():
+        for slot, phrases in (m or {}).items():
+            for ph in phrases or []:
+                out.setdefault(sheet, {})[_norm_header(ph)] = slot
+    return out
+
+
 def form_choice_lists(path: Path = FORM_XLSX) -> dict[str, list[str]]:
+    """선택지 시트의 목록 — 목록 이름은 스키마 쪽 이름으로 (rules.yaml choice_list_aliases 를 거꾸로 적용)."""
     import openpyxl
 
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    rows = list(wb["선택지"].iter_rows(min_row=2, values_only=True))  # 읽기전용 시트는 열 순회가 없다
+    rows = list(wb[resolve_sheet(wb.sheetnames, _loader_cfg()["choices_sheet"])].iter_rows(min_row=2, values_only=True))
     wb.close()
+    back = {_norm_header(a): name for name, alts in (_loader_cfg().get("choice_list_aliases") or {}).items() for a in alts}
     out = {}
-    for col in zip(*rows):
+    for col in zip(*rows):   # 읽기전용 시트는 열 순회가 없다
         vals = [str(v) for v in col if v is not None]
         if vals:
-            out[vals[0]] = vals[1:]
+            out[back.get(_norm_header(vals[0]), vals[0])] = vals[1:]
     return out
 
 
 def check_enums_vs_form(sv=None) -> list[str]:
-    """열거형 값이 원본 양식 '선택지' 시트 목록과 같은지 (순서 포함)."""
+    """열거형 값이 양식 '선택지' 시트 목록과 같은지 — v1.0 목록 순서 그대로 + v1.1 에만 있는 값이 뒤에 (v0.3)."""
     sv = sv or _schema_view()
     lists = form_choice_lists()
+    for fl, vals in (form_choice_lists(FORM_XLSX_V11) if FORM_XLSX_V11.is_file() else {}).items():
+        base = lists.get(fl, [])
+        lists[fl] = base + [v for v in vals if v not in base]
     problems, used = [], set()
     for ename in sv.all_enums():
         e = sv.get_enum(ename)

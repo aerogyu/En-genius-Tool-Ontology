@@ -30,7 +30,7 @@ Name: engenius_tool
 
 | Slot | Description |
 | --- | --- |
-| [airgap_ok](airgap_ok.md) | 폐쇄망 구동 |
+| [airgap_ok](airgap_ok.md) | 폐쇄망 구동 (양식 v1 |
 | [alt_labels](alt_labels.md) | 조사에서 나온 변형 표기들 (CQ10) |
 | [auth_method](auth_method.md) | 인증/로그인 방식 — MCP 연결 시 인증 설계용 |
 | [automation_detail](automation_detail.md) | 자동화 상세 — 언어·모듈·예시 — Python API, journal 파일, TCL 등 |
@@ -45,6 +45,7 @@ Name: engenius_tool
 | [declared](declared.md) | 어느 한쪽의 신고(연계 SW명)와 일치하는지 (docs/02 7 |
 | [derived_from](derived_from.md) | 파생의 근거가 된 적재 기록 (provenance) |
 | [direction](direction.md) | 방향 — 이 SW 가 받는 것 = 입력(소비), 내놓는 것 = 출력(생산) |
+| [essential_tool](essential_tool.md) | 필수 Tool 구분 (O/X) — 양식 v1 |
 | [evidence_io](evidence_io.md) | 근거 입출력 명세 (수기·비고는 Feed 양쪽, 변환은 숨은변환 의심 입출력) |
 | [excluded_row_count](excluded_row_count.md) | 제외한 행 수 (예시 행·빈 행 등, 사유는 실행 로그) |
 | [extensions](extensions.md) | 정규화한 확장자 목록 (소문자, 앞의 점·별표 제거, 별칭 적용 — 다중 점 확장자 tar |
@@ -92,6 +93,7 @@ Name: engenius_tool
 | [rank](rank.md) | 착수 순위 (1부터 — docs/02 7 |
 | [recon_io](recon_io.md) | 대조한 입출력 명세 (고아 입출력은 대상 아님 — 골든 I9) |
 | [recon_partner](recon_partner.md) | 대조한 상대 툴 |
+| [reported_domain](reported_domain.md) | 행의 '담당 부서' 원문 (양식 드롭다운 10개 + 목록 밖 파트는 '기타') |
 | [reported_kind](reported_kind.md) | 구분 원문 |
 | [reported_tool_name](reported_tool_name.md) | SW명(정식) 원문 |
 | [reported_vendor](reported_vendor.md) | 제조사/개발주체 원문 |
@@ -113,7 +115,7 @@ Name: engenius_tool
 | [to_io](to_io.md) | 수요 측 입력 명세 |
 | [transfer](transfer.md) | 양쪽 명세의 전달 방법 |
 | [transfer_method](transfer_method.md) | 전달 방법 |
-| [usage_field](usage_field.md) | 담당 부서 값으로 만든 Field (문자열이 아니라 노드) |
+| [usage_field](usage_field.md) | 이 응답을 낸 파트 (Field 노드) |
 | [usage_tool](usage_tool.md) | 통합된 Tool (reported_tool_name 을 정규화해 결정) |
 | [user_count](user_count.md) | 사용 인원수 (정수 변환 성공 시) |
 | [user_count_raw](user_count_raw.md) | 사용 인원수 원문 — 정수 변환에 실패했을 때만 보존 (경고와 함께) |
@@ -136,6 +138,7 @@ Name: engenius_tool
 | [DataNature](DataNature.md) | 원본 양식 '선택지' 시트의 '데이터성격' 목록 |
 | [DevPhase](DevPhase.md) | 원본 양식 '선택지' 시트의 '사용단계' 목록 |
 | [EntityStatus](EntityStatus.md) | 레지스트리 노드(분야·툴)의 수명주기 — 삭제 대신 전이 (docs/01 원칙 9) |
+| [EssentialTool](EssentialTool.md) | 양식 v1 |
 | [FeedConfidence](FeedConfidence.md) | 공급 연결 신뢰도 (docs/02 7 |
 | [FormatStandard](FormatStandard.md) | 원본 양식 '선택지' 시트의 '포맷표준성' 목록 |
 | [HandoffKind](HandoffKind.md) | 착수 구간 종류 (docs/02 7 |

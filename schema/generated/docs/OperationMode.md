@@ -23,6 +23,7 @@ URI: [eg:OperationMode](http://en-genius.local/onto/OperationMode)
 | GUI 전용 | None |  |
 | CLI 지원 | None |  |
 | GUI+CLI | None |  |
+| 모름 | None |  |
 
 
 
@@ -84,6 +85,8 @@ permissible_values:
     text: CLI 지원
   GUI+CLI:
     text: GUI+CLI
+  모름:
+    text: 모름
 
 ```
 </details>

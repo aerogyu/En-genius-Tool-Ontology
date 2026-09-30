@@ -192,7 +192,7 @@ def test_graph_orphan_and_unresolved(graph):
     SELECT ?k (COUNT(?io) AS ?n) WHERE {{ ?io eg:partner_unresolved ?k }} GROUP BY ?k ORDER BY ?k"""
     assert {str(r.k): int(r.n) for r in graph.query(q)} == {k: v["mentions"] for k, v in AGG["missing_tools"].items()}
     q = f"""PREFIX eg: <{EG}>
-    SELECT ?io WHERE {{ ?io a eg:IOSpec ; eg:owner_source_key "TURB-3" FILTER NOT EXISTS {{ ?io eg:io_owner ?u }} }}"""
+    SELECT ?io WHERE {{ ?io a eg:IOSpec ; eg:owner_source_key "TURB-9" FILTER NOT EXISTS {{ ?io eg:io_owner ?u }} }}"""
     assert len(list(graph.query(q))) == 1
 
 
@@ -282,9 +282,14 @@ def test_review_merge_and_distinct(tmp_path, out):
 
 # --- 설정 ----------------------------------------------------------------------------
 def test_template_examples_config_matches_form():
+    """예시 행 = 양식 v1.0 (1 + 3행) 과 v1.1 (2 + 5행, 겹치는 행은 한 번) 의 합 — M3.1."""
     cfg = yaml.safe_load((CONFIG_DIR / "template_examples.yaml").read_text(encoding="utf-8"))
-    assert cfg == extract_template_examples(REPO_ROOT / "reference" / "SW조사양식_EnGenius_v1.0.xlsx")
-    assert len(cfg["SW기본정보"]) == 1 and len(cfg["SW입출력"]) == 3
+    want = {"SW기본정보": [], "SW입출력": []}
+    for form in ("SW조사양식_EnGenius_v1.0.xlsx", "Tool조사양식_EnGenius_v1.1.xlsx"):
+        for sheet, rows in extract_template_examples(REPO_ROOT / "reference" / form).items():
+            want[sheet] += [r for r in rows if r not in want[sheet]]
+    assert cfg == want
+    assert len(cfg["SW기본정보"]) == 3 and len(cfg["SW입출력"]) == 8
 
 
 def test_header_alias_config(tmp_path):

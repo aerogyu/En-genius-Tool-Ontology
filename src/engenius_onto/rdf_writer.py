@@ -102,8 +102,9 @@ class SurveyWriter:
         return s
 
     # ---- 적재 결과 --------------------------------------------------------------
-    def write(self, res: LoadResult, reg: Registry, run_id: str, loaded_at: dt.datetime) -> dict:
-        """적재 결과를 그래프에 쓰고 {파일명: LOAD ID} 를 돌려준다. 레지스트리 ID 를 배정한다(저장은 호출자)."""
+    def write(self, res: LoadResult, reg: Registry, run_id: str, loaded_at: dt.datetime, retire: bool = True) -> dict:
+        """적재 결과를 그래프에 쓰고 {파일명: LOAD ID} 를 돌려준다. 레지스트리 ID 를 배정한다(저장은 호출자).
+        retire=False: 읽지 못한 파일이 있어 이번에 안 보인 분야·툴을 폐기로 바꾸지 않는다 (#7)."""
         loads = {}
         for n, f in enumerate(res.loaded_files, start=1):
             lid = f"LOAD-{run_id}-{n:02d}"
@@ -120,7 +121,7 @@ class SurveyWriter:
         fld = {}
         for u in res.usages:
             if u.field and u.field not in fld:
-                fld[u.field] = reg.assign("field", u.field, u.field)
+                fld[u.field] = reg.assign("field", u.field, res.part_labels.get(u.field, u.field))
         tool = {k: reg.assign("tool", k, g.pref_label) for k, g in res.tools.items()}
         # 별칭으로 흡수된 옛 툴 키는 통합됨 (docs/01 원칙 9 — 삭제 대신 상태 전이)
         for r in reg.rows("tool"):
@@ -134,10 +135,10 @@ class SurveyWriter:
         use = {}
         for u in res.usages:
             use[id(u)] = reg.assign("usage", (fld.get(u.field, ""), u.sw_id), f"{u.field} {u.sw_id}")
-        unused = reg.finalize()
+        unused = reg.finalize(retire)
 
-        for label, fid in fld.items():
-            s = self.typed(fid, "ResearchField", label)
+        for code, fid in fld.items():
+            s = self.typed(fid, "ResearchField", res.part_labels.get(code, code))
             self.add(s, "status", ACTIVE)
         for k, g in res.tools.items():
             s = self.typed(tool[k], "Tool", g.pref_label)
@@ -185,7 +186,7 @@ class SurveyWriter:
 
     def _io(self, x: IORec, owner_id: str | None, cat: dict, tool: dict, loads: dict) -> None:
         v = x.v
-        owner_part = owner_id or f"orphan:{x.file_field or ''}:{x.sw_id}"
+        owner_part = owner_id or f"orphan:{x.file_field or x.file}:{x.sw_id}"   # 분야 미상 파일끼리 섞이지 않게 (docs/09 6장)
         h = io_hash([owner_part, nfc_strip(v.get("direction")), x.name, cat.get(x.category, x.category),
                      nfc_strip(v.get("extensions_raw")), nfc_strip(v.get("transfer_method")),
                      nfc_strip(v.get("partner_raw"))], x.seq)

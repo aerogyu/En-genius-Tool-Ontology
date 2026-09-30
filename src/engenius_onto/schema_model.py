@@ -132,6 +132,9 @@ class DevPhase(str, Enum):
     기본TILDE상세 = "기본~상세"
     상세TILDE시험 = "상세~시험"
     시험·인증_이후 = "시험·인증 이후"
+    개념AMPERSAND기본 = "개념&기본"
+    기본AMPERSAND상세 = "기본&상세"
+    상세AMPERSAND시험 = "상세&시험"
 
 
 class UsageFrequency(str, Enum):
@@ -185,6 +188,7 @@ class OperationMode(str, Enum):
     GUI_전용 = "GUI 전용"
     CLI_지원 = "CLI 지원"
     GUIPLUS_SIGNCLI = "GUI+CLI"
+    모름 = "모름"
 
 
 class BatchCapability(str, Enum):
@@ -258,6 +262,14 @@ class YesNoUnknown(str, Enum):
     예 = "예"
     아니오 = "아니오"
     모름 = "모름"
+
+
+class EssentialTool(str, Enum):
+    """
+    양식 v1.1 '선택지(수정금지)' 시트의 'SW 필수 여부' 목록 (v0.3).
+    """
+    O = "O"
+    X = "X"
 
 
 class Priority(str, Enum):
@@ -685,7 +697,8 @@ class ToolUsage(ConfiguredBaseModel):
                                          'value': '주요 사용 업무 요약 *'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW기본정보'}},
          'domain_of': ['ToolUsage']} })
-    usage_field: str = Field(default=..., description="""담당 부서 값으로 만든 Field (문자열이 아니라 노드).""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'J'},
+    usage_field: str = Field(default=..., description="""이 응답을 낸 파트 (Field 노드). v0.3 부터 파일명의 약칭(docs/10 5장)에서 정한다 — 한 파일에 여러 파트가 든 묶음 파일은 행의 Tool ID 앞부분으로 (config/parts.yaml file_bundles). v0.2 까지는 행의 '담당 부서' 값이었다.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ToolUsage']} })
+    reported_domain: str = Field(default=..., description="""행의 '담당 부서' 원문 (양식 드롭다운 10개 + 목록 밖 파트는 '기타'). 파트의 분류 속성일 뿐 키가 아니다 — config/parts.yaml 의 그 파트 domains 와 다르면 경고만 (v0.3, docs/10).""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'J'},
                          'form_header': {'tag': 'form_header', 'value': '담당 부서 *'},
                          'form_list': {'tag': 'form_list', 'value': '담당부서'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW기본정보'}},
@@ -716,7 +729,7 @@ class ToolUsage(ConfiguredBaseModel):
                          'form_header': {'tag': 'form_header', 'value': '실행 환경 *'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW기본정보'}},
          'domain_of': ['ToolUsage']} })
-    airgap_ok: AirgapSupport = Field(default=..., description="""폐쇄망 구동. '불가'가 낀 수기 구간은 착수 등급 '제외' (docs/02 7.4).""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'R'},
+    airgap_ok: Optional[AirgapSupport] = Field(default=None, description="""폐쇄망 구동 (양식 v1.0 에만 있음 — v1.1 에서 열 삭제, v0.3 에서 선택으로). '제외' 등급 규칙은 폐지 결정 (Leo 2026-09-29) — M4 에서 반영.""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'R'},
                          'form_header': {'tag': 'form_header', 'value': '폐쇄망 구동 *'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW기본정보'}},
          'domain_of': ['ToolUsage']} })
@@ -769,7 +782,12 @@ class ToolUsage(ConfiguredBaseModel):
                          'form_header': {'tag': 'form_header', 'value': '현재 수작업·애로 구간'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW기본정보'}},
          'domain_of': ['ToolUsage']} })
-    priority_opinion: Optional[Priority] = Field(default=None, description="""우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4).""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'AE'},
+    essential_tool: Optional[EssentialTool] = Field(default=None, description="""필수 Tool 구분 (O/X) — 양식 v1.1 에서 추가된 열 (v0.3).""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'O'},
+                         'form_header': {'tag': 'form_header', 'value': '필수 Tool 구분'},
+                         'form_list': {'tag': 'form_list', 'value': 'SW 필수 여부'},
+                         'form_sheet': {'tag': 'form_sheet', 'value': 'SW기본정보'}},
+         'domain_of': ['ToolUsage']} })
+    priority_opinion: Optional[Priority] = Field(default=None, description="""우선순위 의견 — 착수 순위 정렬 키 (docs/02 7.4). 양식 v1.1 에서 열 삭제.""", json_schema_extra = { "linkml_meta": {'annotations': {'form_column': {'tag': 'form_column', 'value': 'AE'},
                          'form_header': {'tag': 'form_header', 'value': '우선순위 의견'},
                          'form_sheet': {'tag': 'form_sheet', 'value': 'SW기본정보'}},
          'domain_of': ['ToolUsage']} })

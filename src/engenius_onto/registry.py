@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import csv
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -95,19 +96,36 @@ class Registry:
             r["status"], r["merged_into"] = MERGED, into_id
             self.tables[kind].seen.add(r["id"])
 
-    def finalize(self) -> dict[str, list[dict]]:
-        """이번 적재에 없던 행을 폐기로 바꾸고, 이번에 쓰지 않은 행 목록(폐기·통합됨)을 돌려준다."""
+    def finalize(self, retire: bool = True) -> dict[str, list[dict]]:
+        """이번 적재에 없던 행을 폐기로 바꾸고, 이번에 쓰지 않은 행 목록(폐기·통합됨)을 돌려준다.
+        retire=False 면 상태를 바꾸지 않는다 — 읽지 못한 파일이 있는 실행 (docs/09 #7)."""
+        if not retire:
+            return {k: [r for r in t.rows if r["id"] not in t.seen] for k, t in self.tables.items()}
         return {k: t.retire_unseen() for k, t in self.tables.items()}
 
-    def save(self) -> None:
+    def check_writable(self) -> None:
+        """적재 전에 레지스트리 폴더에 쓸 수 있는지 확인 (docs/09 #23) — 적재 뒤 저장 실패로 ID 가 어긋나지 않게."""
         self.dir.mkdir(parents=True, exist_ok=True)
+        probe = self.dir / ".write_test"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink()
+
+    def save(self) -> None:
+        """표마다 임시 파일에 다 쓴 뒤 바꿔 끼운다 — 도중에 멈춰도 반쪽 CSV 가 남지 않는다 (docs/09 #23)."""
+        self.dir.mkdir(parents=True, exist_ok=True)
+        done = []
         for kind, t in self.tables.items():
             rows = sorted(t.rows, key=lambda r: r["id"])
-            with (self.dir / KINDS[kind][0]).open("w", encoding="utf-8-sig", newline="") as f:
+            path = self.dir / KINDS[kind][0]
+            part = path.with_name(path.name + ".tmp")
+            with part.open("w", encoding="utf-8-sig", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=t.columns(), lineterminator="\n")
                 w.writeheader()
                 for r in rows:
                     w.writerow({c: r.get(c, "") for c in t.columns()})
+            done.append((part, path))
+        for part, path in done:
+            os.replace(part, path)
 
     def rows(self, kind: str) -> list[dict]:
         return self.tables[kind].rows

@@ -104,6 +104,13 @@ def tool_key(name: str, vendor: str | None = None) -> str:
     return key
 
 
+def _id_norm(s) -> str:
+    """[#18] SW ID 비교 키 — 전각·대소문자·공백·보이지 않는 문자, 하이픈 뒤 숫자 앞 0 은 같은 ID (적재기와 따로 구현)."""
+    k = unicodedata.normalize("NFKC", str(s or ""))
+    k = "".join(ch for ch in k if ch not in "​‌‍⁠﻿" and not ch.isspace()).upper()
+    return re.sub(r"-0+(\d)", r"-\1", k)
+
+
 def split_partners(raw) -> list[str]:
     """[I17] NFKC 후 , ; / · ㆍ ・ 줄바꿈으로 나눈다. [I16] 빈 값 토큰·정규화 키가 빈 조각은 버린다."""
     out = []
@@ -297,6 +304,7 @@ def compute(spec: dict, repo: Path) -> dict:
     warnings: list[str] = []
     per_file = {}
     by_file_id: dict[tuple[str, str], Usage] = {}
+    by_file_key: dict[tuple[str, str], Usage] = {}
     raw_ios = []
 
     # 재발송 [I33]: 파일명의 분야가 같은 파일 중 (날짜, 파일명) 이 가장 늦은 것만 적재한다
@@ -350,17 +358,19 @@ def compute(spec: dict, repo: Path) -> dict:
                 if k in USAGE_KEYS:
                     v[k] = cell_to_text(k, v[k], where, warnings)
             check_row(USAGE_KEYS, v, choices, where, warnings, "SW기본정보")
-            us = Usage(fname, ff, v["field_cell"], str(v["sw_id"]), v["name"], v["vendor"], v["kind"], v.get("op"),
+            # 파트 = 파일 분야 (v0.3, docs/10 — 행의 '담당 부서' 는 분류 속성일 뿐 키가 아니다. P17 개정 2026-09-30)
+            us = Usage(fname, ff, ff, str(v["sw_id"]), v["name"], v["vendor"], v["kind"], v.get("op"),
                        v.get("auto_if"), v["airgap"], v.get("freq"), v.get("users"), v.get("prio"))
             if (fname, us.sw_id) in by_file_id:
                 warnings.append(f"중복 SW ID: {fname} {us.sw_id} — 먼저 나온 행 사용, '{us.name}' 행 제외")
                 stats["excluded"] += 1
                 continue
-            if us.field != ff:
-                warnings.append(f"파일 분야 ≠ 담당 부서: {fname} {us.sw_id} → '{us.field}'")
+            if v["field_cell"] != ff:
+                warnings.append(f"파일 분야 ≠ 담당 부서: {fname} {us.sw_id} → '{v['field_cell']}'")
             if us.users is not None and not isinstance(us.users, int):
                 warnings.append(f"사용 인원수 정수 변환 실패: {fname} {us.sw_id} '{us.users}' — 원문 보존")
             by_file_id[(fname, us.sw_id)] = us
+            by_file_key[(fname, _id_norm(us.sw_id))] = us
             usages.append(us)
             stats["usage_rows"] += 1
 
@@ -403,9 +413,12 @@ def compute(spec: dict, repo: Path) -> dict:
     ios: list[IO] = []
     for fname, ff, v in raw_ios:
         exts, inhouse, bad = normalize_extensions(v["ext"])
-        owner = by_file_id.get((fname, str(v["sw_id"])))            # [D3] 소유는 같은 파일 안에서
+        owner = by_file_id.get((fname, str(v["sw_id"]))) or by_file_key.get((fname, _id_norm(v["sw_id"])))   # [D3] 같은 파일 안, [#18] 표기 차이 흡수
         io = IO(fname, ff, str(v["sw_id"]), v["dir"], v["name"], v["cat"], str(v["ext"]), exts, inhouse,
                 str(v["transfer"] or "").strip(), v.get("partner") or "", v.get("note") or "", owner)
+        if owner is not None and owner.sw_id != io.sw_id:
+            warnings.append(f"Tool ID 표기 차이: {fname} '{io.sw_id}' → '{owner.sw_id}' 로 연결")
+            per_file[fname]["warnings"] += 1
         if owner is None:
             warnings.append(f"고아 입출력: {fname} SW ID '{io.sw_id}' ({io.name}) — SW기본정보에 없음")
             per_file[fname]["warnings"] += 1
