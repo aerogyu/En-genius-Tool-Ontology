@@ -89,8 +89,11 @@ def main() -> int:
 
 if __name__ == "__main__":
     rc = main()
-    if sys.stdin and sys.stdin.isatty():
-        input("엔터를 누르면 닫힙니다")
+    if sys.stdin and sys.stdin.isatty():      # 더블클릭으로 실행했을 때 창이 바로 닫히지 않게
+        try:
+            input("엔터를 누르면 닫힙니다")
+        except EOFError:
+            pass
     sys.exit(rc)
 '''
 
