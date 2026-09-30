@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from engenius_onto.config import SCHEMA_FILE, load_yaml, namespaces  # noqa: E402
 
-VIEW_VERSION = "v6"  # 판 번호. v6 2026-09-30: 색 최소(회색 + 수기 주황) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
+VIEW_VERSION = "v7"  # 판 번호. v7 2026-09-30: 선은 전달 방식별 색 복원 · v6 점 색 최소(회색·흰색) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 SKOS = "http://www.w3.org/2004/02/skos/core#"
 HIDDEN = {"source_row"}  # 패널에 안 보이는 속성
@@ -228,7 +228,7 @@ def build(run: Path) -> tuple[dict, Path]:
 PAGE = r"""<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8"><title>내 온톨로지 3D __VER__</title>
 <style>
- :root{--bg:#0f1720;--line:#2a3a4a;--fg:#e6edf3;--muted:#9fb0c0;--manual:#f0a04b;--note:#8f9aa6;--auto:#6f7b87;--use:#4a5663;--ok:#e6edf3;--no:#9aa7b4;--tool:#e6edf3;--iso:#9aa7b4}
+ :root{--bg:#0f1720;--line:#2a3a4a;--fg:#e6edf3;--muted:#9fb0c0;--manual:#ff9a2e;--note:#c9925a;--auto:#8a98a6;--use:#4f8fd6;--ok:#e6edf3;--no:#9aa7b4;--tool:#e6edf3;--iso:#9aa7b4}
  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:13px;overflow:hidden}
  #top{position:absolute;left:0;right:0;top:0;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;background:rgba(22,33,44,.92);border-bottom:1px solid var(--line);z-index:5}
  #top h1{font-size:15px;margin:0 10px 0 0;font-weight:700}
@@ -268,7 +268,7 @@ PAGE = r"""<!DOCTYPE html>
 <div id="tip"></div>
 <div id="side"><span class="close" id="closeSide">✕ 닫기</span><div id="sideBody"></div></div>
 <div id="help">왼쪽 드래그 회전 · 휠 줌 · 휠(가운데)/오른쪽 드래그 이동 · 더블클릭 초기화 · 노드 클릭 = 그래프에 적힌 속성·입출력 ·
- 회색 점 = 파트별 툴사용 · 흰 점 = 툴(여러 파트가 쓸수록 가운데, 클수록 많이 쓰임) · 주황 선 = 수기 전달 · 회색 선 = 그 밖의 전달(점선 = 비고 신호) · 선 = 조사표에 '연계 툴'로 신고된 주고받음 (계산된 연결은 M4)</div>
+ 회색 점 = 파트별 툴사용 · 흰 점 = 툴(여러 파트가 쓸수록 가운데, 클수록 많이 쓰임) · 선 = 주황 수기 전달 · 갈색 점선 비고 신호 · 회색 그 밖의 전달 · 파란 점선 사용 관계 · 선 = 조사표에 '연계 툴'로 신고된 주고받음 (계산된 연결은 M4)</div>
 <div id="counts"></div>
 <script>
 const DATA = __DATA__;
@@ -286,8 +286,8 @@ const S = { R: initR(), dist: 950, dist0: 950, sref: 700 / 950, fov: 700, panX: 
 function fitDist() { return S.fov * DATA.extent / (0.40 * Math.max(300, Math.min(innerWidth, (innerHeight - 60) / 0.62))) + DATA.extent * 0.15; }   // 비스듬히 보면 원이 세로로 약 0.62 로 눌린다
 const rs = p => p.s / S.sref;   // 처음 배율 대비 크기 (반복문 변수 k 와 겹치지 않게)
 function orbit(dx, dy) { S.R = mul(mul(rotX(dy * 0.006), rotY(dx * 0.006)), S.R); }
-// 색은 회색 계열 + 강조 하나(수기 전달) — v6 (Leo 2026-09-30 "색이 다양할수록 촌스럽다")
-const COL = { manual: '#f0a04b', note: '#8f9aa6', auto: '#6f7b87', use: '#4a5663', usage: '#9aa7b4', tool: '#e6edf3', fg: '#e6edf3', muted: '#9fb0c0' };
+// 점은 회색·흰색 두 가지, 선은 전달 방식별 색 (Leo 2026-09-30: 선 종류는 방식을 나눈 것이라 다양해도 된다)
+const COL = { manual: '#ff9a2e', note: '#c9925a', auto: '#8a98a6', use: '#4f8fd6', usage: '#9aa7b4', tool: '#e6edf3', fg: '#e6edf3', muted: '#9fb0c0' };
 const adj = N.map(() => new Set()), nb = N.map(() => new Set());
 E.forEach((e, k) => { adj[e.s].add(k); adj[e.t].add(k); nb[e.s].add(e.t); nb[e.t].add(e.s); });
 

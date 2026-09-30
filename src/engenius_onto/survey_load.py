@@ -133,6 +133,7 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
         "warnings": sorted(res.warnings),
         "issues": res.issues,
         "complete": res.complete,
+        "quality": quality_summary(res),
         "schema_issues": issues,
         "tool_merge_candidates": res.merge_candidates,
         "tool_attribute_conflicts": res.attribute_conflicts,
@@ -215,6 +216,55 @@ def _safe_cell(v: str) -> str:
     return "'" + v if v and v[0] in "=+-@" else v
 
 
+QUALITY_SLOTS = {  # M4 계산에 쓰이는 열 → 스키마 열거형 (분포는 이 목록 안의 값만 이름으로, 밖은 건수만 — 값 유출 방지)
+    ("SW입출력", "direction", "방향"): "IODirection", ("SW입출력", "transfer_method", "전달 방법"): "TransferMethod",
+    ("SW기본정보", "operation_mode", "조작 방식"): "OperationMode", ("SW기본정보", "automation_if", "자동화 인터페이스"): "AutomationInterface",
+}
+
+
+def quality_summary(res: LoadResult) -> dict:
+    """1차 적재 검토용 요약 (Leo 2026-09-30) — 파트별 표·계산 열 분포·툴 지표. 셀 값·툴명은 넣지 않는다 (드롭다운 선택지 이름만)."""
+    import yaml
+
+    from engenius_onto.config import SCHEMA_FILE
+
+    enums = yaml.safe_load(SCHEMA_FILE.read_text(encoding="utf-8"))["enums"]
+    issues_by = {}
+    for i in res.issues:
+        issues_by.setdefault((i["file"], i["kind"]), 0)
+        issues_by[(i["file"], i["kind"])] += 1
+    parts = []
+    for f in res.loaded_files:
+        us = [u for u in res.usages if u.file == f.name]
+        xs = [x for x in res.ios if x.file == f.name]
+        owners = {id(x.owner) for x in xs if x.owner is not None}
+        wrote = [x for x in xs if x.partner_names]
+        parts.append({"part": f.field or "(규칙 밖)", "sub_parts": sorted({u.field for u in us} - {f.field or ""}),
+                      "usages": len(us), "ios": len(xs), "usages_without_io": sum(1 for u in us if id(u) not in owners),
+                      "orphan_ios": sum(1 for x in xs if x.owner is None),
+                      "partner_written": len(wrote), "partner_resolved": sum(1 for x in wrote if x.partner_tools),
+                      "direction_unknown": sum(1 for x in xs if x.direction_short == "?"),
+                      "choice_out": issues_by.get((f.name, "선택지 밖 값"), 0),
+                      "required_missing": issues_by.get((f.name, "필수값 누락"), 0),
+                      "excluded_rows": f.excluded, "warnings": f.warnings})
+    dist = {}
+    for (sheet, slot, label), enum in QUALITY_SLOTS.items():
+        allowed = set((enums.get(enum) or {}).get("permissible_values") or {})
+        recs = res.ios if sheet == "SW입출력" else res.usages
+        c = {"(빈칸)": 0, "(목록 밖)": 0}
+        for r in recs:
+            v = nfc_strip(r.v.get(slot))
+            key = "(빈칸)" if not v else v if v in allowed else "(목록 밖)"
+            c[key] = c.get(key, 0) + 1
+        dist[label] = c
+    tool_parts = {k: {u.field for u in g.usages} for k, g in res.tools.items()}
+    unresolved = {k for x in res.ios for k in x.partner_unresolved}
+    return {"parts": parts, "distributions": dist,
+            "tools": {"total": len(res.tools), "used_by_2plus_parts": sum(1 for s in tool_parts.values() if len(s) >= 2),
+                      "used_by_5plus_parts": sum(1 for s in tool_parts.values() if len(s) >= 5),
+                      "merge_candidates": len(res.merge_candidates), "unresolved_partner_names": len(unresolved)}}
+
+
 def diag_text(run_dir: Path) -> str:
     """진단 요약 — 밖으로 가져가도 되는 것만: 경고 종류·열·파일(약칭)별 건수. 셀 값·툴명·데이터명·경로·인명은 넣지 않는다."""
     from collections import Counter
@@ -238,6 +288,22 @@ def diag_text(run_dir: Path) -> str:
         lines += ["", "수정 요청 — 파일(약칭)별 건수:"]
         byf = Counter(i["part"] or "(규칙 밖 파일)" for i in issues)
         lines += [f"  {p}: {n}" for p, n in sorted(byf.items())]
+    q = log.get("quality")
+    if q:
+        pct = lambda a, b: f"{100 * a / b:.0f}%" if b else "-"  # noqa: E731
+        lines += ["", "파트별 (적재 파일마다 — 묶음 파일은 나뉜 파트를 괄호로):",
+                  "  파트 | 툴사용 | 입출력 | 입출력 없는 툴사용 | 고아 입출력 | 연계 Tool명 적음 | 그중 알아봄 | 방향 못 읽음 | 선택지 밖 | 필수 빈칸 | 제외 행"]
+        for p in q["parts"]:
+            name = p["part"] + (f" ({'·'.join(p['sub_parts'])})" if p["sub_parts"] else "")
+            lines.append(f"  {name} | {p['usages']} | {p['ios']} | {p['usages_without_io']} | {p['orphan_ios']} | "
+                         f"{p['partner_written']} ({pct(p['partner_written'], p['ios'])}) | {pct(p['partner_resolved'], p['partner_written'])} | "
+                         f"{p['direction_unknown']} | {p['choice_out']} | {p['required_missing']} | {p['excluded_rows']}")
+        lines += ["", "M4 계산에 쓰이는 열 — 선택지별 건수 (목록 밖 값은 건수만):"]
+        for label, c in q["distributions"].items():
+            lines.append(f"  {label}: " + " · ".join(f"{k} {n}" for k, n in sorted(c.items(), key=lambda kv: -kv[1]) if n))
+        t = q["tools"]
+        lines += ["", f"툴: 전체 {t['total']} · 2개 파트 이상이 쓰는 툴 {t['used_by_2plus_parts']} · 5개 파트 이상 {t['used_by_5plus_parts']} · "
+                      f"이름이 비슷한 통합 후보 쌍 {t['merge_candidates']} · 알아보지 못한 연계 Tool명 {t['unresolved_partner_names']}종"]
     sh = log.get("shacl") or {}
     if sh:
         lines += ["", f"SHACL: {'건너뜀' if not sh.get('ran') else ('적합' if sh.get('conforms') else '위반 ' + str(sh.get('violations')) + '건')}"]
