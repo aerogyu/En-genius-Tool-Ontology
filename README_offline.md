@@ -1,7 +1,7 @@
 # En-Genius 툴 온톨로지 — 사내(폐쇄망) 설치·실행 안내
 
-연습용 패키지 v0.1 (2026-09-29, M3 코드 기준). **이 판으로는 합성 데이터로 연습만 한다** — 실데이터 적재는 M3.1(적재기 보강)이 끝난
-판을 다시 반입한 뒤에 한다 (인명 마스킹·파일 간 병합 수리 전에는 실데이터를 넣지 않는다).
+연습용 패키지 v0.1 (2026-09-29) + 업데이트(6-1장). **M3.1 판(`1874bc7` 이후)부터 실데이터 적재 가능** — 6장.
+그 전 판(`2d6e8c6`·`f3a4f55`)으로는 합성 데이터 연습만 한다 (양식 v1.1 을 못 읽고 인명 보호가 없다).
 
 **받는 곳**: GitHub 비공개 저장소 `aerogyu/En-genius-Ontology` 의 **`import-package` 브랜치** — 파일을 하나씩 열어 `Download`(원본 받기).
 큰 zip 은 Git LFS 로 올라가 있어 브랜치 전체 'Download ZIP' 으로는 알맹이가 안 받아진다 — 파일마다 받는다.
@@ -96,17 +96,40 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
    노드를 누르면 그래프에 적힌 속성과 입출력이 나온다. 확장자·데이터명으로 계산한 연결(Feed)은 M4 에서 더해진다.
    **실데이터로 만든 `graph3d.html` 은 적재한 내용이 그대로 들어 있으니 밖으로 가져가지 않는다.**
 
-## 6. 실데이터 — 아직 하지 말 것 (M3.1 판에서)
+## 6. 실데이터 적재 (M3.1 판부터 — 저장소 `1874bc7` 이후)
 
-준비만 알아 두면 된다:
-- 파일은 `data\real\survey\` 에 `Tool조사_<파트약칭>_<YYYYMMDD>.xlsx` (규칙: `docs\02` 5-1). 레지스트리는 `data\real\registry\` 에 자동 생성.
-- `config\parts.yaml` (파트 약칭·정식 이름·담당 부서), `config\rules.yaml` (시트명·선택지 등), `config\header_map.yaml` 만 고치면 되고 코드는 손대지 않는다.
-- `data\real\`·`output\`·`fuseki-data\` 는 사내에만 둔다.
+1. **파일 두기**: `data\real\survey\` 에 `Tool조사_<약칭>_<YYYYMMDD>.xlsx` 20개 (약칭 표·규칙: `docs\10` 5장. 날짜 = 적재 폴더에 넣은 날).
+   형상설계는 `Tool조사_MD_…` 한 파일 — 행의 Tool ID(MDT-·MDC-)로 두 파트로 나뉜다. 양식 v1.0·v1.1 둘 다 읽는다.
+2. **적재**: `scripts\load.bat real` → `output\<실행ID>\` 에
+   - `survey.ttl` · `load_log.json` (경고 전체 — 값이 들어 있으니 사내에만)
+   - `fix_requests\<파일>_수정요청.xlsx` — **담당자에게 보낼 수정 요청표** (시트·행·Tool ID·열·적힌 값·문제·고치는 법)
+   - `diag.txt` — **반출용 진단 요약** (경고 종류·열·파트별 건수만, 값 없음)
+3. **드롭다운 대신 직접 적은 값**: 뜻이 분명한 것은 `config\value_aliases.yaml` 에 `열 이름: {적힌 값: 드롭다운 값}` 으로 적고 2번을 다시 한다
+   (엑셀은 고치지 않는다). 계산에 쓰이는 열부터: 방향 · 전달 방법 · 조작 방식 · 자동화 인터페이스. 애매한 것만 수정 요청표로 되묻는다.
+4. **확인**: `scripts\graph_view.bat` (적재한 그래프 3D) · `scripts\push.bat` (Fuseki).
+5. **수정본을 받으면** 새 날짜 파일명으로 넣고 2번부터 — 같은 약칭은 날짜가 가장 늦은 파일만 적재되고, ID 는 그대로 유지된다.
+
+알아 둘 것:
+- 규칙에 안 맞는 파일명(인명·`(1)`·`최종` 등)은 `Tool조사_규칙밖_<해시>.xlsx` 로만 기록되고 파트를 모른다 — 이름을 고쳐 다시 적재.
+- 읽을 수 없는 파일(암호·DRM·.xls·손상)은 건너뛰고 경고한다. 그 실행은 "안 보인 파트를 폐기" 판정을 하지 않는다.
+- 설정만 고치고 코드는 손대지 않는다: `config\parts.yaml`(파트·담당 부서) · `config\rules.yaml`(시트 이름·선택지) · `config\header_map.yaml`(헤더 문구) · `config\value_aliases.yaml`.
+- `data\real\`·`output\`·`fuseki-data\` 는 사내에만 둔다. 밖으로는 `diag.txt` 만.
+
+## 6-1. 업데이트 받기 (zip 대신 텍스트 파일, 2026-09-30~)
+
+GitHub `import-package` 브랜치의 `EnGenius_update_<이전>_to_<새>.py.txt` 한 개를 받아 반입 → 확장자를 `.py` 로 바꿔 아무 폴더에 두고:
+
+```text
+C:\EnGenius\engenius-tool-ontology\.venv\Scripts\python EnGenius_update_<이전>_to_<새>.py
+```
+
+바뀐 파일만 저장소에 쓰고, 원래 파일은 `offline\backup_<이전>_<일시>\` 에 남긴다. 적용 기록은 `offline\applied_updates.txt`.
+저장소가 다른 경로면 명령 끝에 그 경로를 붙인다. 끝나면 `scripts\doctor.bat`.
 
 ## 7. 문제가 생기면 — 무엇을 밖으로 가져올 수 있나
 
 밖(개발 PC)으로는 **값이 없는 것만**: `[NG]` 줄, `doctor` 출력, 경고의 **종류와 건수**, 파이썬 traceback 의 마지막 몇 줄.
-셀 값·툴명·경로·인명·파일명은 옮기지 않는다. (M3.1 에서 이것만 모아 주는 `diag` 명령이 생긴다.)
+셀 값·툴명·경로·인명·파일명은 옮기지 않는다. 적재마다 생기는 `output\<실행ID>\diag.txt` (또는 `scripts\diag.bat`) 가 딱 그것만 모아 준다.
 
 ## 8. 자주 걸리는 것
 
