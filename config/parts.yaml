@@ -18,12 +18,12 @@ parts:
   SAS:  {name: "2차유로 파트", parts: [2차유로], domains: ["2차유로(SAS)"], status: 확정}
   CD:   {name: "터빈 형상설계·압축기 형상설계 파트", parts: [터빈 형상설계, 압축기 형상설계], domains: [터빈, 압축기], status: 분할됨,
          file_split_by_id_prefix: [MDT, MDC]}   # 2026-09-30: 파일은 하나, 시트 안 Tool ID 가 MDT-n·MDC-n 으로 나뉨 (Leo)
-  MDT:  {name: "터빈 형상설계 파트", parts: [터빈 형상설계], domains: [터빈], status: 확정, succeeds: [CD]}   # 도메인 추정 — 확인
-  MDC:  {name: "압축기 형상설계 파트", parts: [압축기 형상설계], domains: [압축기], status: 확정, succeeds: [CD]}
+  MDT:  {name: "터빈 형상설계 파트", parts: [터빈 형상설계], domains: [터빈], status: 확정, succeeds: [CD]}
+  MDC:  {name: "압축기 형상설계 파트", parts: [압축기 형상설계], domains: [압축기], status: 확정, succeeds: [CD]}   # 담당자 2명 (Leo 2026-09-30)
         # 분할 요청 예정 → 예: CDT·CDC1·CDC2. 분할 파일이 오면 CD 는 폐기, 새 항목에 succeeds: [CD]. domains 는 추정 — Leo 확인
   IPS:  {name: "RAMS-C·엔진IPS요소개발·항공시스템IPS요소개발 파트", parts: [RAMS-C, 엔진IPS요소개발, 항공시스템IPS요소개발], domains: [기타], status: 확정}
   RSP:  {name: "형상관리·RSP·열전달 파트", parts: [형상관리, RSP, 열전달], domains: [기타], status: 확정}
-  FEM:  {name: "", parts: [], domains: [], status: 분할예정}     # 2개 파트가 한 약칭 — 정식 이름·담당 부서 값 미기입, 분할 요청 예정
+  FEM:  {name: "", parts: [], domains: [], status: 확정}     # 담당자 2명을 한 단위로 (Leo 2026-09-30 — 에이전트 개발은 담당자별로 나눠 맡김). 정식 이름·담당 부서 값 미기입
   FS:   {name: "유도무기·항공연료1·항공연료2 파트", parts: [유도무기, 항공연료1, 항공연료2], domains: [기타], status: 확정}
   RE:   {name: "착륙유압·왕복엔진 파트", parts: [착륙유압, 왕복엔진], domains: [기타], status: 확정}
   EC:   {name: "구동제어·제어계측·전원공급시스템 파트", parts: [구동제어, 제어계측, 전원공급시스템], domains: [기타], status: 확정}
