@@ -225,6 +225,16 @@ def test_na_in_dropdown_is_not_a_choice_error(tmp_path):
     assert {u.v["auth_method"] for u in out.result.usages if u.sw_id in ("STR-01", "STR-02")} == {"NA"}   # 원문 보존
 
 
+def test_seed_tool_aliases():
+    """기본 별칭 (Leo Q1 2026-10-01): 대소문자·버전은 정규화로, 한글·약칭 표기는 config/tool_aliases.yaml 로 같은 툴."""
+    ld = Loader()
+    amap, labels = ld._alias_map()
+    key = lambda s: amap.get(ld.norm.tool_key(s), ld.norm.tool_key(s))  # noqa: E731
+    assert key("Excel") == key("EXCEL") == key("excel 2016") == key("엑셀") == key("MS Excel")
+    assert key("PPT") == key("PowerPoint") and key("매트랩") == key("MATLAB") and key("워드") == key("Word")
+    assert labels[key("Excel")] == "Excel"
+
+
 def test_off_rule_file_name_is_hashed_everywhere(tmp_path):
     """규칙 밖 파일명(인명이 섞였을 수 있음)은 해시 이름으로만 — 로그·그래프·수정 요청표 (docs/09 #8 A)."""
     d = _copy(tmp_path)

@@ -5,5 +5,11 @@
 #
 # aliases:   대표 이름: [변형 표기, ...]   — 변형 표기로 적힌 SW명·연계 SW명을 대표 이름의 툴로 본다
 # distinct:  [[정규화 키 A, 정규화 키 B], ...] — 별개로 판정한 쌍 (통합 후보에 다시 올리지 않는다)
-aliases: {}
+# 대소문자·공백·전각·버전 표기 차이는 정규화로 이미 같게 본다 (EXCEL = Excel = Excel 2016). 여기에는 글자가 다른 표기만.
+# 기본 별칭 (2026-10-01, Leo Q1 "Excel, EXCEL 은 같은 툴로?") — 흔한 한글·약칭 표기. 사내에서 더 넣는다.
+aliases:
+  Excel: [엑셀, MS Excel, MS-Excel, MSExcel, 마이크로소프트 엑셀]
+  MATLAB: [매트랩, Matlab]
+  PowerPoint: [파워포인트, PPT, MS PowerPoint, MS-PowerPoint, 피피티]
+  Word: [워드, MS Word, MS-Word, MS워드]
 distinct: []

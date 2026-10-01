@@ -28,7 +28,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from engenius_onto.config import SCHEMA_FILE, load_yaml, namespaces  # noqa: E402
 
-VIEW_VERSION = "v9"  # 판 번호. v9 2026-10-01: 파트 이름은 약칭만 · v8 실데이터 실행 우선·제목에 데이터 종류 · v7 선은 전달 방식별 색 복원 · v6 점 색 최소(회색·흰색) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
+VIEW_VERSION = "v10"  # 판 번호. v10 2026-10-01: 층 간격·두께·높낮이, 툴로 묶은 순위표 · v9 파트 이름은 약칭만 · v8 실데이터 실행 우선·제목에 데이터 종류 · v7 선은 전달 방식별 색 복원 · v6 점 색 최소(회색·흰색) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 SKOS = "http://www.w3.org/2004/02/skos/core#"
 HIDDEN = {"source_row"}  # 패널에 안 보이는 속성
@@ -160,7 +160,8 @@ def build(run: Path) -> tuple[dict, Path]:
     radius = {f: spacing * (0.8 + math.sqrt(len(by_field[f]))) for f in fields}
     rmax = max(radius.values(), default=40.0)
     ring_r = max(3.4 * rmax, 1.7 * sum(2 * r for r in radius.values()) / (2 * math.pi))
-    height = 0.28 * ring_r                                            # 툴은 살짝 위에 (층 표현은 하지 않는다)
+    height = 0.55 * ring_r                                            # 툴 층 높이 (v10: 더 띄움)
+    thick = 0.06 * ring_r                                             # 층 두께 — 한 층 안에서도 점마다 높낮이
     golden = math.pi * (3 - math.sqrt(5))
     centers, clusters, nodes, index = {}, [], [], {}
     ang = 0.0
@@ -178,7 +179,8 @@ def build(run: Path) -> tuple[dict, Path]:
         for j, key in enumerate(members):                              # 해바라기 원판 — 고르게 펼쳐진다
             rr, th = rc * math.sqrt((j + 0.5) / n), golden * j
             index[key] = len(nodes)
-            nodes.append({**usages[key], "x": cx + rr * math.cos(th), "y": 0.0, "z": cz + rr * math.sin(th)})
+            wob = math.sin(j * 2.399963 + len(fields) * 0.7) * thick          # 결정적인 높낮이 (실행마다 같다)
+            nodes.append({**usages[key], "x": cx + rr * math.cos(th), "y": wob, "z": cz + rr * math.sin(th)})
     users_of: dict[str, list] = defaultdict(list)
     for key, u in usages.items():
         users_of[u["tool"]].append(index[key])
@@ -200,7 +202,10 @@ def build(run: Path) -> tuple[dict, Path]:
         else:
             x = z = 0.0
         index[key] = len(nodes)
-        nodes.append({**t, "x": x, "y": height, "z": z, "uses": len(idx), "parts": len(parts_using),
+        # 툴 층 안 높이: 여러 파트가 쓸수록 조금 더 위 + 작은 흔들림 (공용 툴이 눈에 띄게)
+        lift = thick * 2.2 * min(1.0, (len(parts_using) - 1) / 5) if parts_using else 0.0
+        y = height + lift + math.sin(len(nodes) * 2.399963) * thick * 0.6
+        nodes.append({**t, "x": x, "y": y, "z": z, "uses": len(idx), "parts": len(parts_using),
                       "home": parts_using[0] if len(parts_using) == 1 else None})
     big = ring_r
 
@@ -222,7 +227,7 @@ def build(run: Path) -> tuple[dict, Path]:
         mentioned = {usages[v]["tool"] for (v, pt, d) in agg if pt == u["tool"] and v != key}
         partners = (declared | mentioned) - {u["tool"]}
         manual = sum(e["n"] for (uu, pt, d), e in agg.items() if e["kind"] == "manual" and (uu == key or (pt == u["tool"] and uu != key)))
-        rank.append({"i": index[key], "partners": len(partners), "declared": len(declared - {u["tool"]}),
+        rank.append({"i": index[key], "t": index[u["tool"]], "partners": len(partners), "declared": len(declared - {u["tool"]}),
                      "mentioned": len(mentioned - {u["tool"]}), "manual": manual, "auto": u["auto"],
                      "parts": len(parts_of_tool[u["tool"]])})
     rank.sort(key=lambda r: (-r["partners"], -r["manual"], not r["auto"], -r["parts"], nodes[r["i"]]["name"]))
@@ -258,7 +263,10 @@ PAGE = r"""<!DOCTYPE html>
  #side h2{font-size:14px;margin:8px 0 4px;padding-right:56px} #side h3{font-size:13px;margin:10px 0 4px}
  #side .m{color:var(--muted);font-size:12px} #side ul{padding-left:16px;margin:4px 0} #side li{margin:3px 0}
  #side .close{position:absolute;right:10px;top:10px;cursor:pointer;color:var(--muted)}
- #side.wide{width:min(660px,76vw)}
+ #side.wide{width:min(760px,80vw)}
+ #side table.rank{table-layout:auto} #side table.rank td,#side table.rank th{white-space:nowrap} #side table.rank td.tool{white-space:normal;font-weight:700;vertical-align:top}
+ #side table.rank td.num{width:2.5em;color:var(--muted);text-align:right} #side table.rank td.pri{width:2em;text-align:right;font-weight:700;vertical-align:top}
+ #side td[data-tool]{cursor:pointer} #side td[data-tool]:hover{text-decoration:underline dotted}
  #side tr[data-r]{cursor:pointer} #side tr[data-r]:hover{background:rgba(255,255,255,.05)} #side tr.on{background:rgba(255,154,46,.18)}
  #side th{color:var(--muted);font-weight:400;text-align:left;border-bottom:1px solid var(--line);padding:3px 4px} #side td.n{text-align:right}
  #side table{border-collapse:collapse;width:100%;font-size:12px} #side td{border-bottom:1px solid var(--line);padding:3px 4px;vertical-align:top}
@@ -314,7 +322,9 @@ function resize() {
   side.style.top = ui('top').offsetHeight + 'px';
 }
 addEventListener('resize', resize); resize();
-S.dist0 = S.dist = fitDist(); S.sref = S.fov / S.dist0; S.panY = -innerHeight * 0.04;   // 아래 설명 글에 덜 가리게 조금 위로
+// 처음 거리 맞추기 — 창 크기가 바뀌면 사용자가 확대·축소하기 전까지 다시 맞춘다 (열리는 순간 창 폭이 0 에 가까운 경우 대비)
+function refit() { if (S.userZoom) return; S.dist0 = S.dist = fitDist(); S.sref = S.fov / S.dist0; S.panY = -innerHeight * 0.04; S.dirty = true; }
+refit(); addEventListener('resize', refit); requestAnimationFrame(refit);
 
 let P = [], PC = [];
 function rot(x, y, z) { const R = S.R; return [R[0] * x + R[1] * y + R[2] * z, R[3] * x + R[4] * y + R[5] * z, R[6] * x + R[7] * y + R[8] * z]; }
@@ -423,10 +433,10 @@ addEventListener('mouseup', ev => {
   if (drag && moved < 4 && drag.btn === 0) { const h = hit(ev.clientX, ev.clientY); select(h >= 0 && h !== S.sel ? h : -1); S.hover = h; }
   drag = null; cv.classList.remove('drag');
 });
-cv.addEventListener('wheel', ev => { ev.preventDefault(); S.dist = Math.max(S.dist0 * 0.12, Math.min(S.dist0 * 4, S.dist * (ev.deltaY > 0 ? 1.1 : 0.9))); S.dirty = true; }, { passive: false });
+cv.addEventListener('wheel', ev => { ev.preventDefault(); S.userZoom = true; S.dist = Math.max(S.dist0 * 0.12, Math.min(S.dist0 * 4, S.dist * (ev.deltaY > 0 ? 1.1 : 0.9))); S.dirty = true; }, { passive: false });
 cv.addEventListener('dblclick', resetView);
 ui('reset').addEventListener('click', resetView);
-function resetView() { S.R = initR(); S.dist = S.dist0; S.panX = 0; S.panY = -innerHeight * 0.04; S.panel = null; S.rankSel = -1; select(-1); }
+function resetView() { S.userZoom = false; refit(); S.R = initR(); S.dist = S.dist0; S.panX = 0; S.panY = -innerHeight * 0.04; S.panel = null; S.rankSel = -1; select(-1); }
 ['fManual', 'fNote', 'fAuto', 'fUse', 'fLabel', 'fCluster'].forEach(id => ui(id).addEventListener('change', () => { S.dirty = true; }));
 ui('fSpin').addEventListener('change', ev => { S.spin = ev.target.checked; });
 ui('closeSide').addEventListener('click', () => { S.panel = null; S.rankSel = -1; select(-1); });
@@ -436,17 +446,30 @@ ui('rankBtn').addEventListener('click', () => {
   S.dirty = true;
 });
 function renderRank() {
-  const rows = DATA.rank.map((r, k) => { const n = N[r.i]; return `<tr data-r="${r.i}" class="${r.i === S.rankSel ? 'on' : ''}"><td class="n">${k + 1}</td>
-    <td>${esc(n.name)} <span class="m">(${esc(n.field)})</span></td><td class="n"><b>${r.partners}</b></td><td class="n">${r.manual}</td>
-    <td>${r.auto ? '가능' : '<span class="m">불가·모름</span>'}</td><td class="n">${r.parts}</td></tr>`; }).join('');
+  // 툴로 묶는다: 툴 순서 = 그 툴의 툴사용 중 가장 앞선 순위 (Leo 2026-10-01 — 1 Excel / 1-1 FS / 1-2 ACT …)
+  const groups = [], byTool = new Map();
+  DATA.rank.forEach(r => { if (!byTool.has(r.t)) { byTool.set(r.t, []); groups.push(r.t); } byTool.get(r.t).push(r); });
+  let num = 0;
+  const rows = groups.map((tool, g) => byTool.get(tool).map((r, k, arr) => {
+    num++;
+    const n = N[r.i], head = k === 0
+      ? `<td class="pri" rowspan="${arr.length}">${g + 1}</td><td class="tool" rowspan="${arr.length}" data-tool="${tool}">${esc(N[tool].name)}</td>` : '';
+    return `<tr data-r="${r.i}" class="${r.i === S.rankSel ? 'on' : ''}"><td class="num">${num}</td>${head}
+      <td>${g + 1}-${k + 1} ${esc(n.field)}</td><td class="n"><b>${r.partners}</b></td><td class="n">${r.manual}</td>
+      <td>${r.auto ? '가능' : '<span class="m">불가·모름</span>'}</td><td class="n">${r.parts}</td></tr>`;
+  }).join('')).join('');
   sideBody.innerHTML = `<h2>툴 기준 에이전트 후보 <span class="m">잠정 · 조사표에 신고된 연결 기준</span></h2>
-   <p class="m">한 툴사용(파트 × 툴)을 에이전트가 다룰 수 있게 감싸면 그 툴사용에 걸린 연결 전부에 쓸 수 있다 — 연결 상대가 많을수록 효과가 크다.
-   정렬: <b>연결 상대 툴 수</b> → 걸린 수기 전달 → 자동화 가능 → 같은 툴을 쓰는 파트 수. 행을 누르면 그 툴사용과 연결이 강조된다.
-   M4 에서 확장자·데이터명으로 계산한 연결로 바뀐다 (지금은 '연계 Tool명' 으로 적어 준 것만).</p>
-   <table><tr><th>#</th><th>툴사용 (파트)</th><th>연결 상대</th><th>수기 전달</th><th>자동화</th><th>같은 툴 쓰는 파트</th></tr>${rows}</table>`;
+   <p class="m">툴로 묶은 순위 — 툴 순서는 그 툴의 툴사용(파트) 중 가장 앞선 것 기준. 정렬: <b>연결 상대 수</b> → 수기 전달 → 자동화 가능 →
+   같은 툴 쓰는 파트 수. 툴 이름을 누르면 그 툴을 쓰는 곳 전체, 파트 행을 누르면 그 툴사용만 강조. 맨 왼쪽 번호의 끝 = 조사된 툴사용 수.
+   M4 에서 확장자·데이터명으로 계산한 연결로 바뀐다.</p>
+   <table class="rank"><tr><th>번호</th><th>순위</th><th>툴</th><th>세부 순위 (파트)</th><th>연결 상대</th><th>수기 전달</th><th>자동화</th><th>같은 툴 쓰는 파트</th></tr>${rows}</table>`;
   side.classList.add('wide'); side.style.display = 'block';
 }
 sideBody.addEventListener('click', ev => {
+  const tc = ev.target.closest('[data-tool]');
+  if (tc) { const i = +tc.dataset.tool; S.rankSel = S.rankSel === i ? -1 : i; renderRank();
+    if (S.rankSel >= 0) { project(); const q = P[i]; S.panX += (innerWidth - side.offsetWidth) / 2 - q.x; S.panY += innerHeight / 2 - q.y; }
+    S.dirty = true; return; }
   const r = ev.target.closest('[data-r]');
   if (r) {
     const i = +r.dataset.r; S.rankSel = S.rankSel === i ? -1 : i; renderRank();
@@ -460,7 +483,7 @@ cv.addEventListener('touchstart', ev => { touches = [...ev.touches].map(t => ({ 
 cv.addEventListener('touchmove', ev => {
   const t = [...ev.touches].map(t => ({ x: t.clientX, y: t.clientY }));
   if (touches && t.length === 1 && touches.length === 1) orbit(t[0].x - touches[0].x, t[0].y - touches[0].y);
-  else if (touches && t.length === 2 && touches.length === 2) { const d0 = Math.hypot(touches[0].x - touches[1].x, touches[0].y - touches[1].y), d1 = Math.hypot(t[0].x - t[1].x, t[0].y - t[1].y); S.dist = Math.max(S.dist0 * 0.12, Math.min(S.dist0 * 4, S.dist * d0 / Math.max(1, d1))); }
+  else if (touches && t.length === 2 && touches.length === 2) { S.userZoom = true; const d0 = Math.hypot(touches[0].x - touches[1].x, touches[0].y - touches[1].y), d1 = Math.hypot(t[0].x - t[1].x, t[0].y - t[1].y); S.dist = Math.max(S.dist0 * 0.12, Math.min(S.dist0 * 4, S.dist * d0 / Math.max(1, d1))); }
   touches = t; S.dirty = true; ev.preventDefault();
 }, { passive: false });
 
