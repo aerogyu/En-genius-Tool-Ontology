@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 import webbrowser
 from collections import Counter, defaultdict
@@ -27,7 +28,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from engenius_onto.config import SCHEMA_FILE, load_yaml, namespaces  # noqa: E402
 
-VIEW_VERSION = "v8"  # 판 번호. v8 2026-09-30: 실데이터 실행 우선·제목에 데이터 종류 · v7 선은 전달 방식별 색 복원 · v6 점 색 최소(회색·흰색) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
+VIEW_VERSION = "v9"  # 판 번호. v9 2026-10-01: 파트 이름은 약칭만 · v8 실데이터 실행 우선·제목에 데이터 종류 · v7 선은 전달 방식별 색 복원 · v6 점 색 최소(회색·흰색) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 SKOS = "http://www.w3.org/2004/02/skos/core#"
 HIDDEN = {"source_row"}  # 패널에 안 보이는 속성
@@ -70,6 +71,12 @@ def slot_labels() -> dict[str, str]:
     return {**out, **FIXED}
 
 
+def part_code(label: str) -> str:
+    """지도에는 파트 약칭만 (Leo 2026-10-01 "글자가 너무 많다") — 라벨 '정식 이름 (약칭)' 에서 괄호 안, 없으면 라벨 그대로."""
+    m = re.match(r"^.*\(([^()]+)\)\s*$", label)
+    return m.group(1).strip() if m else label
+
+
 def local(iri: str) -> str:
     return iri.rsplit("/", 1)[-1].rsplit("#", 1)[-1]
 
@@ -95,7 +102,8 @@ def build(run: Path) -> tuple[dict, Path]:
           OPTIONAL { ?u eg:operation_mode ?op } OPTIONAL { ?u eg:automation_if ?aif }
         }"""):
         op, aif = (str(r.op) if r.op else ""), (str(r.aif) if r.aif else "")
-        usages[str(r.u)] = {"id": local(str(r.u)), "type": "u", "name": str(r.name), "sw_id": str(r.sw), "field": str(r.fl),
+        usages[str(r.u)] = {"id": local(str(r.u)), "type": "u", "name": str(r.name), "sw_id": str(r.sw),
+                            "field": part_code(str(r.fl)), "field_name": str(r.fl),
                             "tool": str(r.t), "tool_name": str(r.tl),
                             "auto": op in auto_modes or (bool(aif) and aif not in non_auto_if)}
     tools: dict[str, dict] = {}
@@ -469,7 +477,7 @@ function select(i) {
   let body = '';
   if (n.type === 'u') {
     const io = d => n.ios.filter(x => x.dir === d).map(x => `<li>${KIND[x.kind][1] ? `<span class="${KIND[x.kind][0]}">${KIND[x.kind][1]}</span> ` : ''}${esc(x.name)} <span class="m">[${esc(x.ext || '?')}] · ${esc(x.tm)}${x.partner ? ' · 상대 ' + esc(x.partner) : ''}</span></li>`).join('') || '<li class="m">없음</li>';
-    body = `<h2>${esc(n.name)} <span class="m">${esc(n.sw_id)} · ${esc(n.field)} · 툴사용</span></h2>
+    body = `<h2>${esc(n.name)} <span class="m">${esc(n.sw_id)} · ${esc(n.field_name || n.field)} · 툴사용</span></h2>
       <div class="m">툴: ${toolLink(n)} · 자동화 ${n.auto ? '가능' : '불가/모름'}</div>
       <h3>내놓는 것 (출력)</h3><ul>${io('out')}</ul><h3>받는 것 (입력)</h3><ul>${io('in')}</ul>
       <h3>그래프에 적힌 속성</h3><table>${rows}</table>`;
