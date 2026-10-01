@@ -35,7 +35,7 @@ EXT_ALIAS = {"step": "stp", "iges": "igs", "jpeg": "jpg", "tif": "tiff", "yml": 
              "엑셀": "xlsx", "워드": "docx", "파워포인트": "pptx", "한글": "hwp", "텍스트": "txt"}
 EMPTY_TOKENS = {"", "없음", "모름", "-", "—", "–", "n/a", "na", "해당없음", "해당 없음"}   # [I16]
 EXT_OK = re.compile(r"^[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$")
-VERSION_TOKEN = re.compile(r"^(v\d+(\.\d+)*|\d{4}r\d+|r\d+[a-z]?|sp\d+|\d+(\.\d+)+)$")          # [I2]
+VERSION_TOKEN = re.compile(r"^(v\d+(\.\d+)*|\d{4}r\d+|r\d+[a-z]?|sp\d+|\d+(\.\d+)+|(19|20)\d{2})$")   # [I2] 연도만 있는 토큰 포함 (docs/09 #16 A)
 # 'ㆍ'(U+318D) 는 NFKC 에서 U+119E 로 바뀐다 — 정규화 뒤에 나누므로 둘 다 구분자로 둔다
 EXT_SEP = re.compile("[/,;·ㆍᆞ・\\s]+")
 PARTNER_SEP = re.compile("[,;/·ㆍᆞ・\\n]+")                                            # [I17]
