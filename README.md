@@ -1,7 +1,8 @@
-# En-Genius 툴 온톨로지 — 반입 패키지 (연습용 v0.1, 2026-09-29, 커밋 `2d6e8c6`)
+# En-Genius 툴 온톨로지 — 반입 패키지 (v0.1 + 업데이트 — **최신 판은 '판 기록' 표의 맨 아래 줄**)
 
 이 브랜치(`import-package`)는 코드가 아니라 **사내(폐쇄망)로 들여갈 파일 보관용**이다. 코드는 `main` 브랜치.
-**합성 데이터 연습 전용** — 실데이터 적재는 M3.1(적재기 보강) 판을 다시 반입한 뒤. 그때는 저장소 zip 만 새로 받으면 된다.
+**실데이터 적재 가능** (M3.1 1차 `4423d92` 부터). 갱신은 저장소 zip 이 아니라 아래 '업데이트 적용' 의 텍스트 파일 한 개로 한다.
+지금 설치된 판은 `offline\installed_commit.txt` (이번 판부터 자동 기록) 또는 `offline\applied_updates.txt` 의 마지막 줄로 안다.
 
 ## 받는 법
 
@@ -12,7 +13,7 @@
 |---|---|---|---|---|
 | `En-genius-Ontology-2d6e8c6.zip` | 0.7 MB | 저장소 — 코드·스키마·설정·합성 데이터·설치 스크립트·안내 (첫 반입본) | 사내 소유 코드 (의존성은 docs/04) | git archive 2d6e8c6 |
 | `En-genius-Ontology-f3a4f55.zip` | 0.7 MB | 저장소 — 위 + 적재한 온톨로지 3D 뷰어(`scripts\graph_view.bat`) · doctor Java 확인 수정 (2026-09-30 추가) | 사내 소유 코드 | git archive f3a4f55 |
-| `EnGenius_update_f3a4f55_to_4423d92.py.txt` | 1.3 MB | **업데이트 (최신, M3.1 1차 — 실데이터 적재 가능)**. f3a4f55 가 설치된 사내 PC 용. 확장자를 `.py` 로 바꿔 실행 → 바뀐 47개 파일만 씀, 원래 파일은 `offline\backup_…` 에 남김 | 사내 소유 코드 | git f3a4f55..4423d92 |
+| `EnGenius_update_f3a4f55_to_4423d92.py.txt` | 1.3 MB | **업데이트 (M3.1 1차 — 실데이터 적재 가능; 최신 판은 '판 기록' 표)**. f3a4f55 가 설치된 사내 PC 용. 확장자를 `.py` 로 바꿔 실행 → 바뀐 47개 파일만 씀, 원래 파일은 `offline\backup_…` 에 남김 | 사내 소유 코드 | git f3a4f55..4423d92 |
 | `wheels_win_amd64_cp310.zip` | 56.9 MB | 파이썬 패키지 wheel 93개 (Windows x64 · Python 3.10) — 풀지 말고 저장소의 offline\ 에 | Apache·MIT·BSD 계열 (docs/04 부록 A) | PyPI (antlr4 4.9.3 은 sdist 를 빌드) |
 | `OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip` | 205.1 MB | Java 21 (Temurin JDK) — Fuseki 실행용 런타임 | GPLv2 + Classpath Exception | https://github.com/adoptium/temurin21-binaries/releases |
 | `apache-jena-fuseki-6.2.0.zip` | 51.4 MB | Apache Jena Fuseki 6.2.0 — 그래프 DB | Apache 2.0 | https://dlcdn.apache.org/jena/binaries/ |
@@ -42,15 +43,17 @@ JDK·Fuseki 는 공급자 원본 그대로다 — 반입 심사에서 원 출처
 | 2026-09-30 | 업데이트 `630ec66 → f1a2a08` | `EnGenius_update_630ec66_to_f1a2a08.py.txt` | **1차 적재 검토용 diag 확장** (파트별 표·M4 계산 열 분포·툴 지표, 값 없음) + 3D 뷰어 v7 (선은 전달 방식별 색). 630ec66 적용한 곳용 |
 | 2026-09-30 | 업데이트 `f1a2a08 → 9bc1ac6` | `EnGenius_update_f1a2a08_to_9bc1ac6.py.txt` | **실데이터 우선** — load.bat 더블클릭이 실데이터로, 지도·diag·push 는 최근 실데이터 실행을 먼저, 지도 제목에 데이터 종류 (v8). f1a2a08 적용한 곳용 |
 | 2026-10-01 | 업데이트 `f1a2a08 → 1cbd4ee` | `EnGenius_update_f1a2a08_to_1cbd4ee.py.txt` | 지도 **파트 이름 약칭만** (v9) + 실데이터 우선 (9bc1ac6 내용 포함). f1a2a08 또는 9bc1ac6 적용한 곳 어디든 적용 가능 (파일 통째로 씀) |
-| 2026-10-01 | 업데이트 `f1a2a08 → 94403db` | `EnGenius_update_f1a2a08_to_94403db.py.txt` | **3D 뷰어 v10** (층 간격·두께·높낮이, 툴로 묶은 순위표) + **기본 툴 별칭**(엑셀→Excel 등) + 실데이터 우선·약칭 (이전 두 업데이트 포함). f1a2a08 이후 어느 판에든 적용 가능 |
+| 2026-10-01 | 업데이트 `f1a2a08 → 94403db` | `EnGenius_update_f1a2a08_to_94403db.py.txt` | **쓰지 말 것** — 테스트 1건 실패 판(연도 표기 'Excel 2016' 미통합). `87881eb` 로 대체 (이미 적용했어도 87881eb 또는 그 뒤 판을 덧적용하면 된다). 원래 내용: 3D 뷰어 v10 (층 간격·두께·높낮이, 툴로 묶은 순위표) + **기본 툴 별칭**(엑셀→Excel 등) + 실데이터 우선·약칭 (이전 두 업데이트 포함). f1a2a08 이후 어느 판에든 적용 가능 |
 | 2026-10-01 | 업데이트 `f1a2a08 → 87881eb` | `EnGenius_update_f1a2a08_to_87881eb.py.txt` | 3D 뷰어 v10(층 간격·두께·높낮이, 툴로 묶은 순위표) + 기본 툴 별칭 + 연도 표기 통합(Excel 2016 = Excel). f1a2a08 기준 누적 — 94403db 파일 대신 이것을 쓴다 |
+| 2026-10-02 | 업데이트 `87881eb → a3e4e0f` | `EnGenius_update_87881eb_to_a3e4e0f.py.txt` | **M3.1 2차 1묶음** — ① 사내 설정 오버레이 `data\real\config\` (업데이트가 덮지 않음; 사내에서 고친 파일은 `.new` 로 보존) ② 툴 통합(apply-review) 수리: TOOL ID 유지·C/C++/C# 구분·'자체개발' 류는 이름 요청·제조사 접두 흡수·별개 되돌리기·cp949 — `scripts\apply_review.bat` 에 검토표를 끌어다 놓는다 ③ 설치 판 표식 `offline\installed_commit.txt`·`scripts\selftest.bat`·되돌리기 목록(MANIFEST) ④ 3D 뷰어 **v11** (공용 툴 밀어내기·수기선 또렷·허브 이름표·첫 화면 보정·입출력 없는 툴사용은 빈 원·순위표 '연결 상대' 두 열) ⑤ 수정 요청표에 '툴 이름을 지어 주세요'·'입출력 없음(확인 요청)' 행. 87881eb 적용한 곳용 (사이 판이어도 적용됨). **적용 뒤 `load.bat` 재적재 필수** — 툴 수·TOOL ID 가 1회성으로 바뀔 수 있음 (README_offline 6장) |
 
 ## 업데이트 적용 (zip 대신 텍스트, 2026-09-30~)
 
 1. `EnGenius_update_<이전>_to_<새>.py.txt` 를 받아 반입 → 확장자를 `.py` 로 바꿔 **아무 폴더**에 둔다.
 2. cmd: `C:\EnGenius\engenius-tool-ontology\.venv\Scripts\python EnGenius_update_<이전>_to_<새>.py` (저장소가 다른 곳이면 끝에 그 경로)
 3. `[OK] 업데이트 … 추가 7 · 변경 40` 이 나오면 끝. 원래 파일은 `offline\backup_<이전>_<일시>\`, 기록은 `offline\applied_updates.txt`. 이어서 `scripts\doctor.bat`.
-   `<이전>` 은 지금 사내에 설치된 판이다 — 이번 파일은 `f3a4f55` 가 설치된 곳용 (두 번 돌려도 '이미 같음' 으로 끝난다).
+   `<이전>` 은 그 파일이 기준으로 삼는 판이다. 설치 판이 `<이전>` 과 `<새>` 사이 어느 판이든 적용된다 — 사이 판 내용은 덮어쓰고, **사내에서 고친 파일은 덮지 않고 `<파일>.new` 로 옆에 둔다**
+   (`[주의] 보존된 로컬 수정` 이 나오면 `.new` 를 손으로 합친 뒤 지운다). 두 번 돌려도 '이미 같음' 으로 끝난다. 끝나면 `scripts\selftest.bat` (이번 판부터) → `scripts\doctor.bat`.
 
 ## 들여간 뒤
 
