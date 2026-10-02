@@ -54,9 +54,15 @@
 - [x] M3 적재 파이프라인 (2026-09-24 — 스키마 v0.2(파생 3종), `load`·`push`·`apply-review`·`template-examples`, 골든 적재 층 전부 일치·입출력 77/툴사용 34 참조 계산과 건별 일치, Pydantic=SHACL 5건, 재적재 ID 불변, rdflib·Fuseki 일치, pytest 180. `docs/07`)
 - [~] **M3.1 적재기 보강** — **1차 완료 (2026-09-30, `1874bc7`)**: 양식 v1.1·파트 단위(MD 묶음)·스키마 v0.3·안전장치(#4~#9·#11·#13·#18~#24)·
   value_aliases·수정 요청표·diag → **실데이터 적재 가능**. 사내 반입은 텍스트 업데이트 파일(`scripts/build_update.py`, README_offline 6-1) —
-  **`EnGenius_update_f3a4f55_to_4423d92.py.txt` (Leo 적용 확인) → `EnGenius_update_4423d92_to_62114a9.py.txt` (3D 뷰어 v4) 를 import-package 에 올림 (2026-09-30). 이어서 `EnGenius_update_62114a9_to_630ec66.py.txt` (3D 뷰어 v6, import-package 9df9fdb). 이어서 `…630ec66_to_f1a2a08` (검토용 diag 확장 + 뷰어 v7, import-package 79194c4). → `…f1a2a08_to_9bc1ac6` (실데이터 실행 우선, import-package e08dc8b). → `…f1a2a08_to_1cbd4ee` (파트 약칭만, 9bc1ac6 포함). → `…f1a2a08_to_94403db` (뷰어 v10, **테스트 1건 실패 상태로 올림 — 쓰지 말 것**) → `…f1a2a08_to_87881eb` (v10 + 연도 표기 통합 수리, import-package be3caec). **87881eb 사내 적용 확인 (Leo 2026-10-02) → 다음 업데이트는 `--from 87881eb`**. 업데이트는 파일을 통째로 쓰므로 옛 기준에서 만든 것도 새 기준 위에 적용 가능 (삭제 파일 없을 때).
-  **1차 적재 검토 진행 중 (2026-09-30)**: Leo 가 재적재 후 diag.txt (값 없음) 를 보내면 검토 → M4 전에 고칠 것 정리
-  **2차 남음 (M4 전)**: #1 교차 파일 병합(파트 키로 대부분 해소)·#2·#3·#10·#12·#14~#17·#25a~c·B3(#15) — docs/09 표.
+  **`EnGenius_update_f3a4f55_to_4423d92.py.txt` (Leo 적용 확인) → `EnGenius_update_4423d92_to_62114a9.py.txt` (3D 뷰어 v4) 를 import-package 에 올림 (2026-09-30). 이어서 `EnGenius_update_62114a9_to_630ec66.py.txt` (3D 뷰어 v6, import-package 9df9fdb). 이어서 `…630ec66_to_f1a2a08` (검토용 diag 확장 + 뷰어 v7, import-package 79194c4). → `…f1a2a08_to_9bc1ac6` (실데이터 실행 우선, import-package e08dc8b). → `…f1a2a08_to_1cbd4ee` (파트 약칭만, 9bc1ac6 포함). → `…f1a2a08_to_94403db` (뷰어 v10, **테스트 1건 실패 상태로 올림 — 쓰지 말 것**) → `…f1a2a08_to_87881eb` (v10 + 연도 표기 통합 수리, import-package be3caec). 87881eb 사내 적용 확인 (Leo 2026-10-02) → **`…87881eb_to_a3e4e0f` (M3.1 2차 1묶음, import-package 62a0025) 올림 2026-10-02 — Leo 적용 확인되면 다음은 `--from a3e4e0f`**.
+  업데이트 파일은 이제 사이 판 sha 집합(KNOWN)을 품어 어느 사이 판에든 적용되고, 사내 로컬 수정은 `.new` 로 보존한다 (build_update.py, pytest 게이트 내장). 업데이트는 파일을 통째로 쓰므로 옛 기준에서 만든 것도 새 기준 위에 적용 가능 (삭제 파일 없을 때).
+  **1차 적재 검토 (2026-10-01~02, `docs/11`)**: diag 는 반출 불가 → 6관점 독립 검토(반박 검증 통과 21건)·개선안 14건·Leo 결정 Q1~Q4 (docs/11 8장).
+  분야별 툴사용 합 277 vs 적재 282 → Leo 가 diag 파트별 표와 대조해 차이 나는 파트만 알려 주기로 (답 대기).
+  **2차 1묶음 완료 (2026-10-02, `a3e4e0f`)** — docs/11 3장 1·2·3·6·8·9·10·13·14 + 지도 v11: 설정 오버레이 `data/real/config/`(C15)·apply-review 수리(#2·#14·#15·#16·C2,
+  merge_pairs 정본·제조사 접두 흡수 Q3(a)·범용 이름 행별 Q3(b))·#21 2단·'입출력 없음' 수정 요청·push derived 비움·설치 판 표식·selftest.bat·apply_review.bat·KNOWN 업데이트.
+  독립 검토 4라운드(적대적 재검토) 뒤 pytest 285·skip 3(Fuseki 미기동). 골든 aggregates 불변. **적용 뒤 첫 재적재에서 TOOL ID·툴 수가 1회성으로 바뀔 수 있음(정상)**.
+  **2차 남음 (M4 전, 작음)**: #1 잔여(규칙 밖 파일·'(1)' 사본)·#3·#10(확장자 정규화 — M4 Feed 직전 필수)·#12·#17·#25b~c · '별칭 미적용' 경고 · header_map 오버레이 · #15(4) 날짜 손상 검사 — docs/09 표.
+  M4 설계 반영 사항은 docs/11 3장 4·7·11번 + 5장 Q1·Q4~Q7 (Handoff declared/confidence·automatable 슬롯·ToolCandidate·part_code·'모름' 미확인 표시·폐쇄망 폐지 커밋 범위에 스키마 enum 포함).
   이전 문구: (`docs/09` — 독립 검토 28건 수리, 결정 13건 전부 권장안 승인 2026-09-28; 수리 전 실데이터 적재 금지)
   + **묶음 T: 양식 v1.1 + 파트 단위 조직 반영** (`reference/양식_v1.1_변경분.md` 5장 — 시트명 설정화(#13)·header_map·스키마 v0.3·예시 행 갱신·v1.1 합성 파일 추가;
     `docs/10` — FLD = 파일명 약칭(`config/parts.yaml`)·'담당 부서' 는 분류 속성 domain('기타' 허용)·분할은 succeeded_by;
