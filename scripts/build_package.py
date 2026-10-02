@@ -11,6 +11,8 @@
 작업 트리에 커밋 안 된 변경이 있으면 멈춘다 — 패키지의 저장소 zip 이 HEAD 와 같아야 하므로.
 import-package 브랜치에 올릴 때는 덮어쓰지 않는다 (Leo 2026-09-29): 산출물은 판 번호·커밋이 붙은 새 파일로 더하고,
 README.md·SHA256SUMS.txt 는 기존 줄을 지우지 않고 합친다 (docs/04 6장).
+2026-10-02: 조립 전에 pytest 를 돌려 실패하면 만들지 않는다 (--skip-tests 로 건너뜀). 저장소 zip 에 offline/installed_commit.txt
+(HEAD 전체 해시 + 커밋 번호)를 넣어 업데이트 파일이 설치 판 순서를 검사할 수 있게 한다 (docs/11 3장 3번).
 """
 from __future__ import annotations
 
@@ -23,6 +25,9 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build_update import run_pytest  # noqa: E402  — 같은 pytest 게이트
 
 REPO = Path(__file__).resolve().parents[1]
 VENDOR = {
@@ -58,10 +63,13 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(REPO / "offline" / f"package_{dt.date.today():%Y%m%d}"))
     ap.add_argument("--downloads", default=r"C:\EnGenius\tools\downloads")
+    ap.add_argument("--skip-tests", action="store_true", help="pytest 게이트 건너뜀")
     args = ap.parse_args()
 
     if git("status", "--porcelain", "--untracked-files=no"):
         print("[NG] 커밋 안 된 변경이 있다 — 커밋한 뒤 다시 (저장소 zip 은 HEAD 로 만든다)")
+        return 1
+    if not args.skip_tests and not run_pytest():
         return 1
     head = git("rev-parse", "--short", "HEAD")
     out = Path(args.out)
@@ -69,8 +77,14 @@ def main() -> int:
         shutil.rmtree(out)
     (out / "maps").mkdir(parents=True)
 
+    # 설치 판 표식 — zip 안 offline/installed_commit.txt (업데이트 파일이 읽어 순서를 검사한다). --add-file 은 직전 --prefix 를 따른다.
+    marker = out / "installed_commit.txt"
+    marker.write_text(f"{git('rev-parse', 'HEAD')}\n{git('rev-list', '--count', 'HEAD')}\n", encoding="utf-8", newline="\n")
     repo_zip = out / f"En-genius-Ontology-{head}.zip"
-    git("archive", "--format=zip", "--prefix=engenius-tool-ontology/", "-o", str(repo_zip), "HEAD")
+    git("archive", "--format=zip", "-o", str(repo_zip),
+        "--prefix=engenius-tool-ontology/offline/", f"--add-file={marker}",
+        "--prefix=engenius-tool-ontology/", "HEAD")
+    marker.unlink()
 
     wheels = sorted((REPO / "offline" / "wheels").glob("*.whl"))
     if len(wheels) < 90:
@@ -104,7 +118,8 @@ def main() -> int:
     readme = f"""# En-Genius 툴 온톨로지 — 반입 패키지 (연습용 v0.1, {dt.date.today():%Y-%m-%d}, 커밋 `{head}`)
 
 이 브랜치(`import-package`)는 코드가 아니라 **사내(폐쇄망)로 들여갈 파일 보관용**이다. 코드는 `main` 브랜치.
-**합성 데이터 연습 전용** — 실데이터 적재는 M3.1(적재기 보강) 판을 다시 반입한 뒤. 그때는 저장소 zip 만 새로 받으면 된다.
+저장소 zip 은 `{head}` 판 — M3.1 판(`1874bc7` 이후)이면 실데이터 적재가 된다 (`README_offline.md` 6장). 이미 설치돼 있으면 zip 이 아니라
+`EnGenius_update_<이전>_to_<새>.py.txt` 한 개로 갱신한다 (`README_offline.md` 6-1장). zip 안 `offline\\installed_commit.txt` 가 설치 판 표식이다.
 
 ## 받는 법
 
@@ -121,8 +136,8 @@ JDK·Fuseki 는 공급자 원본 그대로다 — 반입 심사에서 원 출처
 ## 들여간 뒤
 
 `README_offline.md` 순서대로: 저장소 zip 풀기 → wheels zip 을 `engenius-tool-ontology\\offline\\` 에 그대로 → JDK·Fuseki zip 을
-`C:\\EnGenius\\tools\\` 에 풀기 → `scripts\\setup_offline.bat` 더블클릭 → `scripts\\load.bat` (합성 데이터 연습).
-연결 지도는 `maps\\*.html` 을 Edge 로 바로 연다.
+`C:\\EnGenius\\tools\\` 에 풀기 → `scripts\\setup_offline.bat` 더블클릭 → `scripts\\load.bat` (합성 데이터 연습) → `scripts\\selftest.bat` (자기 점검).
+연결 지도는 `maps\\*.html` 을 Edge 로 바로 연다. Fuseki 는 `push`·SPARQL 콘솔에만 필요하다.
 """
     (out / "README.md").write_text(readme, encoding="utf-8", newline="\n")
 

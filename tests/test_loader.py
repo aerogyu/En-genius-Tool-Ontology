@@ -260,23 +260,37 @@ def test_review_merge_and_distinct(tmp_path, out):
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
-    assert apply_review(decided, cfg) == (1, 0)
+    assert tuple(apply_review(decided, cfg)) == (1, 0, 0)
+    saved = yaml.safe_load((cfg / "tool_aliases.yaml").read_text(encoding="utf-8"))
+    assert saved["merge_keys"] == {"matlabsimulink": "matlab"} and saved["labels"] == {"matlab": "MATLAB"}   # 키 기반 (#2 A)
+    before = {r["key"]: r["id"] for r in csv.DictReader((reg / "tools.csv").open(encoding="utf-8-sig"))}
     o = run_load(registry_dir=reg, out_root=tmp_path / "o", now=NOW, shacl=False, config_dir=cfg)
     assert "matlabsimulink" not in o.result.tools and len(o.result.tools) == 21
     assert o.result.tools["matlab"].names == ["MATLAB", "MATLAB Simulink"]
+    assert o.result.tools["matlab"].pref_label == "MATLAB"
     assert o.result.merge_candidates == []
     tools = {r["key"]: r for r in csv.DictReader((reg / "tools.csv").open(encoding="utf-8-sig"))}
+    assert tools["matlab"]["id"] == before["matlab"]                                  # 생존 키 = A 키, TOOL ID 유지
     assert tools["matlabsimulink"]["status"] == "통합됨"
     assert tools["matlabsimulink"]["merged_into"] == tools["matlab"]["id"]
-    # 별개 판정은 후보에서 빠진다
-    cfg2 = tmp_path / "config2"
-    shutil.copytree(CONFIG_DIR, cfg2)
+    # 별개 판정은 이미 적용된 직접 통합을 되돌리고 후보에서 빠진다 (#14 최소형); 통합됨 행은 같은 ID 로 되살아난다 (C2)
     rows[0]["판정(통합/별개)"], rows[0]["대표 이름(통합 시)"] = "별개", ""
     with decided.open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
-    assert apply_review(decided, cfg2) == (0, 1)
+    assert tuple(apply_review(decided, cfg)) == (0, 1, 1)
+    saved = yaml.safe_load((cfg / "tool_aliases.yaml").read_text(encoding="utf-8"))
+    assert saved["merge_keys"] == {} and saved["distinct"] == [["matlab", "matlabsimulink"]]
+    p = run_load(registry_dir=reg, out_root=tmp_path / "p", now=NOW, shacl=False, config_dir=cfg)
+    assert "matlabsimulink" in p.result.tools and p.result.merge_candidates == []
+    tools = {r["key"]: r for r in csv.DictReader((reg / "tools.csv").open(encoding="utf-8-sig"))}
+    assert (tools["matlabsimulink"]["status"], tools["matlabsimulink"]["merged_into"], tools["matlabsimulink"]["id"]) == \
+        ("활성", "", before["matlabsimulink"])
+    # 별개 판정만 적용한 설정에서도 후보에서 빠진다
+    cfg2 = tmp_path / "config2"
+    shutil.copytree(CONFIG_DIR, cfg2)
+    assert tuple(apply_review(decided, cfg2)) == (0, 1, 0)
     assert Loader(config_dir=cfg2).load(Loader(config_dir=cfg2).discover(SURVEY_DIR)).merge_candidates == []
 
 

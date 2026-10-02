@@ -49,16 +49,29 @@ def _java_version() -> str | None:
     return lines[0] if lines else None
 
 
+def _config_error(e: Exception) -> int:
+    """설정 파일 오류(ConfigError)는 traceback 없이 한 줄로 — 사내에서 오버레이를 손으로 고치다 생기는 것 (docs/09 C15)."""
+    print(f"[NG] 설정 오류: {e}", file=sys.stderr)
+    return 2                                                      # load.bat 안내문의 '2 stopped' — 적재가 시작조차 안 됐다 (1 은 경고 있음)
+
+
 def cmd_load(args: argparse.Namespace) -> int:
     """조사 엑셀 → survey 그래프 TTL·적재 로그·툴 통합 검토표 (output/<실행ID>/), 레지스트리 갱신."""
     from pathlib import Path
 
+    from engenius_onto.config import ConfigError
     from engenius_onto.survey_load import run_load, summary_lines
 
-    out = run_load(data=args.data, input_dir=Path(args.input) if args.input else None,
-                   registry_dir=Path(args.registry) if args.registry else None,
-                   out_root=Path(args.out) if args.out else None, shacl=not args.no_shacl)
+    try:
+        out = run_load(data=args.data, input_dir=Path(args.input) if args.input else None,
+                       registry_dir=Path(args.registry) if args.registry else None,
+                       out_root=Path(args.out) if args.out else None, shacl=not args.no_shacl,
+                       overlay_dir=Path(args.overlay) if args.overlay else None, overlay=not args.no_overlay)
+    except ConfigError as e:
+        return _config_error(e)
     print("\n".join(summary_lines(out)))
+    ov = out.log.get("config_overlay") or {}
+    print(f"  설정 오버레이: {'예 (' + ', '.join(ov.get('files') or []) + ')' if ov.get('used') else '아니오'}")
     for w in out.log["warnings"]:
         print(f"  [경고] {w}")
     print(f"  수정 요청표(파일별): {out.out_dir / 'fix_requests'}")
@@ -70,24 +83,28 @@ def cmd_diag(args: argparse.Namespace) -> int:
     """적재 결과의 진단 요약 — 경고 종류·열·파트별 건수만 (셀 값·툴명·경로·인명 없음). 밖으로 가져갈 수 있는 것 (docs/08 8장)."""
     from pathlib import Path
 
-    from engenius_onto.config import REPO_ROOT
+    from engenius_onto.config import REPO_ROOT, ConfigError
     from engenius_onto.survey_load import diag_text
 
     run_dir = Path(args.run) if args.run else _latest_run(REPO_ROOT / "output")
     if run_dir is None or not (run_dir / "load_log.json").is_file():
         print("load_log.json 이 있는 실행 폴더가 없다 — 먼저 load 를 실행한다.", file=sys.stderr)
         return 1
-    text = diag_text(run_dir)
+    try:
+        text = diag_text(run_dir)
+    except ConfigError as e:
+        return _config_error(e)
     (run_dir / "diag.txt").write_text(text, encoding="utf-8", newline="\n")
     print(text)
     return 0
 
 
 def cmd_push(args: argparse.Namespace) -> int:
-    """적재 결과(survey.ttl)와 스키마 OWL 을 Fuseki named graph 로 교체 (Graph Store Protocol PUT)."""
+    """적재 결과(survey.ttl)와 스키마 OWL 을 Fuseki named graph 로 교체 (Graph Store Protocol PUT).
+    실행 폴더에 derived.ttl 이 없으면 derived 그래프를 **비운다** (docs/09 #25a — 옛 파생 결과가 새 survey 와 섞이지 않게)."""
     from pathlib import Path
 
-    from engenius_onto.backends import fuseki_alive, push_graph
+    from engenius_onto.backends import delete_graph, fuseki_alive, push_graph
     from engenius_onto.config import REPO_ROOT, fuseki_config
     from engenius_onto.schema_gen import GEN_DIR
 
@@ -99,6 +116,9 @@ def cmd_push(args: argparse.Namespace) -> int:
     if run_dir is None or not (run_dir / "survey.ttl").is_file():
         print("survey.ttl 이 있는 실행 폴더가 없다 — 먼저 load 를 실행한다.", file=sys.stderr)
         return 1
+    if not (run_dir / "derived.ttl").is_file():
+        delete_graph(cfg, cfg.graphs["derived"])                 # survey 를 올리기 전에 — 새 survey 와 옛 derived 가 같이 있는 순간이 없게
+        print(f"[OK] derived 비움 — {cfg.graphs['derived']} (이 실행에 derived.ttl 없음; 이전 도출 결과가 새 survey 와 섞이지 않게)")
     for name, path in (("schema", GEN_DIR / "engenius_tool.owl.ttl"), ("survey", run_dir / "survey.ttl")):
         n = push_graph(cfg, cfg.graphs[name], path.read_bytes())
         print(f"[OK] {cfg.graphs[name]} ← {path.name} ({n} triples)")
@@ -116,12 +136,31 @@ def _latest_run(root):
 
 
 def cmd_apply_review(args: argparse.Namespace) -> int:
+    """검토표 판정 → tool_aliases.yaml. 쓰는 곳: --config-dir, 없으면 검토표가 나온 실행이 합성이면 config/, 아니면 data/real/config (C15).
+    공개 별칭(config/tool_aliases.yaml)은 쓰는 곳이 data/real/config 이거나 --with-public-aliases 일 때만 사슬 검사에 섞는다."""
     from pathlib import Path
 
-    from engenius_onto.survey_load import apply_review
+    from engenius_onto.config import REAL_CONFIG_DIR, REPO_ROOT, ConfigError
+    from engenius_onto.survey_load import apply_review, review_target_dir
 
-    merged, kept = apply_review(Path(args.csv))
-    print(f"config/tool_aliases.yaml 갱신 — 통합 {merged}건, 별개 {kept}건. 다시 load 하면 반영된다.")
+    target = Path(args.config_dir) if args.config_dir else review_target_dir(Path(args.csv))
+    overlay = bool(args.with_public_aliases) or target.resolve() == REAL_CONFIG_DIR.resolve()
+    try:
+        r = apply_review(Path(args.csv), target_dir=target, overlay=overlay)
+    except ConfigError as e:
+        return _config_error(e)
+    except ValueError as e:
+        print(f"[NG] {e}", file=sys.stderr)
+        return 1
+    try:
+        shown = str(r.path.resolve().relative_to(REPO_ROOT)).replace("\\", "/")
+    except ValueError:
+        shown = str(r.path)
+    print(f"{shown} 갱신 — 통합 {r.merged}건, 별개 {r.kept}건, 통합 해제 {r.undone}건. 다시 load 하면 반영된다.")
+    if r.encoding != "utf-8-sig":
+        print(f"  [주의] 검토표를 {r.encoding} 로 읽음 — 엑셀 '다른 이름으로 저장' 은 'CSV UTF-8(쉼표로 분리)' 를 고른다")
+    if target.resolve() != (REPO_ROOT / "config").resolve():
+        print("  (사내 오버레이 — 실 툴명이 들어 있으니 밖으로 가져가지 않는다. --data real 적재가 자동으로 읽는다)")
     return 0
 
 
@@ -143,7 +182,10 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     from engenius_onto.backends import fuseki_alive, fuseki_dataset_exists
     from engenius_onto.config import fuseki_config
 
+    from engenius_onto.config import installed_version
+
     ok = True
+    print(f"[--] 설치 판 {installed_version()} ({installed_version().source})")
     py = sys.version_info
     py_ok = py >= (3, 10)
     ok &= py_ok
@@ -209,10 +251,19 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--registry", help="레지스트리 폴더 (--data 대신)")
             sp.add_argument("--out", help="산출물 상위 폴더 (기본 output/)")
             sp.add_argument("--no-shacl", action="store_true", help="SHACL 검증 생략")
+            ov = sp.add_mutually_exclusive_group()               # 둘을 같이 주면 argparse 오류 (rc 2)
+            ov.add_argument("--overlay", help="설정 오버레이 폴더 (기본: --data real 이면 data/real/config, 있을 때)")
+            ov.add_argument("--no-overlay", action="store_true", help="설정 오버레이를 쓰지 않음 (--overlay 와 같이 못 쓴다)")
         if name == "push":
             sp.add_argument("--run", help="올릴 실행 폴더 (기본 output/ 의 최신)")
-    sp = sub.add_parser("apply-review", help="툴 통합 검토표(tool_review.csv)의 판정을 config/tool_aliases.yaml 에 반영")
+    sp = sub.add_parser("apply-review", help="툴 통합 검토표(tool_review.csv)의 판정을 tool_aliases.yaml 에 반영 "
+                                             "(실데이터 실행이면 data/real/config, 합성이면 config/)")
     sp.add_argument("csv")
+    sp.add_argument("--config-dir", help="쓸 설정 폴더 (기본: 검토표가 나온 실행으로 판단). 독립 사본이면 공개 별칭을 섞지 않는다 "
+                                         "(섞으려면 --with-public-aliases)")
+    sp.add_argument("--with-public-aliases", action="store_true", dest="with_public_aliases",
+                    help="저장소 config/tool_aliases.yaml 의 공개 별칭도 사슬 검사에 섞음 (data/real/config 에 쓸 때는 자동). "
+                         "load 의 --overlay(오버레이 폴더 경로)와는 다른 옵션")
     sp.set_defaults(func=cmd_apply_review)
     sp = sub.add_parser("template-examples", help="양식 xlsx 의 예시 행을 config/template_examples.yaml 로 추출")
     sp.add_argument("--form", action="append", help="양식 xlsx, 여러 번 가능 (기본: reference 의 v1.0 + v1.1 양식)")

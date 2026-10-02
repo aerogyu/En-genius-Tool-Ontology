@@ -52,9 +52,84 @@ def test_partner_split(raw, parts):
     ("CATIA V5", "Dassault Systèmes", "catia"),
     ("Microsoft Excel", "Microsoft", "excel"),
     ("가상-1D네트워크", "자체개발", "가상1d네트워크"),
+    ("C++", None, "cpp"),                          # I2 토큰 치환 (docs/09 #16 A) — C++·C#·C 가 'c' 로 합쳐지지 않는다
+    ("C#", "Microsoft", "csharp"),
+    ("Visual C++", "Microsoft", "visualcpp"),
+    ("Excel 2016", "Microsoft", "excel"),
+    ("CFX 2024 R1", "ANSYS", "cfx"),
+    ("자체개발 유량계산기", "자체개발", "자체개발유량계산기"),   # I34 범용 제조사는 접두로 떼지 않는다 (Leo Q3(b))
+    ("사내 개발 계산기", "사내개발", "사내개발계산기"),
 ])
 def test_tool_key(name, vendor, key):
     assert oracle.tool_key(name, vendor) == key
+
+
+@pytest.mark.parametrize("name, generic", [("자체개발", True), ("자체 개발", True), ("(자체 매크로)", True), ("-", True),
+                                           ("in-house", True), ("가상-1D네트워크", False), ("Excel", False)])
+def test_generic_tool_names(name, generic):
+    """I34: 빈 키·범용 이름은 행별 키 — 통합 대상이 아니다."""
+    assert oracle.is_generic_key(oracle.tool_key(name)) is generic
+
+
+def test_generic_names_get_row_keys_and_no_candidates():
+    """I34 거울: '자체개발' 두 행은 서로 다른 '미상:' 키이고 통합 후보에 오르지 않는다."""
+    r = oracle.compute(_spec(
+        [{"sw_id": "A-1", "name": "자체개발", "vendor": "자체개발"}, {"sw_id": "A-2", "name": "(자체 매크로)", "vendor": "v"},
+         {"sw_id": "A-3", "name": "C", "vendor": "v"}, {"sw_id": "A-4", "name": "C++", "vendor": "v"}], []), REPO)
+    assert {u.sw_id: u.tool for u in r["usages"]} == {"A-1": "미상:성능/A-1", "A-2": "미상:성능/A-2", "A-3": "c", "A-4": "cpp"}
+    assert r["candidates"] == []                                               # 'c' ⊂ 'cpp' 는 3자 미만 — 후보 아님
+
+
+def test_vendor_prefix_absorbed_into_existing_key():
+    """I1 거울 (Q3(a)): 제조사 칸이 비어도 다른 행의 제조사 접두를 떼면 기존 키와 같으면 그 툴."""
+    r = oracle.compute(_spec(
+        [{"sw_id": "A-1", "name": "Fluent", "vendor": "ANSYS"}, {"sw_id": "A-2", "name": "ANSYS Fluent", "vendor": ""},
+         {"sw_id": "A-3", "name": "ANSYS Fluent Meshing", "vendor": ""}], []), REPO)
+    assert {u.sw_id: u.tool for u in r["usages"]} == {"A-1": "fluent", "A-2": "fluent", "A-3": "ansysfluentmeshing"}
+
+
+def test_vendor_prefix_absorption_is_grouped():
+    """I1 거울: 셋이 얽혀도({altairfluent, ansysfluent, fluent}) 한 그룹 — 레지스트리를 모르는 참조 계산은 가장 짧은 키(접두를 뗀 쪽)."""
+    r = oracle.compute(_spec(
+        [{"sw_id": "A-1", "name": "Altair Fluent", "vendor": ""}, {"sw_id": "A-2", "name": "ANSYS Fluent", "vendor": ""},
+         {"sw_id": "A-3", "name": "Fluent", "vendor": "ANSYS"}, {"sw_id": "A-4", "name": "HyperMesh", "vendor": "Altair"}], []), REPO)
+    assert {u.sw_id: u.tool for u in r["usages"]} == {"A-1": "fluent", "A-2": "fluent", "A-3": "fluent", "A-4": "hypermesh"}
+
+
+def test_vendor_absorption_skips_group_with_distinct_pair():
+    """I1 거울 (3차 재검토): 별개 판정 쌍(명세 distinct)이 제3의 키를 거쳐 한 그룹에 들면 그 그룹은 흡수하지 않는다 — 툴 4, 경고 1.
+    직접 쌍이 별개면 그 쌍만 묶지 않고 나머지는 흡수한다."""
+    rows = [{"sw_id": "A-1", "name": "Altair Fluent", "vendor": ""}, {"sw_id": "A-2", "name": "ANSYS Fluent", "vendor": ""},
+            {"sw_id": "A-3", "name": "Fluent", "vendor": "ANSYS"}, {"sw_id": "A-4", "name": "HyperMesh", "vendor": "Altair"}]
+    spec = {**_spec(rows, []), "distinct": [["altairfluent", "ansysfluent"]]}
+    r = oracle.compute(spec, REPO)
+    assert {u.sw_id: u.tool for u in r["usages"]} == {"A-1": "altairfluent", "A-2": "ansysfluent", "A-3": "fluent", "A-4": "hypermesh"}
+    assert len(r["tools"]) == 4
+    assert [w for w in r["warnings"] if w.startswith("제조사 접두")] == ["제조사 접두 흡수와 별개 판정이 충돌: altairfluent / ansysfluent — 흡수하지 않음"]
+    spec = {**_spec(rows, []), "distinct": [["altairfluent", "fluent"]]}                 # 직접 쌍 — 그 쌍만 빠지고 ansysfluent 는 흡수
+    r = oracle.compute(spec, REPO)
+    assert {u.sw_id: u.tool for u in r["usages"]} == {"A-1": "altairfluent", "A-2": "fluent", "A-3": "fluent", "A-4": "hypermesh"}
+    assert not any(w.startswith("제조사 접두") for w in r["warnings"])
+
+
+def test_generic_vendor_never_absorbs():
+    """I1·I34 거울 (Q3(b)): 범용 제조사('자체개발')는 접두 흡수·연계 SW명 해석에 쓰지 않는다 — 자체개발 툴은 자동 통합하지 않는다."""
+    r = oracle.compute(_spec(
+        [{"sw_id": "A-1", "name": "유량계산기", "vendor": "자체개발"}, {"sw_id": "A-2", "name": "자체개발 유량계산기", "vendor": "자체개발"},
+         {"sw_id": "A-3", "name": "자체개발 유량계산기", "vendor": "in-house"}],
+        [{"sw_id": "A-1", "dir": "in", "name": "d", "cat": "해석-결과", "ext": "dat", "partner": "자체개발 유량계산기"}]), REPO)
+    assert {u.sw_id: u.tool for u in r["usages"]} == {"A-1": "유량계산기", "A-2": "자체개발유량계산기", "A-3": "자체개발유량계산기"}
+    assert r["ios"][0].partner_tools == {"자체개발유량계산기"} and r["ios"][0].partner_unresolved == []
+    assert oracle.survey_vendors(r["usages"]) == []
+
+
+def test_vendor_absorption_is_order_independent():
+    """I1: 흡수 쌍은 키 집합 위에서 정하므로 행 순서를 바꿔도 같은 툴 키."""
+    rows = [{"sw_id": "A-1", "name": "Fluent", "vendor": "ANSYS"}, {"sw_id": "A-2", "name": "ANSYS Fluent", "vendor": ""},
+            {"sw_id": "A-3", "name": "ANSYS Fluent", "vendor": "다른 회사"}]
+    a = oracle.compute(_spec(rows, []), REPO)
+    b = oracle.compute(_spec(rows[::-1], []), REPO)
+    assert {u.sw_id: u.tool for u in a["usages"]} == {u.sw_id: u.tool for u in b["usages"]} == {"A-1": "fluent", "A-2": "fluent", "A-3": "fluent"}
 
 
 def _spec(usages, ios):

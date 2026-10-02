@@ -14,3 +14,7 @@ set JAVA_EXE=java
 if not "%JAVA_HOME%"=="" set JAVA_EXE="%JAVA_HOME%\bin\java.exe"
 set FUSEKI_BASE=%CD%\run
 %JAVA_EXE% -Xmx2G -jar "%FUSEKI_HOME%\fuseki-server.jar" --localhost --port 3030 --config config\fuseki\engenius.ttl
+rem Reached only when the server stops (or fails to start: port 3030 busy, java not found). Keep the window open to read why.
+echo.
+echo [fuseki] server stopped. If it ended at once, read the lines above (port 3030 in use? JAVA_HOME in scripts\env.bat?)
+pause

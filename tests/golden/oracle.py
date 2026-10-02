@@ -14,6 +14,7 @@ import re
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from itertools import combinations
 from pathlib import Path
 
 import openpyxl
@@ -30,6 +31,11 @@ PRIO_RANK = {"상": 3, "중": 2, "하": 1}
 GRADE_ORDER = {"A": 0, "B": 1, "C": 2, "제외": 3}
 FUZZY = 0.85
 HUB_TOP_N = 10
+CONTAIN_MIN = 3                                                                        # [I23] 포함 후보는 짧은 키 3자 이상 (docs/09 #16)
+TOKEN_MAP = {"c++": "cpp", "c#": "csharp", "f#": "fsharp"}                              # [I2] rules.yaml tool_token_map
+GENERIC_NAMES = ["자체개발", "자체 개발", "자체제작", "자체 제작", "사내툴", "사내 툴", "사내개발", "사내 개발", "인하우스",
+                 "in-house", "inhouse", "custom", "매크로", "macro"]                     # [I34] rules.yaml generic_tool_names
+GENERIC_PREFIX = "미상:"
 
 EXT_ALIAS = {"step": "stp", "iges": "igs", "jpeg": "jpg", "tif": "tiff", "yml": "yaml",
              "엑셀": "xlsx", "워드": "docx", "파워포인트": "pptx", "한글": "hwp", "텍스트": "txt"}
@@ -93,15 +99,33 @@ def vendor_key(v: str | None) -> str:
     return _alnum(_base(v or ""))
 
 
+def _name_key(name: str) -> str:
+    tokens = [TOKEN_MAP.get(t, t) for t in _base(name).split() if not VERSION_TOKEN.match(t)]
+    return _alnum("".join(tokens))
+
+
+GENERIC_KEYS = {_name_key(n) for n in GENERIC_NAMES} - {""}
+
+
 def tool_key(name: str, vendor: str | None = None) -> str:
-    """NFKC → 소문자 → 괄호 주석 제거 → 버전 토큰 제거 → 영숫자·한글만 → 제조사 접두 제거 (6.1-2).
-    [I14] 떼어낸 나머지가 비면 떼지 않는다 (툴명 = 제조사명, 예: Tecplot)."""
-    tokens = [t for t in _base(name).split() if not VERSION_TOKEN.match(t)]
-    key = _alnum("".join(tokens))
+    """NFKC → 소문자 → 괄호 주석 제거 → 버전 토큰 제거 → 토큰 치환(C++→cpp, [I2]) → 영숫자·한글만 → 제조사 접두 제거 (6.1-2).
+    [I14] 떼어낸 나머지가 비면 떼지 않는다 (툴명 = 제조사명, 예: Tecplot). [I34] 제조사가 범용 이름('자체개발')이면 떼지 않는다."""
+    key = _name_key(name)
     v = vendor_key(vendor)
-    if v and key.startswith(v) and len(key) > len(v):
+    if v and v not in GENERIC_KEYS and key.startswith(v) and len(key) > len(v):
         key = key[len(v):]
     return key
+
+
+def is_generic_key(key: str) -> bool:
+    """[I34] 빈 키거나 범용 이름('자체개발' 등)의 키 — 통합하지 않고 행별 '미상:<파트>/<SW ID>' 키로 둔다."""
+    return key == "" or key in GENERIC_KEYS
+
+
+def survey_vendors(usages) -> list[str]:
+    """[I1] 접두 흡수·연계 SW명 해석에 쓰는 조사 제조사 키 — 범용 제조사('자체개발' 등, I34)는 뺀다. 긴 것부터."""
+    return sorted({vendor_key(u.vendor) for u in usages if vendor_key(u.vendor) and not is_generic_key(vendor_key(u.vendor))},
+                  key=len, reverse=True)
 
 
 def _id_norm(s) -> str:
@@ -112,11 +136,11 @@ def _id_norm(s) -> str:
 
 
 def split_partners(raw) -> list[str]:
-    """[I17] NFKC 후 , ; / · ㆍ ・ 줄바꿈으로 나눈다. [I16] 빈 값 토큰·정규화 키가 빈 조각은 버린다."""
+    """[I17] NFKC 후 , ; / · ㆍ ・ 줄바꿈으로 나눈다. [I16] 빈 값 토큰·정규화 키가 빈 조각은 버린다. [I34] 범용 이름 조각도 버린다."""
     out = []
     for p in PARTNER_SEP.split(_nfkc(raw)):
         p = p.strip()
-        if p.lower() in EMPTY_TOKENS or not tool_key(p):
+        if p.lower() in EMPTY_TOKENS or is_generic_key(tool_key(p)):
             continue
         out.append(p)
     return out
@@ -243,9 +267,11 @@ class Feed:
 
 # --------------------------------------------------------------------------- 셀 값 규칙 (docs/02 5-2)
 def cell_to_text(key: str, value, where: str, warnings: list) -> object:
-    """문자열 슬롯의 숫자·날짜 셀 변환 [D5]. 정수 슬롯(users, qty)은 그대로 둔다."""
-    if value is None or key in INT_SLOTS:
-        return value
+    """문자열 슬롯의 숫자·날짜 셀 변환 [D5]. 정수 슬롯(users, qty)은 그대로 두되 빈 값 토큰('NA'·'-')은 빈칸 [I16, docs/09 #21]."""
+    if value is None:
+        return None
+    if key in INT_SLOTS:
+        return None if isinstance(value, str) and value.strip().lower() in EMPTY_TOKENS else value
     if isinstance(value, bool):
         return str(value)
     if isinstance(value, int):
@@ -392,10 +418,52 @@ def compute(spec: dict, repo: Path) -> dict:
         stats["warnings"] = len(warnings) - w0
         per_file[fname] = stats
 
-    # 툴 — 정규화 키로 통합
-    vendors = {vendor_key(u.vendor) for u in usages if vendor_key(u.vendor)}
+    # 툴 — 정규화 키로 통합. [I34] 빈·범용 이름은 행별 키. [I1] 다른 행의 제조사 접두(범용 제조사 제외)를 떼면 기존 키와 같은 것은
+    # 그 툴로 흡수 (Q3(a)) — 키 집합 위에서 쌍을 정하고 합집합으로 묶어 **그룹 단위**로 모든 행에 적용 (셋 이상이 얽혀도 쌍을 버리지
+    # 않는다). 참조 계산은 레지스트리를 모르므로 생존 키는 늘 접두를 뗀 쪽 = 사슬의 끝 (명세에는 별칭이 없어 가장 짧은 키와 같다;
+    # amap(별칭·통합 판정)이 있으면 적재기는 접두를 뗀 키의 대표 키를 따른다). 적재기는 레지스트리 활성 행이 그룹에 정확히 하나면
+    # 그 키를 살리고, 둘 이상이면 흡수를 보류해 검토표로 올린다 — 레지스트리가 없을 때 결과가 같다.
+    # 별개 판정 쌍(명세 distinct: [[키 A, 키 B]], tool_aliases.yaml distinct 거울)이 그룹 안에 들면 — 직접 쌍은 묶지 않지만 제3의 키를
+    # 거쳐 한 그룹이 될 수 있다 — 그 그룹은 통째로 흡수하지 않고 경고 (합성 명세에는 없어 골든 값은 바뀌지 않는다)
+    vendors = survey_vendors(usages)
+    distinct = {tuple(sorted(p)) for p in (spec.get("distinct") or [])}
     for u in usages:
         u.tool = tool_key(u.name, u.vendor)
+        if is_generic_key(u.tool):
+            u.tool = f"{GENERIC_PREFIX}{u.field}/{u.sw_id}"
+    existing = {u.tool for u in usages}
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        while parent.get(x, x) != x:
+            x = parent[x]
+        return x
+
+    for k in sorted(existing):
+        if k.startswith(GENERIC_PREFIX):
+            continue
+        for vk in vendors:
+            rest = k[len(vk):]
+            if k.startswith(vk) and rest and rest in existing and tuple(sorted((k, rest))) not in distinct:
+                if find(k) != find(rest):
+                    parent[find(k)] = find(rest)
+                break
+    groups: dict[str, set[str]] = defaultdict(set)
+    for k in parent:
+        groups[find(k)].add(k)
+    absorb = {}
+    for end, members in groups.items():
+        members = members | {end}
+        clashes = sorted(p for p in combinations(sorted(members), 2) if p in distinct)
+        if clashes:
+            for a, b in clashes:
+                warnings.append(f"제조사 접두 흡수와 별개 판정이 충돌: {a} / {b} — 흡수하지 않음")
+            continue
+        survivor = min(members, key=lambda k: (len(k), k))      # 사슬의 끝 = 접두를 뗀 쪽 (별칭이 없으니 가장 짧은 키)
+        for k in members - {survivor}:
+            absorb[k] = survivor
+    for u in usages:
+        u.tool = absorb.get(u.tool, u.tool)
     tools = defaultdict(list)
     for u in usages:
         tools[u.tool].append(u)
@@ -404,7 +472,7 @@ def compute(spec: dict, repo: Path) -> dict:
         k = tool_key(name)
         if k in tools:
             return k
-        for vk in sorted(vendors, key=len, reverse=True):
+        for vk in vendors:
             rest = k[len(vk):]
             if k.startswith(vk) and rest and rest in tools:
                 return rest
@@ -542,11 +610,11 @@ def compute(spec: dict, repo: Path) -> dict:
             missing[k]["mentions"] += 1
             missing[k]["fields"].add(x.owner.field if x.owner else x.file_field)
 
-    # CQ10 [I23]
-    keys = sorted(tools)
+    # CQ10 [I23] — 행별 '미상:' 키는 후보에 올리지 않고, 포함은 짧은 키가 CONTAIN_MIN 자 이상일 때만 [I34]
+    keys = sorted(k for k in tools if not k.startswith(GENERIC_PREFIX))
     candidates = sorted({(a, b) for a in keys for b in keys if a < b and (
-        a in b or b in a or max(difflib.SequenceMatcher(None, a, b).ratio(),
-                                difflib.SequenceMatcher(None, b, a).ratio()) >= FUZZY)})
+        ((a in b or b in a) and min(len(a), len(b)) >= CONTAIN_MIN)
+        or max(difflib.SequenceMatcher(None, a, b).ratio(), difflib.SequenceMatcher(None, b, a).ratio()) >= FUZZY)})
     conflicts = {}
     for k, us in tools.items():
         for attr in ("vendor", "kind"):

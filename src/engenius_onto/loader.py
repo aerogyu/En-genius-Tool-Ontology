@@ -24,14 +24,15 @@ import re
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from itertools import combinations
 from pathlib import Path
 
 import openpyxl
 import yaml
 
-from engenius_onto.config import CONFIG_DIR, load_yaml
+from engenius_onto.config import CONFIG_DIR, ConfigError, load_config, load_yaml, read_yaml
 from engenius_onto.form_spec import Column, FormSpec, load_form_spec, norm_header
-from engenius_onto.normalize import Normalizer, nfc_strip
+from engenius_onto.normalize import GENERIC_KEY_PREFIX, Normalizer, merge_keys_from_pairs, nfc_strip, read_merge_pairs
 
 USAGE_SHEET, IO_SHEET = "SW기본정보", "SW입출력"      # 스키마의 시트 이름 (실제 파일의 시트 이름은 설정으로 찾는다)
 EXCEL_SUFFIXES = {".xlsx", ".xlsm", ".xls"}
@@ -223,14 +224,19 @@ def resolve_sheet(names: list[str], candidates) -> str | None:
 
 # --------------------------------------------------------------------------- 적재기
 class Loader:
-    def __init__(self, config_dir: Path | None = None, schema_file: Path | None = None):
+    def __init__(self, config_dir: Path | None = None, schema_file: Path | None = None, overlay_dir: Path | None = None):
+        """overlay_dir: 사내 설정 오버레이 폴더 (data/real/config, docs/09 C15) — 있는 파일만 config/ 위에 덮는다.
+        None 이면 오버레이 없음 (run_load 가 실데이터 실행일 때 default_overlay_dir() 로 정해 넘긴다)."""
         self.config_dir = config_dir or CONFIG_DIR
-        self.rules = load_yaml("rules.yaml", self.config_dir)
+        self.overlay_dir = Path(overlay_dir) if overlay_dir else None
+        self.overlay_files: list[str] = []                      # 실제로 덮은 오버레이 파일 이름 (load_log·diag 용, 값 없음)
+        self.rules = self._cfg("rules.yaml")
         self.lcfg = self.rules["loader"]
-        self.norm = Normalizer.from_config(self.config_dir)
+        self.norm = Normalizer.from_config(self.config_dir, self.overlay_dir)
+        self._note_overlay("extensions.yaml")
         self.spec: FormSpec = load_form_spec(schema_file, self.config_dir)
         self.examples = load_yaml("template_examples.yaml", self.config_dir)
-        self.aliases_cfg = load_yaml("tool_aliases.yaml", self.config_dir)
+        self.aliases_cfg = self._cfg("tool_aliases.yaml")
         self.person_re = re.compile(self.rules["person_pattern"])
         self.person_all = [re.compile(p) for p in self.rules.get("person_patterns_all") or []]
         self.free_text = set(self.rules["free_text_slots"])
@@ -241,11 +247,25 @@ class Loader:
         self.sheet_cands = {USAGE_SHEET: sheets["usage"], IO_SHEET: sheets["io"]}
         self.choice_aliases = {name: [name, *alts] for name, alts in (self.lcfg.get("choice_list_aliases") or {}).items()}
         self.absent_ok = set(self.lcfg.get("absent_ok_slots") or [])
-        parts_cfg = self._optional_yaml("parts.yaml")
+        parts_cfg = self._cfg("parts.yaml", optional=True)
         self.parts = parts_cfg.get("parts") or {}
         self.bundles = {k: list(v) for k, v in (parts_cfg.get("file_bundles") or {}).items()}
         self.synthetic_parts = set(parts_cfg.get("synthetic_parts") or [])
-        self.value_aliases = self._value_aliases(self._optional_yaml("value_aliases.yaml"))
+        self.value_aliases = self._value_aliases(self._cfg("value_aliases.yaml", optional=True))
+        self.min_contain = int(self.rules.get("candidate_min_contain_len", 3))
+        self.known_tool_keys: set[str] = set()                  # 레지스트리 활성 툴 키 (load() 가 받는다)
+        self.prefix_held: list[tuple[str, str]] = []            # 접두 흡수를 보류한 그룹의 키 쌍 (_absorptions → _candidates '제조사 접두')
+
+    def _cfg(self, name: str, optional: bool = False) -> dict:
+        """config/<name> (+ 오버레이). 덮은 파일 이름은 overlay_files 에 남긴다."""
+        data, used = load_config(name, self.config_dir, self.overlay_dir, optional=optional)
+        if used:
+            self._note_overlay(name)
+        return data
+
+    def _note_overlay(self, name: str) -> None:
+        if self.overlay_dir and (self.overlay_dir / name).is_file() and name not in self.overlay_files:
+            self.overlay_files.append(name)
 
     def _optional_yaml(self, name: str) -> dict:
         path = self.config_dir / name
@@ -264,7 +284,7 @@ class Loader:
         for col, mapping in (cfg or {}).items():
             slot = by_head.get(norm_header(col))
             if slot is None:
-                raise ValueError(f"config/value_aliases.yaml: 알 수 없는 열 '{col}' — 양식 헤더(예: '전달 방법')나 슬롯 이름을 쓴다")
+                raise ConfigError(f"config/value_aliases.yaml: 알 수 없는 열 '{col}' — 양식 헤더(예: '전달 방법')나 슬롯 이름을 쓴다")
             out.setdefault(slot, {}).update({nfc_strip(k): nfc_strip(v) for k, v in (mapping or {}).items()})
         return out
 
@@ -293,9 +313,12 @@ class Loader:
             return unicodedata.normalize("NFC", name), code, date
         return f"Tool조사_규칙밖_{sha[:10]}{Path(name).suffix.lower()}", None, None
 
-    def load(self, paths: list[Path]) -> LoadResult:
+    def load(self, paths: list[Path], known_tool_keys: set[str] | None = None) -> LoadResult:
+        """known_tool_keys: 레지스트리의 활성 툴 키 집합 (run_load 가 넘긴다) — 제조사 접두 흡수의 생존 키 선택에 쓴다
+        (레지스트리 ID 유지). 없으면(골든 oracle·단독 호출) 키 모양 규칙만."""
         warnings: list[str] = []
         self.issues: list[dict] = []
+        self.known_tool_keys = set(known_tool_keys or ())
         reports = []
         for p in paths:
             sha = hashlib.sha256(p.read_bytes()).hexdigest()
@@ -328,8 +351,8 @@ class Loader:
             usages += u
             ios += i
 
-        alias_map, alias_labels = self._alias_map()
-        tools = self._group_tools(usages, alias_map, alias_labels)
+        alias_map, alias_labels = self._alias_map(warnings)
+        tools = self._group_tools(usages, alias_map, alias_labels, {r.name: r for r in reports}, warnings)
         self._resolve_partners(ios, usages, tools, alias_map, warnings)
         self._disambiguate(ios, {r.name: r for r in reports}, warnings)
         candidates = self._candidates(tools)
@@ -455,6 +478,9 @@ class Loader:
         if col.kind == "int":
             if value is None or (isinstance(value, str) and not value.strip()):
                 return None, None
+            if isinstance(value, str) and self.norm.is_empty(value):      # 'NA'·'-'·'없음' 은 빈칸 (docs/09 #21 2단) — 경고 없음
+                self._na_int_cells += 1
+                return None, None
             if isinstance(value, bool):
                 return None, str(value)
             if isinstance(value, int):
@@ -554,6 +580,7 @@ class Loader:
         missing_lists: set = set()
         aliased = 0
         self._na_cells = 0
+        self._na_int_cells = 0
 
         def exclude(sheet, row, reason):
             excluded.append({"file": fname, "sheet": sheet, "row": row, "reason": reason})
@@ -647,6 +674,16 @@ class Loader:
         if self._na_cells:
             warnings.append(f"빈 값 표기(NA·-·해당없음 등) 드롭다운 칸: {fname} {self._na_cells}칸 — 선택지 검사에서 뺌 (원문 보존)")
             rep.warnings += 1
+        if self._na_int_cells:
+            warnings.append(f"빈 값 표기 정수 칸: {fname} {self._na_int_cells}칸 — 빈칸으로 봄 (docs/09 #21)")
+            rep.warnings += 1
+        # 입출력이 하나도 없는 툴사용 — 정상 고립일 수 있어 '확인 요청' 으로만 수정 요청표에 싣는다 (docs/11 3장 6번, 경고 아님)
+        owners = {id(x.owner) for x in ios if x.owner is not None}
+        for u in usages:
+            if id(u) not in owners:
+                self._issue(rep, USAGE_SHEET, u.row, u.sw_id, "Tool ID", None, "입출력 없음",
+                            "확인 요청 — 정상일 수 있음: 이 Tool 의 입출력이 Tool 입출력 시트에 없습니다. "
+                            "주고받는 데이터가 있으면 적어 주세요 (없으면 그대로 두셔도 됩니다)")
         return usages, ios
 
     def _part_of(self, rep: FileReport, tool_id, warnings: list, row: int) -> str | None:
@@ -670,32 +707,195 @@ class Loader:
         return [part] if part else []
 
     # ---- 툴 통합 (6.1) --------------------------------------------------------------
-    def _alias_map(self) -> tuple[dict[str, str], dict[str, str]]:
-        """정규화 키 → 대표 키, 대표 키 → 대표 이름 (config/tool_aliases.yaml)."""
+    def _alias_map(self, warnings: list | None = None) -> tuple[dict[str, str], dict[str, str]]:
+        """정규화 키 → 대표 키, 대표 키 → 대표 이름 (config/tool_aliases.yaml + 오버레이).
+
+        - aliases (이름 기반, 손으로 적는 것): 변형 표기의 키 → 대표 이름의 키, 대표 이름은 라벨
+        - merge_pairs (apply-review 의 판정 이력, docs/09 #2 A): 키가 있으면 (빈 목록이어도) 여기서 merge_keys 를 다시 계산해 쓴다 —
+          손으로 고친 이력이 조용히 무시되지 않게. 어느 파일의 merge_keys 가 자기 이력과 다르면 경고 (다음 apply-review 저장이 파일을
+          맞춘다). 이력 키가 없고 merge_keys 만 있는 옛 파일은 merge_keys 그대로 (B 키 → A 키, 생존 키 = A, TOOL ID 유지).
+        - labels: 키 → 대표 이름 (apply-review 의 '대표 이름' — 판정 당시의 대표 키에 적혀 있고 옮기지 않는다)
+        합친 뒤 추이적으로 닫는다 (A→B, B→C 면 A→C). 손으로 고친 파일의 순환은 경고하고 가장 작은 키를 대표로 (#14).
+        그룹의 대표 이름: labels[대표 키] 가 있으면 그것, 없으면 그룹 키 가운데 merge_pairs 에서 **가장 최근에 A 키로 적힌** 키의 라벨,
+        그다음 키 정렬 순 첫 라벨 (라벨이 전혀 없으면 ToolGroup 이 다수결 표기). 별개로 되돌리면 각 키는 자기 라벨로 돌아간다."""
         amap, labels = {}, {}
         for rep_name, variants in (self.aliases_cfg.get("aliases") or {}).items():
             rk = self.norm.tool_key(rep_name)
+            if not rk:
+                continue
             labels[rk] = nfc_strip(rep_name)
-            for name in [rep_name, *(variants or [])]:
-                amap[self.norm.tool_key(name)] = rk
-        return amap, labels
+            for name in variants or []:
+                vk = self.norm.tool_key(name)
+                if vk and vk != rk:
+                    amap[vk] = rk
+        file_mk = {nfc_strip(b): nfc_strip(a) for b, a in (self.aliases_cfg.get("merge_keys") or {}).items()}
+        pairs = read_merge_pairs(self.aliases_cfg, promote=False)
+        # merge_pairs **키가 있으면** (빈 목록이어도 — `merge_pairs: []` 로 비운 파일은 통합 0) 거기서 다시 계산, 키가 없는 옛 파일만 merge_keys
+        merge_keys = merge_keys_from_pairs(pairs) if "merge_pairs" in self.aliases_cfg else file_mk
+        if warnings is not None and self._merge_keys_stale():
+            warnings.append("손으로 고친 merge_pairs — merge_keys 재계산 (다음 apply-review 가 파일을 맞춘다)")
+        for b, a in merge_keys.items():
+            if b and a and b != a:
+                amap[b] = a
+        for k, name in (self.aliases_cfg.get("labels") or {}).items():
+            if nfc_strip(name):
+                labels[nfc_strip(k)] = nfc_strip(name)
 
-    def _group_tools(self, usages, amap, labels) -> dict[str, ToolGroup]:
-        tools: dict[str, ToolGroup] = {}
+        def root(k: str) -> str:
+            path = [k]
+            while path[-1] in amap:
+                nxt = amap[path[-1]]
+                if nxt in path:                                  # 순환 — 손으로 고친 파일에서만 생길 수 있다
+                    cyc = sorted(path[path.index(nxt):])
+                    if warnings is not None:
+                        warnings.append(f"툴 별칭 순환: {' ↔ '.join(cyc)} — 가장 작은 키 '{cyc[0]}' 를 대표로 (config/tool_aliases.yaml 확인)")
+                    return cyc[0]
+                path.append(nxt)
+            return path[-1]
+
+        closed = {k: root(k) for k in list(amap)}
+        closed = {k: v for k, v in closed.items() if k != v}
+        distinct = {tuple(sorted(p)) for p in (self.aliases_cfg.get("distinct") or [])}
+        for k, v in closed.items():
+            if tuple(sorted((k, v))) in distinct and warnings is not None:
+                warnings.append(f"툴 별칭과 별개 판정이 충돌: {k} / {v} — 통합이 적용됨 (config/tool_aliases.yaml distinct 확인)")
+        # 그룹 대표 이름 — 대표 키에 라벨이 없으면 그룹 키 가운데 이력에서 가장 최근에 A 키로 적힌 것 → 키 정렬 순
+        groups: dict[str, set[str]] = defaultdict(set)
+        for k, v in closed.items():
+            groups[v].add(k)
+        recent = {a: i for i, (a, _b) in enumerate(pairs)}        # 뒤에 적힌 것이 최근
+        for rep, members in groups.items():
+            if rep in labels:
+                continue
+            order = sorted((k for k in members if k in recent), key=lambda k: -recent[k]) + sorted(k for k in members if k not in recent)
+            for k in order:
+                if k in labels:
+                    labels[rep] = labels[k]
+                    break
+        return closed, labels
+
+    def _merge_keys_stale(self) -> bool:
+        """설정 파일(저장소 config/ 와 오버레이) 가운데 merge_keys 가 자기 merge_pairs 에서 계산한 것과 다른 파일이 있는가 —
+        손으로 고친 이력. 합친 설정(merge_config)은 merge_keys 를 다시 계산해 주므로 파일마다 원문을 따로 본다."""
+        for d in (self.config_dir, self.overlay_dir):
+            path = Path(d) / "tool_aliases.yaml" if d else None
+            if path is None or not path.is_file():
+                continue
+            raw = read_yaml(path)
+            if "merge_pairs" not in raw:
+                continue
+            mk = {nfc_strip(b): nfc_strip(a) for b, a in (raw.get("merge_keys") or {}).items()}
+            if merge_keys_from_pairs(read_merge_pairs(raw, promote=False)) != {b: a for b, a in mk.items() if b and a}:
+                return True
+        return False
+
+    def _group_tools(self, usages, amap, labels, reports: dict | None = None, warnings: list | None = None) -> dict[str, ToolGroup]:
+        """툴사용 → 툴 키 (6.1). 순서: 범용·빈 이름은 행별 '미상:' 키 (I34) → 별칭·통합(amap) → 제조사 접두 흡수 (I1, Q3(a)).
+
+        접두 흡수는 2단계 — 먼저 모든 툴사용의 키를 정하고, 그 키 집합 위에서 흡수 쌍(k, rest)을 구한 뒤 모든 툴사용에 적용한다
+        (행 순서에 따라 결과가 달라지지 않게). 생존 키는 _absorptions() 가 고른다. 흡수된 키는 alias_map 에도 넣어
+        레지스트리의 옛 행이 통합됨으로 바뀌게 한다."""
+        warnings = warnings if warnings is not None else []
+        raw_keys: dict[int, str] = {}
         for u in usages:
             k = self.norm.tool_key(u.v.get("reported_tool_name"), u.v.get("reported_vendor"))
-            u.tool_key = amap.get(k, k)
-            tools.setdefault(u.tool_key, ToolGroup(u.tool_key, [], labels.get(u.tool_key))).usages.append(u)
+            if self.norm.is_generic_key(k):
+                k = f"{GENERIC_KEY_PREFIX}{u.field}/{u.sw_id}"
+                warnings.append(f"툴 이름 범용/비어 있음: {u.file} {u.sw_id} — 통합하지 않고 행별 툴로 둠 (툴 이름 요청)")
+                rep = (reports or {}).get(u.file)
+                if rep is not None:
+                    rep.warnings += 1
+                    self._issue(rep, USAGE_SHEET, u.row, u.sw_id, "Tool명(정식)", u.v.get("reported_tool_name"), "툴 이름 범용/비어 있음",
+                                "툴 이름을 지어 주세요 — 분야마다 자체개발 툴이 달라 통합할 수 없습니다 "
+                                "(예: '<업무>용 <무엇> 계산기' 처럼 다른 파트가 알아볼 이름)")
+            raw_keys[id(u)] = amap.get(k, k)
+        absorb, reasons, self.prefix_held = self._absorptions(set(raw_keys.values()), usages, amap, warnings)
+        for key, v in list(amap.items()):                        # 흡수 뒤 별칭 사슬을 다시 닫는다 — '엑셀'→excel→microsoftexcel 이 한 번에
+            if v in absorb:                                      # (연계 SW명 해석·레지스트리 통합됨 표시는 amap.get 한 번만 본다)
+                amap[key] = absorb[v]
+        tools: dict[str, ToolGroup] = {}
+        for u in usages:
+            k = raw_keys[id(u)]
+            if k in absorb:
+                survivor = absorb[k]
+                warnings.append(f"제조사 접두 흡수: {u.file} {u.sw_id} '{k}' → '{survivor}' ({reasons[k]})")
+                amap.setdefault(k, survivor)                     # 레지스트리의 옛 행(k)이 통합됨으로 바뀌게 (rdf_writer)
+                if k in labels and survivor not in labels:
+                    labels[survivor] = labels[k]
+                k = survivor
+            u.tool_key = k
+            tools.setdefault(k, ToolGroup(k, [], labels.get(k))).usages.append(u)
         return dict(sorted(tools.items()))
+
+    def _absorptions(self, keys: set[str], usages, amap, warnings: list | None = None
+                     ) -> tuple[dict[str, str], dict[str, str], list[tuple[str, str]]]:
+        """키 집합 위의 제조사 접두 흡수 쌍 → ({패자 키: 생존 키}, {패자 키: 이유}, 보류한 그룹의 키 쌍 목록) (I1, Leo Q3(a)).
+
+        키 k 가 조사에 나온 제조사명(범용 제조사 제외, 긴 것부터)으로 시작하고 나머지 rest 가 다른 키와 같으면 둘은 같은 툴.
+        쌍을 합집합(union)으로 묶어 **그룹 단위**로 생존 키를 고른다 — 셋 이상이 얽혀도({altairfluent, ansysfluent, fluent}) 쌍을
+        버리지 않는다. 생존 키: 그룹 안에 레지스트리 활성 행(known_tool_keys)이 있는 키가 **정확히 하나**면 그 키 (TOOL ID 유지 —
+        'Fluent' 행이 새로 들어와도 기존 'ansysfluent' ID 가 흔들리지 않는다), 없으면 접두를 뗀 쪽, 곧 사슬의 끝(접두를 뗀 쪽의
+        대표 키 — amap 을 거친 뒤의 키; 골든 oracle 거울). 흡수하지 않고 통째로 건너뛰는 그룹 (HITL — 두 툴을 합치는 판정은 사람 몫):
+        · 그룹 안 어느 두 키가 별개 판정(distinct) 쌍이면 (직접 쌍은 애초에 묶지 않지만 제3의 키를 거쳐 한 그룹이 될 수 있다) —
+          경고 '제조사 접두 흡수와 별개 판정이 충돌', 후보표에는 올리지 않는다 (이미 판정한 쌍)
+        · 활성 레지스트리 키가 둘 이상이면 — 기존 툴 둘을 합치는 셈이라 경고 '제조사 접두 흡수 보류' 로 멈추고, 그룹의 모든 키 쌍을
+          통합 후보(사유 '제조사 접두', tool_review.csv)로 올린다 (돌려주는 세 번째 값)"""
+        vendors = self.norm.survey_vendors(u.v.get("reported_vendor") for u in usages)
+        distinct = {tuple(sorted(p)) for p in (self.aliases_cfg.get("distinct") or [])}
+        known = self.known_tool_keys
+        warnings = warnings if warnings is not None else []
+        parent: dict[str, str] = {}                           # union-find — 부모는 접두를 뗀 쪽
+
+        def find(x: str) -> str:
+            while parent.get(x, x) != x:
+                x = parent[x]
+            return x
+
+        for k in sorted(keys):
+            if k.startswith(GENERIC_KEY_PREFIX):
+                continue
+            for vk in vendors:
+                rest = k[len(vk):]
+                if not (k.startswith(vk) and rest):
+                    continue
+                rest = amap.get(rest, rest)
+                if rest not in keys or rest == k or tuple(sorted((k, rest))) in distinct:
+                    continue
+                rk, rr = find(k), find(rest)
+                if rk != rr:                                  # 같은 그룹이면(순환 방어) 그대로
+                    parent[rk] = rr
+                break
+        groups: dict[str, set[str]] = defaultdict(set)
+        for k in parent:
+            groups[find(k)].add(k)
+        absorb: dict[str, str] = {}
+        reasons: dict[str, str] = {}
+        held: list[tuple[str, str]] = []
+        for end, members in sorted(groups.items()):
+            members.add(end)
+            pairs = list(combinations(sorted(members), 2))
+            clashes = [p for p in pairs if p in distinct]
+            if clashes:
+                for a, b in clashes:
+                    warnings.append(f"제조사 접두 흡수와 별개 판정이 충돌: {a} / {b} — 흡수하지 않음")
+                continue
+            active = sorted(k for k in members if k in known)
+            if len(active) >= 2:
+                warnings.append(f"제조사 접두 흡수 보류: 기존 툴 둘 이상 ({', '.join(active)}) — 검토표에서 판정")
+                held.extend(pairs)
+                continue
+            survivor, why = (active[0], "레지스트리 ID 유지") if active else (end, "제조사 접두를 뗀 키")
+            for k in sorted(members - {survivor}):
+                absorb[k], reasons[k] = survivor, why
+        return absorb, reasons, held
 
     def _looks_person(self, s: str) -> bool:
         return bool(self.person_re.search(s) or any(p.search(s) for p in self.person_all))
 
     def _resolve_partners(self, ios, usages, tools, amap, warnings: list) -> None:
-        """연계 SW명 → 툴 (I1): 키가 같거나, 조사에 나온 제조사명을 앞에서 뗀 키가 같으면 그 툴.
+        """연계 SW명 → 툴 (I1): 키가 같거나, 조사에 나온 제조사명(범용 제조사 제외)을 앞에서 뗀 키가 같으면 그 툴.
         사람 이름처럼 보이는 표기는 조사 누락 후보에 올리지 않는다 (#20-2)."""
-        vendors = sorted({self.norm.vendor_key(u.v.get("reported_vendor")) for u in usages} - {""},
-                         key=len, reverse=True)
+        vendors = self.norm.survey_vendors(u.v.get("reported_vendor") for u in usages)
 
         def resolve(name: str) -> str | None:
             k = self.norm.tool_key(name)
@@ -721,19 +921,23 @@ class Loader:
                     x.partner_unresolved.append(self.norm.tool_key(p))
 
     def _candidates(self, tools) -> list[dict]:
-        """통합 후보 (I23) — 자동 통합하지 않는다. 별개 판정 쌍(distinct)은 제외."""
+        """통합 후보 (I23) — 자동 통합하지 않는다. 별개 판정 쌍(distinct)은 제외. 제조사 접두 흡수를 보류한 그룹(기존 툴 둘 이상)의
+        키 쌍은 사유 '제조사 접두' 로 올린다 (포함·유사도에 걸리지 않아도) — 사람이 검토표에서 판정한다."""
         distinct = {tuple(sorted(p)) for p in (self.aliases_cfg.get("distinct") or [])}
+        held = set(getattr(self, "prefix_held", []))
         th = float(self.rules["fuzzy_threshold"])
-        keys = sorted(tools)
+        keys = sorted(k for k in tools if not k.startswith(GENERIC_KEY_PREFIX))     # 행별 '미상:' 키는 후보에 올리지 않는다 (I34)
         out = []
         for i, a in enumerate(keys):
             for b in keys[i + 1:]:
                 if (a, b) in distinct:
                     continue
                 r = max(difflib.SequenceMatcher(None, a, b).ratio(), difflib.SequenceMatcher(None, b, a).ratio())
-                if a in b or b in a or r >= th:
+                contains = (a in b or b in a) and min(len(a), len(b)) >= self.min_contain    # 포함은 짧은 키가 3자 이상일 때만 (#16)
+                prefix = (a, b) in held
+                if contains or r >= th or prefix:
                     out.append({"a": a, "b": b, "similarity": round(r, 3),
-                                "reason": "포함" if (a in b or b in a) else "유사도",
+                                "reason": "제조사 접두" if prefix else "포함" if contains else "유사도",
                                 "names_a": tools[a].names, "names_b": tools[b].names})
         return out
 

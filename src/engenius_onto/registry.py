@@ -2,8 +2,11 @@
 
 - 키: 분야 = 이름, 툴 = 정규화 키, 분류 = 이름, 툴사용 = (FLD ID, SW ID 원문) — 원천 파일명은 키에 넣지 않는다 (D3).
 - 이번 적재에 없는 분야·툴·분류는 지우지 않고 status=폐기 로 남긴다 — survey 그래프에도 폐기 상태로 계속 낸다 (D7).
-  폐기된 ID 는 재발급하지 않는다 (다시 나오면 같은 ID 로 활성 복귀).
+  폐기된 ID 는 재발급하지 않는다 (다시 나오면 같은 ID 로 활성 복귀). 통합됨 행도 그 키가 다시 활성 그룹으로 보이면
+  같은 ID 로 되살린다 (docs/09 C2 — 별개 판정으로 통합을 되돌린 뒤).
+- 통합됨 행은 '본 것' 으로 치지 않는다 — 이번 적재의 미사용 행으로 돌아가 survey 그래프에 통합됨 상태·merged_into 로 계속 쓰인다 (#12).
 - 레지스트리는 데이터 옆에 둔다: data/synthetic/registry/, 사내는 data/real/registry/. 합성용을 실데이터에 쓰지 않는다.
+- CSV 는 utf-8-sig 로 쓰고, 읽을 때는 utf-8-sig → cp949 순으로 시도한다 (#15 — 엑셀로 저장한 사본 대비). 저장은 늘 utf-8-sig.
 """
 
 from __future__ import annotations
@@ -12,6 +15,8 @@ import csv
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from engenius_onto.config import read_csv_rows
 
 ACTIVE, MERGED, RETIRED = "활성", "통합됨", "폐기"
 
@@ -28,6 +33,8 @@ class Table:
     kind: str
     rows: list[dict] = field(default_factory=list)
     seen: set = field(default_factory=set)
+    created: set = field(default_factory=set)    # 이번 적재에서 새로 발급한 ID
+    revived: set = field(default_factory=set)    # 폐기·통합됨에서 활성으로 되살린 ID (C2)
 
     @property
     def spec(self):
@@ -46,7 +53,7 @@ class Table:
         return None
 
     def assign(self, key: tuple, label: str) -> str:
-        """키에 해당하는 ID (없으면 새 번호). 이번 적재에서 본 것으로 표시하고 활성으로 되돌린다."""
+        """키에 해당하는 ID (없으면 새 번호). 이번 적재에서 본 것으로 표시하고 활성으로 되돌린다 (폐기·통합됨 모두, C2)."""
         r = self.find(key)
         if r is None:
             _, prefix, width, keys = self.spec
@@ -54,10 +61,12 @@ class Table:
             r = {"id": f"{prefix}-{n:0{width}d}", **dict(zip(keys, key)), "label": label,
                  "status": ACTIVE, "merged_into": ""}
             self.rows.append(r)
+            self.created.add(r["id"])
         else:
             r["label"] = label
-            if r["status"] == RETIRED:
-                r["status"] = ACTIVE
+            if r["status"] in (RETIRED, MERGED):
+                r["status"], r["merged_into"] = ACTIVE, ""
+                self.revived.add(r["id"])
         self.seen.add(r["id"])
         return r["id"]
 
@@ -75,11 +84,13 @@ class Registry:
     def __init__(self, directory: Path):
         self.dir = Path(directory)
         self.tables = {k: Table(k) for k in KINDS}
+        self.notices: list[str] = []          # 읽기 중 알림 (cp949 로 읽음 등) — run_load 가 경고로 옮긴다
         for kind, t in self.tables.items():
             p = self.dir / KINDS[kind][0]
             if p.is_file():
-                with p.open(encoding="utf-8-sig", newline="") as f:
-                    t.rows = [dict(r) for r in csv.DictReader(f)]
+                t.rows, enc = read_csv_rows(p)
+                if enc != "utf-8-sig":
+                    self.notices.append(f"레지스트리 CSV 를 {enc} 로 읽음: {p.name} — 저장할 때 utf-8-sig 로 되돌린다 (#15)")
                 for r in t.rows:
                     r.setdefault("merged_into", "")
 
@@ -91,10 +102,10 @@ class Registry:
         return r["id"] if r else None
 
     def mark_merged(self, kind: str, key, into_id: str) -> None:
+        """키의 행을 통합됨으로 — seen 에 넣지 않는다 (C2 b): finalize 가 미사용 행으로 돌려주어 그래프에 상태와 함께 쓰인다."""
         r = self.tables[kind].find(key if isinstance(key, tuple) else (key,))
         if r is not None:
             r["status"], r["merged_into"] = MERGED, into_id
-            self.tables[kind].seen.add(r["id"])
 
     def finalize(self, retire: bool = True) -> dict[str, list[dict]]:
         """이번 적재에 없던 행을 폐기로 바꾸고, 이번에 쓰지 않은 행 목록(폐기·통합됨)을 돌려준다.
@@ -102,6 +113,10 @@ class Registry:
         if not retire:
             return {k: [r for r in t.rows if r["id"] not in t.seen] for k, t in self.tables.items()}
         return {k: t.retire_unseen() for k, t in self.tables.items()}
+
+    def transitions(self) -> dict[str, dict[str, int]]:
+        """종류별 신규·되살림 건수 (load_log 용, 값 없음)."""
+        return {k: {"created": len(t.created), "revived": len(t.revived)} for k, t in self.tables.items()}
 
     def check_writable(self) -> None:
         """적재 전에 레지스트리 폴더에 쓸 수 있는지 확인 (docs/09 #23) — 적재 뒤 저장 실패로 ID 가 어긋나지 않게."""

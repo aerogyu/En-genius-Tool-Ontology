@@ -65,15 +65,21 @@ def select(cfg: FusekiConfig, query: str) -> list[dict]:
     return [{k: v["value"] for k, v in b.items()} for b in res["results"]["bindings"]]
 
 
-def delete_graph(cfg: FusekiConfig, graph_iri: str) -> None:
+def delete_graph(cfg: FusekiConfig, graph_iri: str) -> bool:
+    """named graph 하나를 지운다 (SPARQL Graph Store Protocol DELETE). 그래프가 없어서 404 가 와도 정상 — False 를 돌려준다.
+    push 는 실행 폴더에 derived.ttl 이 없을 때 이것으로 derived 그래프를 비운다 (docs/09 #25a — 옛 파생 결과가 새 survey 와 섞이지 않게)."""
     import urllib.parse
 
     url = f"{cfg.dataset_url}/data?graph=" + urllib.parse.quote(graph_iri, safe="")
     try:
-        urllib.request.urlopen(urllib.request.Request(url, method="DELETE"), timeout=cfg.timeout_s)
+        with urllib.request.urlopen(urllib.request.Request(url, method="DELETE"), timeout=max(cfg.timeout_s, 60)) as r:
+            if r.status not in (200, 202, 204):
+                raise RuntimeError(f"Fuseki DELETE 실패 {r.status}: {graph_iri}")
+        return True
     except urllib.error.HTTPError as e:
         if e.code != 404:
             raise
+        return False
 
 
 def load_local(ds: Dataset, graph_iri: str, turtle: str) -> None:

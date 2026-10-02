@@ -52,7 +52,8 @@ if errorlevel 1 (
   echo [NG] doctor reported a problem - see the lines above. A missing Fuseki [--] is fine at this point.
 ) else (
   echo.
-  echo Done. Next: scripts\fuseki_start.bat in its own window, then scripts\load.bat synthetic
+  echo Done. Next: scripts\doctor.bat -^> load.bat -^> graph_view.bat -^> diag.bat
+  echo       scripts\fuseki_start.bat is needed only for push.bat and the SPARQL console
 )
 endlocal
 pause

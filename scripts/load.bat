@@ -15,10 +15,12 @@ if "%DATASET%"=="" set DATASET=synthetic
 echo [load] dataset = %DATASET%
 if not "%DATASET%"=="synthetic" if not "%DATASET%"=="real" (
   echo [NG] usage: load.bat synthetic ^| real
+  pause
   exit /b 1
 )
 if "%DATASET%"=="real" if not exist data\real\survey\ (
   echo [NG] data\real\survey\ not found. Put the survey xlsx files there first. File name rule: README_offline.md
+  pause
   exit /b 1
 )
 .venv\Scripts\python -m engenius_onto load --data %DATASET% %2 %3 %4
