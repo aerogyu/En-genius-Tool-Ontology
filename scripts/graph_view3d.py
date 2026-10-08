@@ -684,6 +684,11 @@ requestAnimationFrame(loop);
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):          # 한국어 Windows(cp949) 에서 출력을 파일로 돌려도 '—' 같은 글자 때문에 죽지 않게 (cli.main 과 같음)
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(description="적재한 온톨로지(survey.ttl)를 3D HTML 한 장으로")
     ap.add_argument("--run", help="실행 폴더 (기본: survey.ttl 이 있는 최신 output/<실행ID>)")
     ap.add_argument("--open", action="store_true", help="만든 뒤 기본 브라우저로 연다")
