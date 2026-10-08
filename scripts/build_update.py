@@ -107,6 +107,11 @@ def write_new(dst: Path, data: bytes, stamp: str) -> Path:
 
 def main() -> int:
     global ASK
+    for stream in (sys.stdout, sys.stderr):          # 한국어 Windows(cp949)에서 출력을 파일로 돌려도 '—' 같은 글자 때문에 죽지 않게 (PYTHONUTF8 없이 실행됨)
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     args = [a for a in sys.argv[1:] if a != "--yes"]
     ASK = "--yes" not in sys.argv[1:]
     root = Path(args[0]) if args else Path(r"C:\EnGenius\engenius-tool-ontology")

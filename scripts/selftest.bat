@@ -6,6 +6,8 @@ rem This .bat is ASCII-only on purpose: cmd reads .bat files as cp949 on Korean 
 setlocal
 cd /d "%~dp0.."
 call "%~dp0env.bat"
+rem env.bat turns on PYTHONUTF8, so the redirected log is UTF-8; switch this console to UTF-8 too so "type" shows Korean correctly.
+chcp 65001 >nul
 rem Read the commit with python (utf-8-sig): Notepad may save the marker with a BOM, and "set /p" would keep those 3 bytes in the file name.
 set COMMIT=unknown
 for /f "usebackq delims=" %%c in (`.venv\Scripts\python -c "import pathlib; p = pathlib.Path('offline/installed_commit.txt'); print((p.read_text(encoding='utf-8-sig').split() or ['unknown'])[0][:7] if p.is_file() else 'unknown')"`) do set COMMIT=%%c
