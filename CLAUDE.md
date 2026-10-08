@@ -135,7 +135,11 @@ offline/         반입 패키지 (wheels 등)
   ⑥ **'입출력 없음' 툴사용 74건** — 수정 요청에 포함해 담당자들에게 보냄, 회신 취합 뒤 재적재 ⑦ 재적재 뒤 diag 숫자 알려 주기로.
   **사내 AI 플랫폼 (Leo 2026-10-08)**: 플랫폼 에이전트가 **도구를 부를 수 있고 Leo 개인 PC 의 도구도 부를 수 있다 — 단 MCP 서버 연결 필요**, Fuseki 에 닿는다.
   → M6 = **온톨로지 MCP 서버**(공식 `mcp` Python SDK, 읽기 전용 도구 = docs/02 CQ 템플릿; Fuseki 또는 rdflib 로컬) — "Fuseki MCP" 범용이 아니라 우리 질의 함수를 도구로. 확인할 것:
-  플랫폼이 요구하는 전송(stdio 로컬 프로세스 / HTTP(streamable·SSE) URL)·인증·등록 방법, 서버를 Leo PC 에서 상시 띄울지. `mcp` 와 전이 의존(anyio·httpx·httpx-sse·pydantic-settings·sse-starlette·starlette·uvicorn 등, MIT/BSD)
+  플랫폼이 요구하는 전송(stdio 로컬 프로세스 / HTTP(streamable·SSE) URL)·인증·등록 방법, 서버를 Leo PC 에서 상시 띄울지.
+  **플랫폼 구조 (Leo 2026-10-08)**: 웹 플랫폼(개발자 개인 PC 가 서버, 사내 IP — 저장소에 적지 않음)에서 프롬프트 + 도구 선택으로 에이전트 생성, 에이전트끼리 연결 가능.
+  각 사용자 PC 에서 **'En-genius MCP' 라는 로컬 프로그램**을 켜면 Office·CATIA 등 로컬 도구가 플랫폼 에이전트에 붙는다(플랫폼 개발자가 묶어 둔 MCP 서버들); 논문 검색(RAG)은 서버 쪽 도구.
+  → 제안: **온톨로지 MCP 서버는 '한 곳'(플랫폼 서버 또는 Leo PC)에 HTTP 로 띄우고 모두가 공유** — 사용자는 Fuseki 를 깔지 않는다. 데이터는 그 서버의 Fuseki 하나(또는 TTL 파일 + rdflib).
+  플랫폼 개발자에게 물을 것: 원격(URL) MCP 서버 등록 가능 여부 / 아니면 En-genius MCP 묶음에 우리 서버를 포함하는 방법 / 서버 쪽 도구로 올릴 수 있는지. `mcp` 와 전이 의존(anyio·httpx·httpx-sse·pydantic-settings·sse-starlette·starlette·uvicorn 등, MIT/BSD)
   wheel 반입은 docs/04 에 추가 (M6 착수 때). **적재 마무리(회신 → 재적재) 뒤 M4 와 함께 설계.**
 - D1 구체화 — 착수 등급을 Reconciliation 이 아니라 착수 구간 클래스 `Handoff` 에 둠 (docs/07 3장, M4 확인 때)
 - ~~M3.1 결정 질문 묶음~~ → **13건 전부 권장안 승인** (2026-09-28, `docs/09` 3장 머리). L1~L4 착수 가능.
