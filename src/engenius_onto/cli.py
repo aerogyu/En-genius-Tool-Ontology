@@ -190,6 +190,9 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     py_ok = py >= (3, 10)
     ok &= py_ok
     print(f"[{'OK' if py_ok else 'NG'}] Python {platform.python_version()} (3.10 이상 필요)")
+    utf8 = bool(sys.flags.utf8_mode)                              # 한국어 Windows(cp949)에서 스키마·설정 YAML 을 읽으려면 필수 — scripts\env.bat 가 PYTHONUTF8=1 을 둔다
+    utf8_msg = "켜짐" if utf8 else "꺼짐 - scripts\\env.bat 를 거쳐 실행 (set PYTHONUTF8=1); 아니면 linkml·yaml 이 cp949 로 읽어 실패"   # (f-string 안에 역슬래시 금지, 3.10)
+    print(f"[{'OK' if utf8 else 'NG'}] Python UTF-8 모드 {utf8_msg}")
 
     jv = _java_version()
     print(f"[{'OK' if jv else '--'}] Java: {jv or '없음 (Fuseki 백엔드에만 필요)'}")

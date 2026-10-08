@@ -128,9 +128,14 @@ offline/         반입 패키지 (wheels 등)
   이 온톨로지를 거기에 연결하고 싶어 함. **이번 적재(수정 요청 회신 → 재적재) 마무리 뒤에 논의** (Leo). 그때 물을 것: 플랫폼 에이전트가 도구(함수 호출·MCP·HTTP)를 부를 수
   있는가 · Leo PC 의 Fuseki(127.0.0.1:3030)에 닿을 수 있는가(아니면 서버 이전) · 파일/표 첨부로 지식을 넣는 방식인가 · 프롬프트 길이 제한. 방향 후보: ① 플랫폼이 도구를 지원하면
   M6 의 MCP 함수(docs/02 CQ 템플릿)를 그대로 노출 ② 도구 없으면 M4 보고서·질의 결과를 **플랫폼에 넣을 텍스트/표로 내보내는 명령**(`export`)을 M4 산출물에 추가. M6 의 LangGraph 계획은 플랫폼 능력을 본 뒤 조정.
-- **다음 세션 시작 때 Leo 에게 받을 것 (2026-10-03 약속, 다음 주 출근 후)**: ① `offline\selftest_a3e4e0f.txt` 의 `FAILED` 3줄 + `[OK]/[NG]/[--]` 줄 ② `load.bat` rc 와 재적재 뒤 툴 수(183→?)
-  ③ diag '경고 종류별 건수' 중 툴 이름 범용/비어 있음·제조사 접두 흡수·흡수 보류 건수 ④ 지도 제목 v11·실데이터 여부 ⑤ 분야별 툴사용 277 vs 적재 282 — diag 파트별 표와 다른 파트·건수
-  ⑥ 수정 요청표의 '입출력 없음(확인 요청)' 행을 담당자에게 보낼지 결정 ⑦ (회신 파일이 오면) 재적재 뒤 diag 요약 숫자. 전부 값 없는 것만.
+- ~~다음 세션 시작 때 Leo 에게 받을 것~~ → **Leo 답 (2026-10-08)**: ① selftest 실패 3건 = `test_lint_clean`·`test_generated_files_up_to_date`·`test_help_subprocess`
+  → 원인 **Python UTF-8 모드 꺼짐**(개발 PC 는 사용자 env `PYTHONUTF8=1`, 사내 cp949) — env.bat `set PYTHONUTF8=1`·doctor 줄·tests/conftest.py 로 수리 (docs/08 6장).
+  ② a3e4e0f 적용·재적재 rc 0, **툴 183 → 186** ③ 툴 이름 범용/비어 있음 **6**, 제조사 접두 흡수 0, 보류 0 ④ 지도 v11·실데이터 확인 ⑤ 277 vs 282 는 모름(재적재 뒤)
+  ⑥ **'입출력 없음' 툴사용 74건** — 수정 요청에 포함해 담당자들에게 보냄, 회신 취합 뒤 재적재 ⑦ 재적재 뒤 diag 숫자 알려 주기로.
+  **사내 AI 플랫폼 (Leo 2026-10-08)**: 플랫폼 에이전트가 **도구를 부를 수 있고 Leo 개인 PC 의 도구도 부를 수 있다 — 단 MCP 서버 연결 필요**, Fuseki 에 닿는다.
+  → M6 = **온톨로지 MCP 서버**(공식 `mcp` Python SDK, 읽기 전용 도구 = docs/02 CQ 템플릿; Fuseki 또는 rdflib 로컬) — "Fuseki MCP" 범용이 아니라 우리 질의 함수를 도구로. 확인할 것:
+  플랫폼이 요구하는 전송(stdio 로컬 프로세스 / HTTP(streamable·SSE) URL)·인증·등록 방법, 서버를 Leo PC 에서 상시 띄울지. `mcp` 와 전이 의존(anyio·httpx·httpx-sse·pydantic-settings·sse-starlette·starlette·uvicorn 등, MIT/BSD)
+  wheel 반입은 docs/04 에 추가 (M6 착수 때). **적재 마무리(회신 → 재적재) 뒤 M4 와 함께 설계.**
 - D1 구체화 — 착수 등급을 Reconciliation 이 아니라 착수 구간 클래스 `Handoff` 에 둠 (docs/07 3장, M4 확인 때)
 - ~~M3.1 결정 질문 묶음~~ → **13건 전부 권장안 승인** (2026-09-28, `docs/09` 3장 머리). L1~L4 착수 가능.
 - ~~조직 단위 = 파트 설계~~ → **승인** (Leo 2026-09-28, `docs/10` Q1~Q5: 설계 예 · 정식 이름·담당 부서 매핑 기입(`config/parts.yaml`) ·

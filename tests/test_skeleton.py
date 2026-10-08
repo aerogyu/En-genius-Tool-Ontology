@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import urllib.parse
@@ -30,6 +31,7 @@ def test_help_subprocess():
     r = subprocess.run(
         [sys.executable, "-m", "engenius_onto", "--help"],
         capture_output=True, text=True, encoding="utf-8", cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONUTF8": "1"},                     # 자식도 UTF-8 로 쓰게 — 부모가 cp949 콘솔이어도 decode 가 깨지지 않게
     )
     assert r.returncode == 0
     for name in COMMANDS:

@@ -209,3 +209,5 @@ C:\EnGenius\engenius-tool-ontology\.venv\Scripts\python EnGenius_update_<이전>
 - PowerShell 실행 정책 오류는 `.ps1` 에만 해당 — 여기 스크립트는 전부 `.bat`.
 - `.bat` 없이 직접 치고 싶으면 (PowerShell, 저장소 폴더에서): `$env:PYTHONPATH="src"` 한 뒤 `.venv\Scripts\python -m engenius_onto --help`.
   cmd 에서는 `set PYTHONPATH=src`. 이걸 빼먹으면 `No module named engenius_onto` 가 난다.
+  **그리고 `set PYTHONUTF8=1`** — 한국어 Windows 에서 이것이 없으면 파이썬이 한국어 YAML(스키마·설정)을 cp949 로 읽어 `UnicodeDecodeError` 가 나고
+  selftest 3건(test_lint_clean·test_generated_files_up_to_date·test_help_subprocess)이 실패한다 (사내 2026-10-03). `.bat` 는 `env.bat` 이 알아서 켠다; `doctor` 가 `Python UTF-8 모드` 로 보여 준다.

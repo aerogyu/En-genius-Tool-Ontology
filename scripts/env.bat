@@ -9,3 +9,6 @@ rem PYTHON : interpreter used to create .venv (default: python on PATH). e.g. se
 if "%PYTHON%"=="" set PYTHON=python
 rem The code is run from the repo folder (src\), not installed as a package: config\, schema\, data\ are found relative to it.
 set PYTHONPATH=%~dp0..\src
+rem Python UTF-8 mode: schema/config YAML and generated files are UTF-8 with Korean text; without this, Python on a Korean
+rem Windows (code page 949) reads them as cp949 and linkml/yaml fail (selftest: test_lint_clean, test_generated_files_up_to_date, test_help_subprocess).
+set PYTHONUTF8=1
