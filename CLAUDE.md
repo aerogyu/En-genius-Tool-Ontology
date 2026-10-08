@@ -140,7 +140,8 @@ offline/         반입 패키지 (wheels 등)
   **플랫폼 구조 (Leo 2026-10-08)**: 웹 플랫폼(개발자 개인 PC 가 서버, 사내 IP — 저장소에 적지 않음)에서 프롬프트 + 도구 선택으로 에이전트 생성, 에이전트끼리 연결 가능.
   각 사용자 PC 에서 **'En-genius MCP' 라는 로컬 프로그램**을 켜면 Office·CATIA 등 로컬 도구가 플랫폼 에이전트에 붙는다(플랫폼 개발자가 묶어 둔 MCP 서버들); 논문 검색(RAG)은 서버 쪽 도구.
   → 제안: **온톨로지 MCP 서버는 '한 곳'(플랫폼 서버 또는 Leo PC)에 HTTP 로 띄우고 모두가 공유** — 사용자는 Fuseki 를 깔지 않는다. 데이터는 그 서버의 Fuseki 하나(또는 TTL 파일 + rdflib).
-  플랫폼 개발자에게 물을 것: 원격(URL) MCP 서버 등록 가능 여부 / 아니면 En-genius MCP 묶음에 우리 서버를 포함하는 방법 / 서버 쪽 도구로 올릴 수 있는지. `mcp` 와 전이 의존(anyio·httpx·httpx-sse·pydantic-settings·sse-starlette·starlette·uvicorn 등, MIT/BSD)
+  플랫폼 개발자에게 물을 것: 원격(URL) MCP 서버 등록 가능 여부 / 아니면 En-genius MCP 묶음에 우리 서버를 포함하는 방법 / 서버 쪽 도구로 올릴 수 있는지.
+  **접속 방향 확인 (Leo netstat, 2026-10-08): 아웃바운드** — 브리지가 플랫폼에 접속해 유지(LISTENING 없음). 1차 M6 형태 = **stdio MCP 서버를 En-genius MCP 묶음에**, 데이터는 Leo PC(처음엔 Leo 혼자). 플랫폼 '서버' 는 아직 개발자 개인 PC — 서버 배치 질문은 정식 서버가 생길 때. 문의 핵심 = 브리지 설정 형식 (docs/12 4장). `mcp` 와 전이 의존(anyio·httpx·httpx-sse·pydantic-settings·sse-starlette·starlette·uvicorn 등, MIT/BSD)
   wheel 반입은 docs/04 에 추가 (M6 착수 때). **적재 마무리(회신 → 재적재) 뒤 M4 와 함께 설계.**
 - D1 구체화 — 착수 등급을 Reconciliation 이 아니라 착수 구간 클래스 `Handoff` 에 둠 (docs/07 3장, M4 확인 때)
 - ~~M3.1 결정 질문 묶음~~ → **13건 전부 권장안 승인** (2026-09-28, `docs/09` 3장 머리). L1~L4 착수 가능.
