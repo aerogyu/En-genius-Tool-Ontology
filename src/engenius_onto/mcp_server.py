@@ -22,7 +22,8 @@ INSTRUCTIONS = (
     "툴(예: Excel, ANSYS Fluent), 툴사용(파트 × 툴 — 조사표 한 행), 입출력(툴사용이 받고 내놓는 데이터: 이름·분류·확장자·전달 방법·연계 툴)으로 이뤄진다. "
     "파트는 약칭(예: SAS, PRF)으로 부른다 — 먼저 overview 로 파트 목록과 규모를 본다. "
     "'연결 상대'는 조사표의 '연계 Tool명'으로 신고된 것만이다 (확장자·분류로 계산한 연결과 착수 등급은 아직 없다 — M4). "
-    "결과는 후보·원자료이며 판정은 엔지니어가 한다. 표에 없는 사실을 지어내지 말고, 모르면 모른다고 답한다."
+    "결과는 후보·원자료이며 판정은 엔지니어가 한다. 표에 없는 사실을 지어내지 말고, 모르면 모른다고 답한다. "
+    "도구가 준 순위·건수는 그대로 전하고, 행을 세거나 다른 기준으로 순위를 다시 매기지 않는다."
 )
 MAX_ROWS = 200
 
@@ -126,13 +127,20 @@ class Tools:
                                          ("data", "데이터"), ("ext", "확장자"), ("transfer", "전달 방법"), ("partner", "연계 툴"),
                                          ("frequency", "빈도"), ("auto", "자동화 가능(잠정)"), ("note", "비고")]))
 
-    def hub_candidates(self, limit: int = 30) -> str:
-        rows = self.s.hub_candidates()
-        return (self._head() + "툴 기준 에이전트 후보 (**잠정** — 조사표에 신고된 연결 기준, 3D 지도 '툴 기준 후보' 와 같은 순서). "
-                "정렬: 연결 상대 수 → 수기 전달 수 → 자동화 가능 → 같은 툴을 쓰는 파트 수. 판정은 엔지니어가 한다.\n\n"
-                + self._table(rows, [("tool", "툴"), ("part", "파트"), ("tool_id", "Tool ID"), ("partners", "연결 상대"),
-                                ("declared", "자기 신고"), ("mentioned", "상대 언급"), ("manual", "수기 전달"), ("auto", "자동화 가능"),
-                                ("parts", "같은 툴 쓰는 파트")], limit=max(1, min(int(limit), MAX_ROWS))))
+    def hub_candidates(self, limit: int = 20, by: str = "tool") -> str:
+        lim = max(1, min(int(limit), MAX_ROWS))
+        head = (self._head() + "툴 기준 에이전트 후보 (**잠정** — 조사표에 신고된 연결 기준, 3D 지도 '툴 기준 후보' 와 같은 순서). "
+                "정렬: 연결 상대 수 → 수기 전달 수 → 자동화 가능 → 같은 툴을 쓰는 파트 수. 판정은 엔지니어가 한다.\n"
+                "**'순위' 열이 정본이다 — 이 순서를 바꾸거나 다른 기준(쓰는 파트 수 등)으로 다시 매기지 말고 그대로 전한다.**\n\n")
+        if by == "usage":                                            # 파트별 행 (툴사용 단위) — 같은 툴이 파트마다 한 줄
+            rows = [{"rank": i + 1, **r} for i, r in enumerate(self.s.hub_candidates())]
+            return head + self._table(rows, [("rank", "순위"), ("tool", "툴"), ("part", "파트"), ("tool_id", "Tool ID"), ("partners", "연결 상대"),
+                                             ("declared", "자기 신고"), ("mentioned", "상대 언급"), ("manual", "수기 전달"),
+                                             ("auto", "자동화 가능"), ("parts", "같은 툴 쓰는 파트")], limit=lim)
+        rows = self.s.hub_candidates_by_tool()
+        return head + "툴로 묶은 순위 — 툴 순서는 그 툴을 쓰는 파트 중 가장 앞선 것 기준 (지도 순위표와 같다).\n\n" + self._table(rows, [
+            ("rank", "순위"), ("tool", "툴"), ("partners", "연결 상대 (최고)"), ("manual", "수기 전달"), ("auto", "자동화 가능"),
+            ("parts", "쓰는 파트 수"), ("detail", "세부 순위 (파트)")], limit=lim)
 
 
 def build_server(store: OntologyStore):
@@ -178,9 +186,10 @@ def build_server(store: OntologyStore):
         return t.manual_handoffs(part)
 
     @mcp.tool()
-    def hub_candidates(limit: int = 30) -> str:
-        """툴 기준 에이전트 후보 순위(잠정) — 연결 상대가 많은 툴사용 순. limit 행까지."""
-        return t.hub_candidates(limit)
+    def hub_candidates(limit: int = 20, by: str = "tool") -> str:
+        """툴 기준 에이전트 후보 순위(잠정, 3D 지도 '툴 기준 후보' 와 같은 순서) — 연결 상대가 많은 순. by="tool"(기본)은 툴로 묶은 순위,
+        by="usage" 는 파트별 행. 결과의 '순위' 열 순서를 그대로 전한다 (다시 정렬하지 않는다). limit 행까지."""
+        return t.hub_candidates(limit, by)
 
     return mcp
 

@@ -53,6 +53,26 @@ def test_store_matches_viewer(store, run_dir):
                                                                    data["counts"]["ios"], data["counts"]["fields"])
 
 
+def test_hub_candidates_grouped_like_viewer(store, run_dir):
+    """Leo 2026-10-09: 에이전트가 말한 순위가 지도와 달랐다 — 도구가 툴사용 행을 주자 LLM 이 '많이 쓰는 툴' 순으로 다시 매겼다.
+    툴로 묶은 순위를 도구가 직접 준다: 툴 순서 = 지도 순위표(툴의 첫 등장 순), 세부 순위는 1-1, 1-2 …"""
+    from engenius_onto.mcp_server import Tools
+
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import graph_view3d
+
+    data, _ = graph_view3d.build(run_dir)
+    viewer_order = list(dict.fromkeys(data["nodes"][r["t"]]["name"] for r in data["rank"]))  # 지도 renderRank 의 묶음 순서
+    groups = store.hub_candidates_by_tool()
+    assert [g["tool"] for g in groups] == viewer_order and [g["rank"] for g in groups] == list(range(1, len(groups) + 1))
+    assert sum(len(g["detail"]) for g in groups) == len(data["rank"]) and groups[0]["detail"][0].startswith("1-1 ")
+    text = Tools(store).hub_candidates(5)
+    assert "| 순위 | 툴 |" in text and "다시 매기지 말고" in text and text.count("\n| ") == 6        # 머리글 + 5행
+    first = [ln.split("|")[2].strip() for ln in text.splitlines() if ln.startswith("| ") and not ln.startswith("| 순위")]
+    assert first == viewer_order[:5]
+    assert "| 순위 | 툴 | 파트 |" in Tools(store).hub_candidates(3, by="usage")
+
+
 def test_store_queries(store):
     assert [r["tool"] for r in store.find_tool("엑셀")] == ["Excel"]                      # 공개 별칭(엑셀 → Excel)도 찾는다
     assert {r["tool"] for r in store.find_tool("ansys")} >= {"ANSYS FLUENT", "ANSYS Mechanical"}

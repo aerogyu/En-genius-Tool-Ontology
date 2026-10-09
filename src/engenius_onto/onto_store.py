@@ -343,3 +343,15 @@ class OntologyStore:
         for r in rank:
             del r["_name"]
         return rank
+
+    def hub_candidates_by_tool(self) -> list[dict]:
+        """툴로 묶은 순위 — 3D 뷰어 순위표(v10~ '1 Excel / 1-1 FS / 1-2 ACT')와 같다: 툴 순서 = 그 툴의 툴사용 중 가장 앞선 순위.
+        LLM 이 툴사용 행을 받아 스스로 툴 순위를 다시 매기면 '많이 쓰는 툴' 순으로 바뀌어 버린다 (Leo 2026-10-09) — 집계는 여기서 끝낸다."""
+        groups: dict[str, dict] = {}
+        for r in self.hub_candidates():
+            g = groups.get(r["tool"])
+            if g is None:
+                g = groups[r["tool"]] = {"rank": len(groups) + 1, "tool": r["tool"], "partners": r["partners"], "manual": r["manual"],
+                                         "auto": r["auto"], "parts": r["parts"], "detail": []}
+            g["detail"].append(f"{g['rank']}-{len(g['detail']) + 1} {r['part']} (연결 {r['partners']}·수기 {r['manual']})")
+        return list(groups.values())
