@@ -274,6 +274,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("diag", help="적재 진단 요약 — 경고 종류·열·파트별 건수만 (값 없음, 반출용)")
     sp.add_argument("--run", help="실행 폴더 (기본 output/ 의 최신)")
     sp.set_defaults(func=cmd_diag)
+    sp = sub.add_parser("mcp", help="Tool Ontology MCP 서버 (stdio, 읽기 전용 도구 8개 — 사내 AI 플랫폼 에이전트용, M6 v0)")
+    sp.add_argument("--run", help="실행 폴더 고정 (기본: 최신 실데이터 실행 — 재적재하면 자동으로 새 것을 읽는다)")
+    sp.add_argument("--data", choices=["real", "synthetic"], default="real", help="최신 실행을 고를 때 먼저 볼 데이터 (기본 real)")
+    sp.add_argument("--backend", choices=["local", "fuseki"], default="local",
+                    help="local = survey.ttl 을 rdflib 로 (Fuseki 불필요, 기본) · fuseki = config/fuseki.yaml 의 Fuseki 에 SPARQL")
+    sp.add_argument("--check", action="store_true", help="서버를 띄우지 않고 도구를 한 번씩 불러 본다 (자기 점검)")
+    sp.set_defaults(func=lambda a: __import__("engenius_onto.mcp_server", fromlist=["run"]).run(
+        run_dir=a.run, backend=a.backend, check=a.check, data=a.data))
     sp = sub.add_parser("doctor", help="실행 환경 점검 (Python·Java·패키지·Fuseki)")
     sp.set_defaults(func=cmd_doctor)
     sp = sub.add_parser("licenses", help="설치 패키지 라이선스 표 (금지 항목 있으면 rc=1)")

@@ -211,3 +211,44 @@ C:\EnGenius\engenius-tool-ontology\.venv\Scripts\python EnGenius_update_<이전>
   cmd 에서는 `set PYTHONPATH=src`. 이걸 빼먹으면 `No module named engenius_onto` 가 난다.
   **그리고 `set PYTHONUTF8=1`** — 한국어 Windows 에서 이것이 없으면 파이썬이 한국어 YAML(스키마·설정)을 cp949 로 읽어 `UnicodeDecodeError` 가 나고
   selftest 3건(test_lint_clean·test_generated_files_up_to_date·test_help_subprocess)이 실패한다 (사내 2026-10-03). `.bat` 는 `env.bat` 이 알아서 켠다; `doctor` 가 `Python UTF-8 모드` 로 보여 준다.
+
+## 9. 사내 AI 플랫폼에 붙이기 — Tool Ontology MCP 서버 (M6 v0, 2026-10-09)
+
+플랫폼 에이전트가 이 온톨로지를 **도구**로 쓰게 하는 읽기 전용 MCP 서버. 플랫폼의 **En-genius MCP**(Office·CATIA 를 붙이는 로컬 프로그램)에
+서버 하나를 더 등록하는 방식이다 — Leo PC 가 플랫폼에 먼저 접속하는 구조(아웃바운드)라 포트·방화벽 설정은 필요 없다 (docs/12).
+
+**① 설치 (한 번)** — `wheels_mcp_win_amd64_cp310.zip` 을 `offline\` 에 넣고 `scripts\install_mcp.bat` 더블클릭.
+`mcp` 와 의존 16개(전부 MIT/BSD/Apache/PSF)를 인터넷 없이 설치하고, 라이선스 점검과 도구 자기 점검까지 한다. 기존 패키지는 바꾸지 않는다.
+끝에 `[OK] 도구 8/8 동작` 이 나오면 된다.
+
+**② 언제든 점검** — `scripts\mcp_check.bat` (최신 실데이터 적재로 도구 8개를 한 번씩 부른다). 결과의 `[OK]/[NG]` 줄만 밖으로 가져올 수 있다.
+
+**③ 브리지에 등록** — En-genius MCP 설정에 아래 한 묶음을 더한다 (형식은 플랫폼 개발자 답에 맞춘다 — 보통 `mcpServers` JSON):
+```
+이름     : engenius-tool-ontology
+command  : C:\EnGenius\engenius-tool-ontology\.venv\Scripts\python.exe
+args     : ["-X", "utf8", "C:\EnGenius\engenius-tool-ontology\scripts\mcp_server.py"]
+전송     : stdio
+```
+JSON 이면 경로의 `\` 를 `\\` 로 두 번 쓴다 (예 `"C:\\EnGenius\\engenius-tool-ontology\\.venv\\Scripts\\python.exe"`). PYTHONPATH·env.bat 은 필요 없다 (`mcp_server.py` 가 알아서 찾는다).
+
+**④ 에이전트 만들기** — 플랫폼에서 도구 `engenius-tool-ontology` 를 선택. 프롬프트 예:
+"너는 연구소 툴 연결 분석 도우미다. 먼저 overview 로 파트 목록을 보고, 질문에 맞는 도구로 조사 결과를 찾아 표로 답한다.
+조사표에 없는 내용은 지어내지 않고, 순위·후보는 잠정이며 판정은 엔지니어가 한다고 밝힌다."
+
+**도구 8개** (전부 읽기 전용 — 쓰기·삭제 없음)
+
+| 도구 | 하는 일 |
+|---|---|
+| `overview` | 규모(툴·툴사용·입출력)와 파트 목록 — 에이전트가 먼저 부른다 |
+| `find_tool` | 이름 일부로 툴 찾기 (다른 표기·별칭 포함, 예 '엑셀' → Excel) |
+| `tool_info` | 툴 하나 — 쓰는 파트별 용도·빈도·인원·조작 방식·자동화 IF·애로 구간·자동화 희망 |
+| `part_tools` | 파트가 쓰는 툴 목록 |
+| `tool_io` | 툴의 입력·출력 데이터 (분류·확장자·전달 방법·연계 툴) |
+| `tool_partners` | 데이터를 주고받는다고 조사표에 **신고된** 상대 툴 (보냄/받음, 자기 신고/상대 언급) |
+| `manual_handoffs` | 사람 손으로 옮기는 구간 원자료 (메일·수기 전달, 비고의 수기 신호) |
+| `hub_candidates` | 툴 기준 에이전트 후보 순위 (잠정 — 3D 지도와 같은 순서) |
+
+- 데이터는 **최신 실데이터 적재**(`output\<실행ID>\survey.ttl`)를 읽는다. 재적재하면 다음 호출부터 새 것을 읽는다 — 서버를 다시 켤 필요 없다. Fuseki 는 필요 없다.
+- 답에는 실제 툴명·데이터명이 들어가 사내 LLM 으로 간다 (Leo 승인 2026-10-09). 자유 텍스트의 인명처럼 보이는 표기는 `[인명 추정 가림]` 으로 가린다.
+- 확장자·분류로 계산한 연결과 착수 등급·순위는 M4 뒤 같은 서버에 도구로 더한다 — 도구를 늘려도 브리지 설정은 그대로다.

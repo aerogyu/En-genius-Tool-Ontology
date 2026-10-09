@@ -78,7 +78,12 @@
   wheels 는 zip 한 개로(setup 이 자동 해제), 연결 지도 2개 동봉. 패키지에서 푼 그대로 설치·합성 적재 검증 (docs/04 6장).
   **사내 반입·설치 성공 (Leo 2026-09-30)** — 1~6단계(설치·Fuseki·합성 적재·push·SPARQL) 통과. 같은 날 적재 그래프 3D 뷰어
   `scripts\graph_view.bat` 추가, 저장소 zip `f3a4f55` 를 브랜치에 더함 (사내 갱신 = 풀어서 덮어쓰기)
-- [ ] M6 에이전트 준비 (Leo 승인 후 착수)
+- [~] **M6 에이전트 준비 — v0 MCP 서버 완료 (2026-10-09, Leo 승인 "그 정도로 시작")**: 사내 AI 플랫폼(자체 에이전트·LLM, En-genius MCP 브리지)에 붙일
+  **stdio MCP 서버** `scripts/mcp_server.py` = `python -m engenius_onto mcp` (`mcp==1.30.0` FastMCP, 읽기 전용 도구 8개: overview·find_tool·tool_info·part_tools·
+  tool_io·tool_partners·manual_handoffs·hub_candidates). 질의 층 `onto_store.py` 는 3D 뷰어와 같은 정의(순위 행 단위 일치 테스트), 최신 실데이터 survey.ttl 을 rdflib 로
+  (Fuseki 불필요·재적재 자동 반영), 모든 칸 인명 유사 표기 가림. 반입 = `wheels_mcp_win_amd64_cp310.zip`(새 wheel 17, 11.4 MB, 전부 허용형, pydantic 그대로) + `install_mcp.bat`·`mcp_check.bat`.
+  **Windows 함정**: stdio 의 stdin 동기 읽기 중 도구 스레드의 C 확장 첫 import(numpy) 영구 대기 → 시작 때 warm_up. LangGraph·langchain 은 보류(플랫폼이 에이전트를 가짐).
+  남은 것: 플랫폼 개발자 답(브리지 설정 형식) → 등록·실호출 확인 / M4 뒤 계산 연결·착수 순위·경로 도구 추가. README_offline 9장 · docs/12 5장.
 
 마일스톤을 끝낼 때마다 이 체크리스트와 아래 '미확정 사항'을 갱신한다.
 

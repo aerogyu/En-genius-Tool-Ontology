@@ -76,3 +76,14 @@ Leo 가 플랫폼 개발자에게 보낼 문의 초안. 답을 받으면 이 문
 | A1 | | |
 | A2 | | |
 | … | | |
+
+## 5. 만든 서버 — M6 v0 (2026-10-09)
+
+- 형태: **stdio MCP 서버** `scripts/mcp_server.py` (= `python -m engenius_onto mcp`), 공식 SDK `mcp==1.30.0` FastMCP, 읽기 전용 도구 8개 — README_offline 9장.
+- 데이터: 최신 실데이터 적재의 survey.ttl 을 rdflib 로 (Fuseki 불필요, `--backend fuseki` 선택 가능). 재적재하면 다음 호출에 자동 반영.
+- 질의 층 `onto_store.py` 는 3D 뷰어와 같은 정의 — 툴 기준 후보 순위가 지도와 행 단위로 같음을 테스트가 잡는다.
+- 출력: 마크다운 표(텍스트) — 어느 MCP 판·클라이언트에서도 읽힌다. 모든 칸에 인명 유사 표기 가리기.
+- **Windows 함정**: stdio 전송이 stdin 파이프를 다른 스레드에서 동기 읽기하는 동안 도구 스레드가 numpy 같은 C 확장을 처음 import 하면 영구 대기 →
+  서버 시작 때 도구를 한 번씩 돌려 import 를 끝낸다 (`warm_up`). `tests/test_mcp_server.py` 가 브리지와 같은 실행(`python -X utf8 scripts/mcp_server.py`,
+  PYTHONPATH·PYTHONUTF8 없음, 다른 작업 폴더)으로 initialize → tools/list → tools/call 을 확인한다.
+- 남은 것: 플랫폼 개발자 답(브리지 설정 형식·MCP 판)에 맞춰 등록 → Leo 에이전트에서 실제 호출 확인. M4 뒤 계산 연결·착수 순위·경로 도구 추가.
