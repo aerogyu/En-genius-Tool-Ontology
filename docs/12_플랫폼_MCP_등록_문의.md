@@ -77,6 +77,10 @@ Leo 가 플랫폼 개발자에게 보낼 문의 초안. 답을 받으면 이 문
 | A2 | | |
 | … | | |
 
+**2026-10-09 (Leo 가 플랫폼 화면에서 확인)**: MCP 서버 추가 방식 2가지 — ① **HTTP/SSE 주소**(이름 + 서버 주소 → MCP 저장 + 재연결)
+② **로컬 명령**(이름 · 실행 명령 · 인자 · 환경변수). 사내 설치·`install_mcp.bat` → `[OK] 도구 8/8 동작` 확인 (mcp 1.28.1).
+→ 1차는 ② 로 등록 (우리 stdio 서버 그대로). ① 은 여럿이 같은 서버를 쓸 때 — 같은 SDK 로 HTTP 전송을 켤 수 있으나 플랫폼 PC → 서버 PC 인바운드가 필요하다.
+
 ## 5. 만든 서버 — M6 v0 (2026-10-09)
 
 - 형태: **stdio MCP 서버** `scripts/mcp_server.py` (= `python -m engenius_onto mcp`), 공식 SDK `mcp==1.30.0` FastMCP, 읽기 전용 도구 8개 — README_offline 9장.
