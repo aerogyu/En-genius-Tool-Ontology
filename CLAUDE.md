@@ -56,8 +56,8 @@
 - [~] **M3.1 적재기 보강** — **1차 완료 (2026-09-30, `1874bc7`)**: 양식 v1.1·파트 단위(MD 묶음)·스키마 v0.3·안전장치(#4~#9·#11·#13·#18~#24)·
   value_aliases·수정 요청표·diag → **실데이터 적재 가능**. 사내 반입은 텍스트 업데이트 파일(`scripts/build_update.py`, README_offline 6-1) —
   **`EnGenius_update_f3a4f55_to_4423d92.py.txt` (Leo 적용 확인) → `EnGenius_update_4423d92_to_62114a9.py.txt` (3D 뷰어 v4) 를 import-package 에 올림 (2026-09-30). 이어서 `EnGenius_update_62114a9_to_630ec66.py.txt` (3D 뷰어 v6, import-package 9df9fdb). 이어서 `…630ec66_to_f1a2a08` (검토용 diag 확장 + 뷰어 v7, import-package 79194c4). → `…f1a2a08_to_9bc1ac6` (실데이터 실행 우선, import-package e08dc8b). → `…f1a2a08_to_1cbd4ee` (파트 약칭만, 9bc1ac6 포함). → `…f1a2a08_to_94403db` (뷰어 v10, **테스트 1건 실패 상태로 올림 — 쓰지 말 것**) → `…f1a2a08_to_87881eb` (v10 + 연도 표기 통합 수리, import-package be3caec). 87881eb 사내 적용 확인 (Leo 2026-10-02) → `…87881eb_to_a3e4e0f` (M3.1 2차 1묶음, import-package 62a0025) → **a3e4e0f 사내 적용 확인 (Leo 2026-10-08, selftest 3건 실패 = UTF-8 모드)** →
-  `…a3e4e0f_to_dd6a94a` (UTF-8 모드 수리, import-package 8db6731) → **`…a3e4e0f_to_7a092e1` + `wheels_mcp_win_amd64_cp310.zip`(LFS) (M6 v0 MCP 서버 + ID 이어받기, import-package 982d764) 올림 2026-10-09**
-  — Leo 적용 확인되면 다음은 `--from 7a092e1`. 사내 흉내 리허설(a3e4e0f 복사본 + mcp 없는 새 venv, PYTHONUTF8 없음): 적용 → install_mcp 17개 → 합성 적재 → mcp_check 8/8 → 브리지식 stdio 왕복 통과.
+  `…a3e4e0f_to_dd6a94a` (UTF-8 모드 수리, import-package 8db6731) → `…a3e4e0f_to_7a092e1` + `wheels_mcp…zip` (SDK 판, import-package 982d764 — **쓰지 말 것: 표준 라이브러리 판으로 대체**) → 아래 새 업데이트.
+   사내 흉내 리허설(a3e4e0f 복사본 + mcp 없는 새 venv, PYTHONUTF8 없음): 적용 → install_mcp 17개 → 합성 적재 → mcp_check 8/8 → 브리지식 stdio 왕복 통과.
   업데이트 파일은 이제 사이 판 sha 집합(KNOWN)을 품어 어느 사이 판에든 적용되고, 사내 로컬 수정은 `.new` 로 보존한다 (build_update.py, pytest 게이트 내장). 업데이트는 파일을 통째로 쓰므로 옛 기준에서 만든 것도 새 기준 위에 적용 가능 (삭제 파일 없을 때).
   **1차 적재 검토 (2026-10-01~02, `docs/11`)**: diag 는 반출 불가 → 6관점 독립 검토(반박 검증 통과 21건)·개선안 14건·Leo 결정 Q1~Q4 (docs/11 8장).
   분야별 툴사용 합 277 vs 적재 282 → Leo 가 diag 파트별 표와 대조해 차이 나는 파트만 알려 주기로 (답 대기).
@@ -80,10 +80,10 @@
   **사내 반입·설치 성공 (Leo 2026-09-30)** — 1~6단계(설치·Fuseki·합성 적재·push·SPARQL) 통과. 같은 날 적재 그래프 3D 뷰어
   `scripts\graph_view.bat` 추가, 저장소 zip `f3a4f55` 를 브랜치에 더함 (사내 갱신 = 풀어서 덮어쓰기)
 - [~] **M6 에이전트 준비 — v0 MCP 서버 완료 (2026-10-09, Leo 승인 "그 정도로 시작")**: 사내 AI 플랫폼(자체 에이전트·LLM, En-genius MCP 브리지)에 붙일
-  **stdio MCP 서버** `scripts/mcp_server.py` = `python -m engenius_onto mcp` (`mcp==1.30.0` FastMCP, 읽기 전용 도구 8개: overview·find_tool·tool_info·part_tools·
+  **stdio MCP 서버** `scripts/mcp_server.py` = `python -m engenius_onto mcp` (stdlib JSON-RPC, 읽기 전용 도구 8개: overview·find_tool·tool_info·part_tools·
   tool_io·tool_partners·manual_handoffs·hub_candidates). 질의 층 `onto_store.py` 는 3D 뷰어와 같은 정의(순위 행 단위 일치 테스트), 최신 실데이터 survey.ttl 을 rdflib 로
-  (Fuseki 불필요·재적재 자동 반영), 모든 칸 인명 유사 표기 가림. 반입 = `wheels_mcp_win_amd64_cp310.zip`(새 wheel 17, 11.4 MB, 전부 허용형, pydantic 그대로) + `install_mcp.bat`·`mcp_check.bat`.
-  **Windows 함정**: stdio 의 stdin 동기 읽기 중 도구 스레드의 C 확장 첫 import(numpy) 영구 대기 → 시작 때 warm_up. LangGraph·langchain 은 보류(플랫폼이 에이전트를 가짐).
+  (Fuseki 불필요·재적재 자동 반영), 모든 칸 인명 유사 표기 가림. **표준 라이브러리 구현으로 교체 (Leo 2026-10-09: .whl 반입이 어려움)** — 새 패키지 0, `mcp` SDK 는 개발 전용 규격 검사(requirements-dev). `mcp_check.bat`.
+  심사를 피해 바이너리를 텍스트로 감싸 들여오는 방식은 쓰지 않는다 (Leo 가 편하다고 했으나 거절 — 반입 통제 우회). LangGraph·langchain 은 보류(플랫폼이 에이전트를 가짐).
   남은 것: 플랫폼 개발자 답(브리지 설정 형식) → 등록·실호출 확인 / M4 뒤 계산 연결·착수 순위·경로 도구 추가. README_offline 9장 · docs/12 5장.
 
 마일스톤을 끝낼 때마다 이 체크리스트와 아래 '미확정 사항'을 갱신한다.

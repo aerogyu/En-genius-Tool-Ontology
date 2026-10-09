@@ -1,22 +1,31 @@
-"""Tool Ontology MCP 서버 (M6 v0, 2026-10-09) — 사내 AI 플랫폼 에이전트가 부르는 읽기 전용 도구 8개.
+"""Tool Ontology MCP 서버 (M6 v0, 2026-10-09) — 사내 AI 플랫폼 에이전트가 부르는 읽기 전용 도구 8개. **표준 라이브러리만** 쓴다.
 
-실행: python -X utf8 -m engenius_onto mcp            (stdio — 사내 플랫폼의 En-genius MCP 브리지가 프로세스로 띄운다)
+실행: python -X utf8 scripts/mcp_server.py            (stdio — 사내 플랫폼의 En-genius MCP 브리지가 프로세스로 띄운다)
       python -m engenius_onto mcp --check             (플랫폼 없이 도구를 한 번씩 불러 보는 자기 점검)
-전송은 stdio 만 (Leo PC → 플랫폼 아웃바운드 구조, docs/12 4장). stdout 은 MCP 메시지 전용 — 여기서 print 하지 않는다 (로그는 stderr).
 
-도구는 onto_store.OntologyStore 의 질의를 마크다운 표로 돌려준다 (어느 MCP 판·클라이언트에서도 읽히는 텍스트).
-값은 적재한 실데이터 그대로 사내 LLM 으로 간다 (Leo 2026-10-09 승인); 자유 텍스트의 인명 유사 표기는 가린다 (절대 규칙 5).
-에이전트는 판정하지 않는다 — 도구 설명과 결과 머리말이 '후보·잠정·원자료' 임을 밝힌다 (절대 규칙 6).
+왜 SDK 없이: stdio MCP 는 줄 단위 JSON-RPC 2.0 이고, 우리가 쓰는 것은 initialize · tools/list · tools/call 뿐이다. 공식 SDK(mcp)는
+의존 16개(컴파일된 DLL 포함)를 끌고 와 반입 심사가 따로 필요했다 (Leo 2026-10-09) — 표준 라이브러리 구현이면 새 패키지 0, 소스 코드라
+업데이트 텍스트 파일로 들어간다. 규격 준수는 개발 PC 에서 공식 SDK 클라이언트로 검사한다 (tests/test_mcp_server.py — SDK 는 개발 전용).
+또 단일 스레드라 Windows 의 'stdin 동기 읽기 중 다른 스레드의 DLL import 영구 대기' 문제가 생기지 않는다.
+
+규격: MCP 2025-06-18 / 2025-03-26 / 2024-11-05 (클라이언트가 요청한 판이 이 중 하나면 그 판, 아니면 최신으로 응답 — 판 협상 규칙).
+stdout 은 MCP 메시지 전용 — 로그는 stderr 로만. 메시지는 UTF-8 한 줄 JSON (줄바꿈은 JSON 문자열 안에서 \\n 으로 이스케이프된다).
+
+도구는 onto_store.OntologyStore 의 질의를 마크다운 표로 돌려준다. 값은 적재한 실데이터 그대로 사내 LLM 으로 간다 (Leo 승인);
+모든 칸의 인명 유사 표기는 가린다 (절대 규칙 5). 결과는 '후보·잠정·원자료' 임을 밝힌다 — 판정은 엔지니어 (절대 규칙 6).
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
+from engenius_onto import __version__
 from engenius_onto.onto_store import OntologyStore
 
 SERVER_NAME = "engenius-tool-ontology"
+PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")     # 앞이 최신
 INSTRUCTIONS = (
     "한화에어로스페이스 엔진 연구소 각 파트의 툴 조사를 적재한 지식 그래프(Tool Ontology)다. "
     "툴(예: Excel, ANSYS Fluent), 툴사용(파트 × 툴 — 조사표 한 행), 입출력(툴사용이 받고 내놓는 데이터: 이름·분류·확장자·전달 방법·연계 툴)으로 이뤄진다. "
@@ -57,7 +66,7 @@ def _matches(res: dict, what: str) -> str | None:
 
 
 class Tools:
-    """도구 본문 — MCP 와 분리해 두어 --check·테스트가 그대로 부른다."""
+    """도구 본문 — 프로토콜과 분리해 두어 --check·테스트가 그대로 부른다."""
 
     def __init__(self, store: OntologyStore):
         self.s = store
@@ -75,10 +84,10 @@ class Tools:
         return (self._head() + f"툴 {o['tools']} · 툴사용 {o['usages']} · 입출력 {o['ios']} · 파트 {len(o['parts'])}\n\n"
                 + self._table(o["parts"], [("code", "파트 약칭"), ("name", "파트 이름"), ("usages", "툴사용"), ("ios", "입출력")]))
 
-    def find_tool(self, query: str) -> str:
+    def find_tool(self, query: str = "") -> str:
         rows = self.s.find_tool(query)
         return self._head() + self._table(rows, [("tool", "툴 (대표 이름)"), ("alt", "다른 표기"), ("vendor", "제조사"),
-                                            ("usages", "툴사용 수"), ("parts", "쓰는 파트")])
+                                                 ("usages", "툴사용 수"), ("parts", "쓰는 파트")])
 
     def tool_info(self, tool: str) -> str:
         r = self.s.tool_info(tool)
@@ -114,7 +123,7 @@ class Tools:
         return (self._head() + f"**{r['tool']}** 와 데이터를 주고받는다고 **조사표에 신고된** 툴 (확장자로 계산한 연결은 M4 뒤)\n"
                 "보냄 = 이 툴 → 상대, 받음 = 상대 → 이 툴. 자기 신고 = 이 툴 쪽 조사표, 상대 언급 = 상대 쪽 조사표.\n\n"
                 + self._table(r["partners"], [("partner", "상대 툴"), ("flow", "방향"), ("how", "근거"), ("parts", "파트"),
-                                         ("manual", "수기 전달 수"), ("data", "데이터 [확장자] · 전달 방법")]))
+                                              ("manual", "수기 전달 수"), ("data", "데이터 [확장자] · 전달 방법")]))
 
     def manual_handoffs(self, part: str = "") -> str:
         r = self.s.manual_handoffs(part or None)
@@ -123,70 +132,130 @@ class Tools:
         return (self._head() + "사람 손으로 옮기는 구간의 **원자료** (전달 방법이 수기이거나 비고에 수기 신호). "
                 "착수 등급·순위는 아직 계산 전 — 후보로만 본다.\n\n"
                 + self._table(r["handoffs"], [("kind", "종류"), ("part", "파트"), ("tool_id", "Tool ID"), ("tool", "툴"), ("dir", "방향"),
-                                         ("data", "데이터"), ("ext", "확장자"), ("transfer", "전달 방법"), ("partner", "연계 툴"),
-                                         ("frequency", "빈도"), ("auto", "자동화 가능(잠정)"), ("note", "비고")]))
+                                              ("data", "데이터"), ("ext", "확장자"), ("transfer", "전달 방법"), ("partner", "연계 툴"),
+                                              ("frequency", "빈도"), ("auto", "자동화 가능(잠정)"), ("note", "비고")]))
 
     def hub_candidates(self, limit: int = 30) -> str:
         rows = self.s.hub_candidates()
         return (self._head() + "툴 기준 에이전트 후보 (**잠정** — 조사표에 신고된 연결 기준, 3D 지도 '툴 기준 후보' 와 같은 순서). "
                 "정렬: 연결 상대 수 → 수기 전달 수 → 자동화 가능 → 같은 툴을 쓰는 파트 수. 판정은 엔지니어가 한다.\n\n"
                 + self._table(rows, [("tool", "툴"), ("part", "파트"), ("tool_id", "Tool ID"), ("partners", "연결 상대"),
-                                ("declared", "자기 신고"), ("mentioned", "상대 언급"), ("manual", "수기 전달"), ("auto", "자동화 가능"),
-                                ("parts", "같은 툴 쓰는 파트")], limit=max(1, min(int(limit), MAX_ROWS))))
+                                     ("declared", "자기 신고"), ("mentioned", "상대 언급"), ("manual", "수기 전달"), ("auto", "자동화 가능"),
+                                     ("parts", "같은 툴 쓰는 파트")], limit=max(1, min(int(limit), MAX_ROWS))))
 
 
-def build_server(store: OntologyStore):
-    """FastMCP 서버 — 도구 이름은 영문, 설명은 한국어 (LLM 이 고를 때 읽는다). 전부 읽기 전용."""
-    from mcp.server.fastmcp import FastMCP
+def _s(desc: str) -> dict:
+    return {"type": "string", "description": desc}
 
-    t = Tools(store)
-    mcp = FastMCP(SERVER_NAME, instructions=INSTRUCTIONS)
 
-    @mcp.tool()
-    def overview() -> str:
-        """Tool Ontology 전체 규모와 파트 목록(약칭·이름·툴사용 수·입출력 수). 다른 도구를 쓰기 전에 먼저 부른다."""
-        return t.overview()
+# 도구 이름(영문) · 설명(한국어 — LLM 이 고를 때 읽는다) · 입력 JSON Schema. 전부 읽기 전용.
+TOOL_SPECS = [
+    ("overview", "Tool Ontology 전체 규모와 파트 목록(약칭·이름·툴사용 수·입출력 수). 다른 도구를 쓰기 전에 먼저 부른다.",
+     {}, []),
+    ("find_tool", "툴 이름 일부로 툴을 찾는다 (대표 이름·다른 표기·별칭, 대소문자·공백 무시). 빈 문자열이면 전체 툴 목록.",
+     {"query": _s("툴 이름 일부 (예: 엑셀, fluent)")}, ["query"]),
+    ("tool_info", "툴 하나의 정보 — 제조사와, 그 툴을 쓰는 파트별 용도·빈도·인원·조작 방식·자동화 인터페이스·애로 구간·자동화 희망.",
+     {"tool": _s("툴 이름 (find_tool 의 대표 이름)")}, ["tool"]),
+    ("part_tools", "파트(약칭 또는 이름)가 쓰는 툴 목록 — 용도·조작 방식·자동화 IF·입출력 수·수기 전달 수.",
+     {"part": _s("파트 약칭 또는 이름 (overview 참고)")}, ["part"]),
+    ("tool_io", "툴의 입력·출력 데이터 (데이터 이름·분류·확장자·전달 방법·신고된 연계 툴). part 를 주면 그 파트의 것만.",
+     {"tool": _s("툴 이름"), "part": _s("파트 약칭 (선택)")}, ["tool"]),
+    ("tool_partners", "툴과 데이터를 주고받는다고 조사표에 신고된 상대 툴 — 방향(보냄/받음)·근거(자기 신고/상대 언급)·데이터·수기 전달 수.",
+     {"tool": _s("툴 이름")}, ["tool"]),
+    ("manual_handoffs", "사람 손으로 데이터를 옮기는 구간(메일·수기 전달, 비고의 수기 신호) 원자료. part 를 주면 그 파트만. Tool Agent 후보를 찾을 때 쓴다.",
+     {"part": _s("파트 약칭 (선택)")}, []),
+    ("hub_candidates", "툴 기준 에이전트 후보 순위(잠정) — 연결 상대가 많은 툴사용 순. limit 행까지.",
+     {"limit": {"type": "integer", "description": "보여 줄 행 수 (기본 30, 최대 200)", "default": 30}}, []),
+]
 
-    @mcp.tool()
-    def find_tool(query: str) -> str:
-        """툴 이름 일부로 툴을 찾는다 (대표 이름·다른 표기·조사표 표기, 대소문자·공백 무시). 빈 문자열이면 전체 툴 목록."""
-        return t.find_tool(query)
 
-    @mcp.tool()
-    def tool_info(tool: str) -> str:
-        """툴 하나의 정보 — 제조사와, 그 툴을 쓰는 파트별 용도·빈도·인원·조작 방식·자동화 인터페이스·애로 구간·자동화 희망."""
-        return t.tool_info(tool)
+class Server:
+    """stdio JSON-RPC 2.0 — MCP 의 initialize · ping · tools/list · tools/call (+ 빈 resources·prompts 목록)."""
 
-    @mcp.tool()
-    def part_tools(part: str) -> str:
-        """파트(약칭 또는 이름)가 쓰는 툴 목록 — 용도·조작 방식·자동화 IF·입출력 수·수기 전달 수."""
-        return t.part_tools(part)
+    def __init__(self, store: OntologyStore):
+        self.tools = Tools(store)
+        self.specs = {name: (desc, props, req) for name, desc, props, req in TOOL_SPECS}
 
-    @mcp.tool()
-    def tool_io(tool: str, part: str = "") -> str:
-        """툴의 입력·출력 데이터 (데이터 이름·분류·확장자·전달 방법·신고된 연계 툴). part 를 주면 그 파트의 것만."""
-        return t.tool_io(tool, part)
+    def tool_list(self) -> list[dict]:
+        return [{"name": n, "description": d, "inputSchema": {"type": "object", "properties": p, "required": r}}
+                for n, (d, p, r) in self.specs.items()]
 
-    @mcp.tool()
-    def tool_partners(tool: str) -> str:
-        """툴과 데이터를 주고받는다고 조사표에 신고된 상대 툴 — 방향(보냄/받음)·근거(자기 신고/상대 언급)·데이터·수기 전달 수."""
-        return t.tool_partners(tool)
+    def call(self, name: str, args: dict) -> dict:
+        if name not in self.specs:
+            raise _RpcError(-32602, f"알 수 없는 도구: {name}")
+        _, props, req = self.specs[name]
+        missing = [k for k in req if k not in args]
+        unknown = [k for k in args if k not in props]
+        if missing or unknown:
+            raise _RpcError(-32602, f"{name} 인자 오류 — 빠짐 {missing}, 모름 {unknown}")
+        try:
+            text = getattr(self.tools, name)(**args)
+            return {"content": [{"type": "text", "text": text}], "isError": False}
+        except Exception as e:  # noqa: BLE001 — 도구 실패는 프로토콜 오류가 아니라 결과로 알린다 (MCP 규격)
+            return {"content": [{"type": "text", "text": f"도구 실행 실패: {type(e).__name__}: {e}"}], "isError": True}
 
-    @mcp.tool()
-    def manual_handoffs(part: str = "") -> str:
-        """사람 손으로 데이터를 옮기는 구간(메일·수기 전달, 비고의 수기 신호) 원자료. part 를 주면 그 파트만. Tool Agent 후보를 찾을 때 쓴다."""
-        return t.manual_handoffs(part)
+    def handle(self, msg: dict) -> dict | None:
+        """요청이면 응답(dict), 알림이면 None."""
+        mid, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
+        is_request = "id" in msg
+        try:
+            if not isinstance(method, str):
+                raise _RpcError(-32600, "method 가 없다")
+            if method == "initialize":
+                asked = params.get("protocolVersion")
+                result = {"protocolVersion": asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
+                          "capabilities": {"tools": {"listChanged": False}},
+                          "serverInfo": {"name": SERVER_NAME, "version": __version__}, "instructions": INSTRUCTIONS}
+            elif method == "ping":
+                result = {}
+            elif method == "tools/list":
+                result = {"tools": self.tool_list()}
+            elif method == "tools/call":
+                result = self.call(params.get("name", ""), params.get("arguments") or {})
+            elif method in ("resources/list", "resources/templates/list", "prompts/list"):
+                result = {method.split("/")[0] if method != "resources/templates/list" else "resourceTemplates": []}
+            elif method == "logging/setLevel":
+                result = {}
+            elif method.startswith("notifications/"):
+                return None                                          # initialized·cancelled 등 — 응답하지 않는다
+            else:
+                raise _RpcError(-32601, f"지원하지 않는 메서드: {method}")
+        except _RpcError as e:
+            return {"jsonrpc": "2.0", "id": mid, "error": {"code": e.code, "message": e.message}} if is_request else None
+        return {"jsonrpc": "2.0", "id": mid, "result": result} if is_request else None
 
-    @mcp.tool()
-    def hub_candidates(limit: int = 30) -> str:
-        """툴 기준 에이전트 후보 순위(잠정) — 연결 상대가 많은 툴사용 순. limit 행까지."""
-        return t.hub_candidates(limit)
+    def serve(self, rfile=None, wfile=None) -> None:
+        """한 줄 = 메시지 하나 (배열이면 배치 — 2025-03-26 판). stdin 이 닫히면 끝."""
+        rfile = rfile or sys.stdin.buffer
+        wfile = wfile or sys.stdout.buffer
+        for raw in rfile:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                out = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "JSON 파싱 오류"}}
+            else:
+                if isinstance(msg, list):
+                    out = [r for r in (self.handle(m) for m in msg if isinstance(m, dict)) if r is not None] or None
+                elif isinstance(msg, dict):
+                    out = self.handle(msg)
+                else:
+                    out = {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "잘못된 요청"}}
+            if out is not None:
+                wfile.write(json.dumps(out, ensure_ascii=False).encode("utf-8") + b"\n")
+                wfile.flush()
 
-    return mcp
+
+class _RpcError(Exception):
+    def __init__(self, code: int, message: str):
+        super().__init__(message)
+        self.code, self.message = code, message
 
 
 def self_check(store: OntologyStore, out=None) -> int:
-    """플랫폼 없이 도구를 한 번씩 불러 본다 — 결과 앞부분만 stderr 로 (실데이터 값이 화면에 나오니 사내에서만 본다)."""
+    """플랫폼 없이 도구를 한 번씩 불러 본다 — 결과 앞부분 대신 길이만 stderr 로 (실데이터 값은 화면에 내지 않는다)."""
     out = out or sys.stderr
     t = Tools(store)
     try:
@@ -212,30 +281,13 @@ def self_check(store: OntologyStore, out=None) -> int:
     return 1 if bad else 0
 
 
-def warm_up(store: OntologyStore) -> None:
-    """stdio 루프를 시작하기 전에 도구를 한 번씩 돌려 모든 모듈을 메인 스레드에서 미리 import 한다.
-
-    Windows 에서는 stdio 전송이 다른 스레드에서 stdin 파이프를 동기 읽기하는 동안, 도구 스레드가 C 확장(DLL — numpy 등)을 처음
-    import 하면 DLL 초기화가 표준 핸들을 조회하다 멈춘다 (2026-10-09 재현: tools/call 이 numpy import 에서 영구 대기).
-    그래서 시작할 때 import 를 끝내 둔다. 적재 결과가 아직 없어도 서버는 뜬다 (도구가 '먼저 적재' 를 알린다)."""
-    import engenius_onto.survey_load  # noqa: F401 — openpyxl·pandas·numpy 까지 끌고 온다
-
-    t = Tools(store)
-    try:
-        for fn in (t.overview, lambda: t.find_tool(""), lambda: t.hub_candidates(1), lambda: t.manual_handoffs()):
-            fn()
-        top = (store.hub_candidates() or [{"tool": ""}])[0]["tool"]
-        for fn in (t.tool_info, t.tool_io, t.tool_partners):
-            fn(top)
-        t.part_tools((store.overview()["parts"] or [{"code": ""}])[0]["code"])
-    except Exception as e:  # noqa: BLE001 — 데이터가 없거나 깨져도 서버는 띄우고, 이유는 stderr 로
-        print(f"[mcp] 미리 읽기 실패 (도구 호출 때 다시 시도): {type(e).__name__}: {e}", file=sys.stderr)
-
-
 def run(run_dir: str | None = None, backend: str = "local", check: bool = False, data: str = "real") -> int:
     store = OntologyStore(run=Path(run_dir) if run_dir else None, backend=backend, prefer=data)
     if check:
         return self_check(store)
-    warm_up(store)
-    build_server(store).run("stdio")
+    try:
+        store.snapshot()                                             # 첫 호출을 빠르게 — 적재가 아직 없어도 서버는 뜬다
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp] 미리 읽기 실패 (도구 호출 때 다시 시도): {type(e).__name__}: {e}", file=sys.stderr)
+    Server(store).serve()
     return 0

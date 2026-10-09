@@ -14,6 +14,3 @@ pydantic
 openpyxl
 pandas
 pyyaml
-# M6 v0 (2026-10-09): Tool Ontology MCP 서버 — 사내 AI 플랫폼 에이전트 도구. 의존 16개 포함 전부 허용형 (docs/04 2장).
-# 1.x 를 쓴다: 2.x 는 pydantic 상향을 끌고 와 반입분이 커진다. 사내는 scripts\install_mcp.bat 로 따로 설치.
-mcp==1.30.0

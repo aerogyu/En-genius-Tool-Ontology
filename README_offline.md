@@ -217,11 +217,11 @@ C:\EnGenius\engenius-tool-ontology\.venv\Scripts\python EnGenius_update_<이전>
 플랫폼 에이전트가 이 온톨로지를 **도구**로 쓰게 하는 읽기 전용 MCP 서버. 플랫폼의 **En-genius MCP**(Office·CATIA 를 붙이는 로컬 프로그램)에
 서버 하나를 더 등록하는 방식이다 — Leo PC 가 플랫폼에 먼저 접속하는 구조(아웃바운드)라 포트·방화벽 설정은 필요 없다 (docs/12).
 
-**① 설치 (한 번)** — `wheels_mcp_win_amd64_cp310.zip` 을 `offline\` 에 넣고 `scripts\install_mcp.bat` 더블클릭.
-`mcp` 와 의존 16개(전부 MIT/BSD/Apache/PSF)를 인터넷 없이 설치하고, 라이선스 점검과 도구 자기 점검까지 한다. 기존 패키지는 바꾸지 않는다.
-끝에 `[OK] 도구 8/8 동작` 이 나오면 된다.
+**① 설치 — 따로 없다.** 서버는 파이썬 **표준 라이브러리만** 쓴다 (새 패키지 0 — 반입 심사 불필요). 업데이트 텍스트 파일로 코드가 들어오면 끝.
+(처음 판은 공식 SDK `mcp` 와 의존 16개를 썼으나 wheel 반입 부담으로 2026-10-09 표준 라이브러리 구현으로 바꿨다. `wheels_mcp_…zip` 은 필요 없다.)
 
-**② 언제든 점검** — `scripts\mcp_check.bat` (최신 실데이터 적재로 도구 8개를 한 번씩 부른다). 결과의 `[OK]/[NG]` 줄만 밖으로 가져올 수 있다.
+**② 점검** — `scripts\mcp_check.bat` (최신 실데이터 적재로 도구 8개를 한 번씩 부른다) → 끝에 `[OK] 도구 8/8 동작`. 결과의 `[OK]/[NG]` 줄만 밖으로 가져올 수 있다.
+`scripts\selftest.bat` 도 서버를 실제 프로세스로 띄워 MCP 메시지를 주고받는 테스트를 포함한다.
 
 **③ 브리지에 등록** — En-genius MCP 설정에 아래 한 묶음을 더한다 (형식은 플랫폼 개발자 답에 맞춘다 — 보통 `mcpServers` JSON):
 ```

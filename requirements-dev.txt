@@ -1,3 +1,5 @@
 # 개발 전용 (반입 불필요 — 사내에서 테스트까지 돌릴 때만)
 -r requirements.txt
 pytest
+# MCP 서버 규격 검사용 — 공식 SDK 클라이언트로 우리 표준 라이브러리 서버를 검사한다 (tests/test_mcp_server.py). 반입하지 않는다.
+mcp==1.30.0
