@@ -166,6 +166,7 @@ files:
       - {sw_id: COM-03, dir: in, name: 해석 요약 표, cat: 보고서·문서, ext: xlsx, cases: [P7]}
       - {sw_id: COM-05, dir: out, name: 압축기 케이싱 3D 모델, cat: 설계-3D형상, ext: catpart, std: SW 전용(바이너리),
          nature: 3D·2D 형상, partner: ANSYS Mechanical, cases: [D1-2]}
+      - {blank: true}                        # 빈 행 하나 — 아래 행은 바로 위 행과 붙어 있지 않아 ID 를 이어받지 않는다 (I22, 2026-10-09)
       - {sw_id: null, dir: in, name: 형상 검토 메모, cat: 보고서·문서, ext: docx, nature: 서술형 문서,
          cases: [I22]}                       # SW ID 없는 내용 행 — 건너뛰고 경고
 

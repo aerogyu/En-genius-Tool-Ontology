@@ -854,3 +854,39 @@ def test_vendor_absorption_closes_alias_chain_for_partner_names(tmp_path):
             assert x.partner_tools == {"microsoftexcel"} and x.partner_unresolved == [], (x.sw_id, x.partner_tools, x.partner_unresolved)
     assert not any("알아보지 못" in w and "엑셀" in w for w in two.result.warnings)
     assert one.result.tools["microsoftexcel"].usages[0].sw_id == "STR-05"
+
+
+def test_io_tool_id_fill_down(tmp_path):
+    """I22 개정 (Leo 2026-10-09 "대부분 같은 ID 라 비워 뒀다"): 입출력 시트에서 Tool ID 가 빈 내용 행은 바로 위 행의 ID 를 이어받는다.
+    빈 행이 끼면 이어받지 않는다 (합성 압축기 '형상 검토 메모'), rules.yaml io_id_fill_down: false 면 예전처럼 건너뛴다."""
+    d = _copy(tmp_path)
+    wb = openpyxl.load_workbook(d / STR)
+    ws = wb["SW입출력"]
+    rows = [r for r in ws.iter_rows(min_row=4) if r[0].value == "STR-02"]
+    assert len(rows) >= 3
+    for r in rows[1:]:                                                            # STR-02 의 둘째 행부터 ID 를 비운다
+        r[0].value = None
+    wb.save(d / STR)
+    ld = Loader()
+    res = ld.load(ld.discover(d))
+    got = sorted(x.name for x in res.ios if x.owner is not None and x.owner.sw_id == "STR-02")
+    assert len(got) == len(rows)                                                 # 하나도 버리지 않고 STR-02 로
+    inherited = [w for w in res.warnings if w.startswith("Tool ID 이어받음:")]
+    assert len(inherited) == len(rows) - 1 and all("→ 'STR-02' (바로 위 행)" in w for w in inherited)
+    assert not any(w.startswith("SW ID 없는 내용 행") for w in res.warnings)
+
+    cfg = _config(tmp_path, rules={**yaml.safe_load((CONFIG_DIR / "rules.yaml").read_text(encoding="utf-8")),
+                                   "loader": {**yaml.safe_load((CONFIG_DIR / "rules.yaml").read_text(encoding="utf-8"))["loader"],
+                                              "io_id_fill_down": False}})
+    off = Loader(config_dir=cfg)
+    res = off.load(off.discover(d))
+    assert sum(w.startswith("SW ID 없는 내용 행") for w in res.warnings) == len(rows) - 1
+    assert not any(w.startswith("Tool ID 이어받음") for w in res.warnings)
+
+
+def test_io_tool_id_fill_down_stops_at_blank_row():
+    """합성 압축기 파일: '형상 검토 메모'(ID 없음) 위에 빈 행이 있어 이어받지 않고 건너뛴다 (골든 I22 그대로)."""
+    ld = Loader()
+    res = ld.load(ld.discover(DATA_SETS["synthetic"][0]))
+    assert any(w.startswith("SW ID 없는 내용 행") and "형상 검토 메모" in w for w in res.warnings)
+    assert not any(w.startswith("Tool ID 이어받음") for w in res.warnings)

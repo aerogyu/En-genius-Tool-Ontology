@@ -23,6 +23,9 @@ loader:
   extra_choice_values: {담당부서: [기타]}
   # 양식판에 따라 없어도 되는 열 — 없으면 '양식 열 없음' 경고도, 필수값 누락도 내지 않는다
   absent_ok_slots: [essential_tool, airgap_ok, priority_opinion]
+  # 입출력 시트에서 Tool ID 가 빈 내용 행은 '바로 위 행'(빈 행 없이 붙어 있을 때)의 Tool ID 를 이어받는다 — 경고 'Tool ID 이어받음'
+  # (I22; Leo 2026-10-09 "대부분 같은 ID 라 비워 뒀다"). 위가 빈 행·예시 행·시트 시작이면 지금처럼 건너뛴다. false 로 끈다.
+  io_id_fill_down: true
 
 # 인명 유사 패턴 경고 (D6, I29, docs/09 #20) — 값은 보존하고 경고만 (경고 문구에 값을 옮기지 않는다).
 # person_pattern 은 자유 텍스트 열(free_text_slots)에, person_patterns_all 은 적재하는 모든 문자열 열에 적용한다.

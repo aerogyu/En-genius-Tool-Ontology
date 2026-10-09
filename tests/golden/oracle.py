@@ -36,6 +36,7 @@ TOKEN_MAP = {"c++": "cpp", "c#": "csharp", "f#": "fsharp"}                      
 GENERIC_NAMES = ["자체개발", "자체 개발", "자체제작", "자체 제작", "사내툴", "사내 툴", "사내개발", "사내 개발", "인하우스",
                  "in-house", "inhouse", "custom", "매크로", "macro"]                     # [I34] rules.yaml generic_tool_names
 GENERIC_PREFIX = "미상:"
+IO_ID_FILL_DOWN = True                                                                  # [I22] rules.yaml loader.io_id_fill_down (2026-10-09)
 
 EXT_ALIAS = {"step": "stp", "iges": "igs", "jpeg": "jpg", "tif": "tiff", "yml": "yaml",
              "엑셀": "xlsx", "워드": "docx", "파워포인트": "pptx", "한글": "hwp", "텍스트": "txt"}
@@ -400,13 +401,20 @@ def compute(spec: dict, repo: Path) -> dict:
             usages.append(us)
             stats["usage_rows"] += 1
 
+        prev_id = None                                                 # [I22] 바로 위 행(빈 행 없이 붙은)의 SW ID
         for r in f["ios"]:
-            if r.get("blank"):
+            if r.get("blank") or r.get("example_copy"):
+                prev_id = None
                 continue
+            if r.get("sw_id") in (None, "") and IO_ID_FILL_DOWN and prev_id is not None:
+                r = {**r, "sw_id": prev_id}
+                warnings.append(f"Tool ID 이어받음: {fname} SW입출력 '{r.get('name')}' → '{prev_id}' (바로 위 행)")
             if r.get("sw_id") in (None, ""):                           # [I22]
                 warnings.append(f"SW ID 없는 내용 행: {fname} SW입출력 '{r.get('name')}' — 건너뜀")
                 stats["excluded"] += 1
+                prev_id = None
                 continue
+            prev_id = r["sw_id"]
             v = {**di, **r}
             where = f"{fname} SW입출력 {v['sw_id']} '{v['name']}'"
             for k in list(v):

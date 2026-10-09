@@ -629,17 +629,27 @@ class Loader:
             rep.usage_rows += 1
 
         ios = []
+        fill_down = bool(self.lcfg.get("io_id_fill_down"))
+        prev_n, prev_id = None, None                                 # 바로 위 행의 Tool ID (I22 — ID 이어받기)
         for n, raw in irows:
             if self._is_example(IO_SHEET, raw):
                 exclude(IO_SHEET, n, "템플릿 예시 행 (내용 일치, I15)")
+                prev_n = prev_id = None
                 continue
+            if _blank(raw.get("owner_source_key")) and fill_down and prev_id is not None and prev_n == n - 1:
+                # 같은 툴의 입출력을 여러 행에 적으며 첫 행에만 ID 를 적은 경우 (Leo 2026-10-09) — 바로 위 행과 붙어 있을 때만
+                raw = {**raw, "owner_source_key": prev_id}
+                warnings.append(f"Tool ID 이어받음: {fname} {IO_SHEET} '{nfc_strip(raw.get('data_name'))}' → '{nfc_strip(prev_id)}' (바로 위 행)")
+                rep.warnings += 1
             if _blank(raw.get("owner_source_key")):
+                prev_n = prev_id = None
                 warnings.append(f"SW ID 없는 내용 행: {fname} {IO_SHEET} '{nfc_strip(raw.get('data_name'))}' — 건너뜀")
                 rep.warnings += 1
                 exclude(IO_SHEET, n, "SW ID 없음 (I22)")
                 self._issue(rep, IO_SHEET, n, "", "Tool ID", None, "Tool ID 없음",
                             "이 입출력이 어느 Tool 것인지 Tool ID 를 적어 주세요")
                 continue
+            prev_n, prev_id = n, raw.get("owner_source_key")
             where = f"{fname} {IO_SHEET} {cell_key(raw.get('owner_source_key'))} '{cell_key(raw.get('data_name'))}'"
             v = {}
             for slot, val in raw.items():
