@@ -217,7 +217,10 @@ C:\EnGenius\engenius-tool-ontology\.venv\Scripts\python EnGenius_update_<이전>
 플랫폼 에이전트가 이 온톨로지를 **도구**로 쓰게 하는 읽기 전용 MCP 서버. 플랫폼의 **En-genius MCP**(Office·CATIA 를 붙이는 로컬 프로그램)에
 서버 하나를 더 등록하는 방식이다 — Leo PC 가 플랫폼에 먼저 접속하는 구조(아웃바운드)라 포트·방화벽 설정은 필요 없다 (docs/12).
 
-**① 설치 (한 번)** — `wheels_mcp_win_amd64_cp310.zip` 을 `offline\` 에 넣고 `scripts\install_mcp.bat` 더블클릭.
+**① 설치 (한 번)** — MCP 패키지 wheel 들을 `offline\` 아래에 두고 `scripts\install_mcp.bat` 더블클릭. wheel 은 **사내 whl 묶음에서 모은 것**이어도 된다
+(Leo 2026-10-09: 사내 묶음 188개에 다 있음 — mcp 1.28.1 등 판이 조금 달라도 됨, mcp 1.x 면 동작). 둘 중 하나로 둔다:
+`offline\wheels_mcp\` 폴더(안에 폴더가 한 겹 더 있어도 됨) 또는 `offline\wheels_mcp…zip` (bat 이 `offline\wheels_mcp\` 로 푼다).
+bat 은 `mcp-1*.whl` 이 있는 폴더를 알아서 찾고, pydantic 처럼 이미 설치된 패키지는 `requirements.lock` 의 판으로 묶어 **올리지 않는다**.
 `mcp` 와 의존 16개(전부 MIT/BSD/Apache/PSF)를 인터넷 없이 설치하고, 라이선스 점검과 도구 자기 점검까지 한다. 기존 패키지는 바꾸지 않는다.
 끝에 `[OK] 도구 8/8 동작` 이 나오면 된다.
 

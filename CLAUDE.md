@@ -84,6 +84,9 @@
   tool_io·tool_partners·manual_handoffs·hub_candidates). 질의 층 `onto_store.py` 는 3D 뷰어와 같은 정의(순위 행 단위 일치 테스트), 최신 실데이터 survey.ttl 을 rdflib 로
   (Fuseki 불필요·재적재 자동 반영), 모든 칸 인명 유사 표기 가림. 반입 = `wheels_mcp_win_amd64_cp310.zip`(새 wheel 17, 11.4 MB, 전부 허용형, pydantic 그대로) + `install_mcp.bat`·`mcp_check.bat`.
   **Windows 함정**: stdio 의 stdin 동기 읽기 중 도구 스레드의 C 확장 첫 import(numpy) 영구 대기 → 시작 때 warm_up. LangGraph·langchain 은 보류(플랫폼이 에이전트를 가짐).
+  **사내 설치 (Leo 2026-10-09)**: .whl 반입 대신 **사내 whl 묶음(188개)** 사용 — mcp 1.28.1 (판 조금 다름, 1.28.1 로 테스트 통과). install_mcp.bat 을 판·폴더 구조 무관하게 고침,
+  MCP 의존은 lock 에서 뺌(선택 설치, `-c requirements.lock` 으로 기존 패키지 고정). 표준 라이브러리 서버는 보관 브랜치 `mcp-stdlib` (82b48e3) — SDK 를 못 쓰게 되면 대안.
+  Leo 가 심사 우회('편하다')를 말했으나 바이너리를 텍스트로 감싸는 반입은 하지 않기로 함.
   남은 것: 플랫폼 개발자 답(브리지 설정 형식) → 등록·실호출 확인 / M4 뒤 계산 연결·착수 순위·경로 도구 추가. README_offline 9장 · docs/12 5장.
 
 마일스톤을 끝낼 때마다 이 체크리스트와 아래 '미확정 사항'을 갱신한다.
