@@ -5,15 +5,19 @@
   규칙 밖 해시 이름 유일화 · 규칙 밖 고아 표시
 - C. 예시와 거의 같은 행 (docs/09 #3, I15 개정): 정보 열 기준 유사 판별·경고 · 중복 Tool ID 면 예시 유사 행을 빼고 진짜 행 ·
   설정 낡음 점검(시트별) · rules 오버레이 문턱 · template_examples 오버레이·template-examples --overlay · 적재기 ↔ oracle 판별식
+- D. 값·엑셀 층 (묶음 values): header_map 오버레이(I30) · 엑셀 층 신호(I37 — 수식 오류 셀·캐시 없는 수식·숨긴 행·양식 밖 시트·툴사용 0건) ·
+  만료 시기 텍스트·'영구'(docs/09 #21 3단, I16·I27) · 드롭다운 빈 값 토큰(I28 기록) · 자동화 판정 빈 값 토큰(Normalizer.automatable ↔ oracle·지도·MCP)
 합성 파일 사본만 쓴다 (공개 상용 툴 이름·가상 이름). 인명 시험 값은 가상 자리표시('가나다 책임')만.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import shutil
 import sys
+from collections import Counter
 from pathlib import Path
 
 import openpyxl
@@ -880,3 +884,344 @@ def test_template_examples_cli_overlay_writes_real_config(tmp_path, monkeypatch)
     assert yaml.safe_load((real / "template_examples.yaml").read_text(encoding="utf-8")) == data
     ld = Loader(overlay_dir=real)
     assert "template_examples.yaml" in ld.overlay_files and len(ld.examples[USAGE_SHEET]) == len(Loader().examples[USAGE_SHEET]) + 1
+
+
+# --------------------------------------------------------------------------- D. 값·엑셀 층 (묶음 values, 2026-10-12)
+from engenius_onto.form_spec import load_form_spec  # noqa: E402
+from test_loader_m31 import _to_v11  # noqa: E402
+
+EXP = "만료 시기"
+ERR_W, NOCACHE_W, HIDDEN_W, COPY_W, OFF_W, ZERO_W = "수식 오류 셀", "캐시 없는 수식", "숨긴 행", "양식 사본 시트", "양식 밖 시트", "툴사용 0건"
+ERR_TAIL = " — 빈칸으로 봄 (#N/A·#REF! 등 수식 결과 오류, 수정 요청표에 행별로)"
+NOCACHE_TAIL = " — 값을 읽지 못함 (엑셀에서 열어 저장하면 읽힘)"
+
+
+def _w(res, prefix: str) -> list[str]:
+    return [w for w in res.warnings if w.startswith(prefix)]
+
+
+def _overlay(tmp: Path, **files) -> Path:
+    """사내 설정 오버레이 폴더 흉내 (data/real/config 대신 tmp 아래) — {이름: YAML 데이터}."""
+    over = tmp / "real_config"
+    over.mkdir(exist_ok=True)
+    for name, data in files.items():
+        (over / f"{name}.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return over
+
+
+# ---- D1. header_map 오버레이 (I30)
+def test_merge_config_header_map_union():
+    """시트·슬롯별 문구 합집합 — 저장소 문구 먼저, 같은 문구는 한 번. 문자열 하나는 글자 단위로 매핑되지 않게 형식 오류."""
+    base = {USAGE_SHEET: {"source_key": ["Tool ID"]}}
+    over = {USAGE_SHEET: {"source_key": ["SW 식별번호", "Tool ID"]}, IO_SHEET: {"extensions_raw": ["확장자"]}}
+    assert merge_config("header_map.yaml", base, over) == {USAGE_SHEET: {"source_key": ["Tool ID", "SW 식별번호"]},
+                                                           IO_SHEET: {"extensions_raw": ["확장자"]}}
+    with pytest.raises(ConfigError, match="문구 목록"):
+        merge_config("header_map.yaml", base, {IO_SHEET: {"note": "비고2"}})
+    with pytest.raises(ConfigError, match="매핑"):
+        merge_config("header_map.yaml", base, {IO_SHEET: ["note"]})
+
+
+def test_header_map_overlay_maps_internal_header(tmp_path):
+    """사내 양식 헤더('확장자')는 오버레이 header_map.yaml 에 더한다 — 시트 키는 v1.1 이름('Tool 입출력')도, 저장소 문구('Tool ID')는 그대로."""
+    base = _load(_copy(tmp_path / "a"), tmp_path / "a").result
+    d = _copy(tmp_path / "b")
+    wb = openpyxl.load_workbook(d / STR)
+    next(c for c in wb[IO_SHEET][2] if c.value == H_EXT).value = "확장자"
+    wb.save(d / STR)
+    plain = _load(d, tmp_path / "b").result
+    assert f"매핑 안 된 헤더: {STR} {IO_SHEET} '확장자'" in plain.warnings
+    assert _w(plain, f"양식 열 없음: {STR} {IO_SHEET}")
+    over = _overlay(tmp_path, header_map={"Tool 입출력": {"extensions_raw": ["확장자"]}})
+    assert load_form_spec(overlay_dir=over).by_header(IO_SHEET)["확장자"].slot == "extensions_raw"
+    out = _load(d, tmp_path / "c", overlay_dir=over)
+    sig = lambda res: sorted((x.key, tuple(x.exts)) for x in res.ios)  # noqa: E731
+    assert sig(out.result) == sig(base)
+    assert not [w for w in out.result.warnings if w.startswith(("매핑 안 된 헤더", "양식 열 없음"))]
+    assert "header_map.yaml" in out.log["config_overlay"]["files"]
+    d2 = _copy(tmp_path / "v11")
+    new = d2 / "Tool조사_구조_20260930.xlsx"
+    (d2 / STR).rename(new)
+    _to_v11(new)
+    v11 = _load(d2, tmp_path / "v11", overlay_dir=over).result                 # 합집합 — 저장소의 v1.1 문구 'Tool ID' 도 매핑
+    assert len(v11.usages) == len(base.usages) and len(v11.ios) == len(base.ios)
+    assert not [w for w in v11.warnings if w.startswith(("매핑 안 된 헤더", "양식 열 없음"))]
+
+
+@pytest.mark.parametrize("data, match", [
+    ({IO_SHEET: {"note": "비고2"}}, "문구 목록"),
+    ({"없는 시트": {"note": ["메모란"]}}, "알 수 없는 시트"),
+    ({USAGE_SHEET: {"없는슬롯": ["메모란"]}}, "알 수 없는 슬롯"),
+    ({USAGE_SHEET: {"note": ["실무 문의처(선택)"]}}, "제외 열"),
+    ({USAGE_SHEET: {"note": ["실무 문의처"]}}, "제외 열"),
+    ({"Tool 기본정보": {"note": ["담당자 연락처"]}}, "제외 열"),
+    ({IO_SHEET: {"note": ["SW명(자동)"]}}, "제외 열"),
+    ({USAGE_SHEET: {"note": ["버전"]}}, "가로챌"),
+    ({USAGE_SHEET: {"note": ["메모란"], "roadmap_note": ["메모란"]}}, "같은 문구"),
+    ({USAGE_SHEET: {"note": ["Tool ID"]}}, "같은 문구"),
+], ids=["string", "sheet", "slot", "contact", "contact-short", "person-words", "formula-col", "default-phrase", "two-slots", "repo-clash"])
+def test_header_map_overlay_rejects_bad_entries(tmp_path, data, match):
+    """설정 오류(ConfigError) — 오버레이 파일 경로가 붙고 헤더 문구는 오류 문구에 넣지 않는다. 문의처 열 매핑 금지 = 절대 규칙 5."""
+    over = _overlay(tmp_path, header_map=data)
+    with pytest.raises(ConfigError, match=match) as e:
+        Loader(overlay_dir=over)
+    msg = str(e.value)
+    assert str((over / "header_map.yaml").resolve()) in msg
+    phrases = [p for slots in data.values() for v in slots.values() for p in (v if isinstance(v, list) else [v])]
+    assert not any(p in msg for p in phrases), msg
+
+
+def test_header_map_overlay_error_stops_cli_load(tmp_path):
+    """cli load 는 오버레이 header_map 오류를 traceback 없이 '[NG] 설정 오류' 로 — rc 2 (load.bat '시작 못 함')."""
+    from engenius_onto.cli import main
+
+    d = _copy(tmp_path)
+    over = _overlay(tmp_path, header_map={USAGE_SHEET: {"note": ["실무 문의처(선택)"]}})
+    rc = main(["load", "--input", str(d), "--registry", str(tmp_path / "registry"), "--out", str(tmp_path / "out"),
+               "--no-shacl", "--overlay", str(over)])
+    assert rc == 2 and not (tmp_path / "out").exists()
+
+
+# ---- D2. 엑셀 층 신호 (I37)
+def test_error_cells_blank_with_one_warning_per_column(tmp_path):
+    """수식 오류 셀은 빈칸 — 열마다 경고 1줄, 행마다 수정 요청. '#N/A' 가 툴 이름 'na' 로 레지스트리에 영구 행을 만들지 않는다."""
+    d = _copy(tmp_path)
+    _set_row(d / STR, USAGE_SHEET, 9, {"SW명(정식)": "#N/A"})            # STR-04
+    _set_row(d / STR, USAGE_SHEET, 5, {"담당 부서": "#REF!"})            # STR-01
+    _set_row(d / STR, USAGE_SHEET, 6, {"담당 부서": "#REF!"})            # STR-02 — 같은 열 두 칸은 한 줄
+    res = _load(d, tmp_path).result
+    assert _w(res, ERR_W) == [f"수식 오류 셀: {STR} {USAGE_SHEET} 'SW명(정식)' 1칸{ERR_TAIL}",
+                              f"수식 오류 셀: {STR} {USAGE_SHEET} '담당 부서' 2칸{ERR_TAIL}"]
+    u4 = _usage(res, "구조/STR-04")
+    assert u4.v["reported_tool_name"] is None and u4.tool_key.startswith("미상:")
+    assert "na" not in res.tools and "na" not in {r["key"] for r in read_csv_rows(tmp_path / "registry" / "tools.csv")[0]}
+    assert _usage(res, "구조/STR-01").v["reported_domain"] is None
+    iss = sorted((i["row"], i["column"], i["value"]) for i in res.issues if i["kind"] == ERR_W)
+    assert iss == [(5, "담당 부서", "#REF!"), (6, "담당 부서", "#REF!"), (9, "SW명(정식)", "#N/A")]
+    assert f"필수값 누락: {STR} {USAGE_SHEET} STR-04 'SW명(정식) *'" in res.warnings          # 경고는 그대로, 수정 요청은 한 행만
+    assert not [i for i in res.issues if i["kind"] == "필수값 누락" and i["row"] in (5, 6, 9)]
+
+
+def test_error_tool_id_row_excluded_not_filled_down(tmp_path):
+    """Tool ID 칸이 수식 오류면 행 제외 — 입출력은 위 행 ID 를 이어받지도(빈칸으로만 보면 붙었다), 아래 행에 넘겨주지도 않는다 (I22 보호)."""
+    d = _copy(tmp_path)
+    _set_row(d / STR, USAGE_SHEET, 10, {"SW ID": "#VALUE!"})            # STR-05
+    _set_row(d / STR, IO_SHEET, 9, {"SW ID": "#N/A"})                   # STR-01 '구조 메시' — 바로 위 8행은 STR-01
+    _set_row(d / STR, IO_SHEET, 10, {"SW ID": None})                    # 오류 행 바로 아래 빈 ID
+    res = _load(d, tmp_path).result
+    assert not {"#VALUE!", "STR-05"} & {u.sw_id for u in res.usages}
+    ex = {(r["sheet"], r["row"]): r["reason"] for r in res.excluded_rows}
+    assert ex[(USAGE_SHEET, 10)] == ex[(IO_SHEET, 9)] == "Tool ID 수식 오류 (I37)"
+    assert ex[(IO_SHEET, 10)] == "SW ID 없음 (I22)"
+    assert not _w(res, "Tool ID 이어받음")
+    assert not [x for x in res.ios if x.row in (9, 10)]
+    assert _w(res, ERR_W) == [f"수식 오류 셀: {STR} {USAGE_SHEET} 'SW ID' 1칸{ERR_TAIL}", f"수식 오류 셀: {STR} {IO_SHEET} 'SW ID' 1칸{ERR_TAIL}"]
+    iss = [(i["sheet"], i["row"], i["tool_id"], i["column"], i["value"]) for i in res.issues if i["kind"] == ERR_W]
+    assert iss == [(USAGE_SHEET, 10, "", "SW ID", "#VALUE!"), (IO_SHEET, 9, "", "SW ID", "#N/A")]
+
+
+def test_formula_without_cache_warns(tmp_path):
+    """캐시 없는 수식(openpyxl 로 저장한 수식 — 엑셀이 계산해 저장하지 않음)은 적재 열마다 경고. 무시 열(SW명(자동))의 수식은 세지 않는다."""
+    d = _copy(tmp_path)
+    _set_row(d / STR, USAGE_SHEET, 9, {"SW명(정식)": "=A1"})
+    _set_row(d / STR, USAGE_SHEET, 6, {"사용 인원수": "=1+2"})
+    res = _load(d, tmp_path).result
+    assert _w(res, NOCACHE_W) == [f"캐시 없는 수식: {STR} {USAGE_SHEET} 'SW명(정식)' 1칸{NOCACHE_TAIL}",
+                                  f"캐시 없는 수식: {STR} {USAGE_SHEET} '사용 인원수' 1칸{NOCACHE_TAIL}"]
+    assert not _w(res, ERR_W) and _usage(res, "구조/STR-02").v["user_count"] is None
+
+
+def test_formula_scan_failure_keeps_loading(tmp_path, monkeypatch):
+    """수식 검사용 두 번째 읽기가 실패해도 적재는 계속 — 경고 '수식 검사 못 함' 한 줄 (값·경로 없이 예외 종류만)."""
+    real = openpyxl.load_workbook
+
+    def fake(path, *a, **kw):
+        if kw.get("read_only") and kw.get("data_only") is False:
+            raise OSError("가상 실패")
+        return real(path, *a, **kw)
+
+    d = _copy(tmp_path)
+    base = len(_load(d, tmp_path / "a").result.usages)
+    monkeypatch.setattr(openpyxl, "load_workbook", fake)
+    res = _load(d, tmp_path / "b").result
+    assert _w(res, "수식 검사 못 함") == [f"수식 검사 못 함: {STR} — OSError (캐시 없는 수식 경고를 내지 않음, 적재는 계속)"]
+    assert len(res.usages) == base == 5
+
+
+def test_hidden_rows_loaded_with_warning(tmp_path):
+    """숨긴 행(필터·그룹 접기 포함)은 응답으로 적재하고 시트마다 경고 1줄 + 행마다 수정 요청. 숨긴 예시 행은 세지 않는다."""
+    d = _copy(tmp_path)
+    wb = openpyxl.load_workbook(d / STR)
+    wb[USAGE_SHEET].row_dimensions[6].hidden = True                     # STR-02
+    wb[USAGE_SHEET].row_dimensions[4].hidden = True                     # 예시 행
+    wb[IO_SHEET].row_dimensions[12].hidden = True
+    wb[IO_SHEET].row_dimensions[13].hidden = True
+    wb.save(d / STR)
+    res = _load(d, tmp_path).result
+    assert "STR-02" in {u.sw_id for u in res.usages} and len({x.row for x in res.ios if x.row in (12, 13)}) == 2
+    assert _w(res, HIDDEN_W) == [f"숨긴 행: {STR} {USAGE_SHEET} 1행 — 응답으로 적재함 (첫 행 6)",
+                                 f"숨긴 행: {STR} {IO_SHEET} 2행 — 응답으로 적재함 (첫 행 12)"]
+    assert {(i["sheet"], i["row"]) for i in res.issues if i["kind"] == HIDDEN_W} == {(USAGE_SHEET, 6), (IO_SHEET, 12), (IO_SHEET, 13)}
+
+
+def test_copied_form_sheet_and_zero_usage_warn(tmp_path):
+    """응답을 'SW기본정보 (2)' 사본 시트에 적고 원래 시트에는 예시만 — 사본은 읽지 않고 '양식 사본 시트'·'툴사용 0건' 경고(+ 수정 요청).
+    헤더가 양식과 다른 시트는 '양식 밖 시트' 경고만, 빈 시트는 경고 없음, 시트 이름이 인명 유사면 가린다. rules 오버레이 other_sheets 로 끈다."""
+    d = _copy(tmp_path)
+    wb = openpyxl.load_workbook(d / STR)
+    cp = wb.copy_worksheet(wb[USAGE_SHEET])
+    cp.title, cp.sheet_state = "SW기본정보 (2)", "hidden"
+    ws = wb[USAGE_SHEET]
+    for r in range(5, ws.max_row + 1):
+        for c in range(1, ws.max_column + 1):
+            ws.cell(r, c).value = None
+    wb.create_sheet("메모")["A1"] = "가상 메모"
+    wb.create_sheet("빈 시트")
+    wb.create_sheet("가나다 책임 메모")["B3"] = "가상"
+    wb.save(d / STR)
+    res = _load(d, tmp_path).result
+    assert not res.usages
+    assert _w(res, COPY_W) == [f"양식 사본 시트: {STR} 'SW기본정보 (2)' (숨김) — {USAGE_SHEET} 와 같은 헤더, 내용 7행, 적재하지 않음"]
+    off = " — 읽지 않음 (아는 시트면 rules.yaml loader.other_sheets 에 추가)"
+    assert _w(res, OFF_W) == [f"양식 밖 시트: {STR} '메모'{off}", f"양식 밖 시트: {STR} '{PERSON_MASK}'{off}"]
+    assert not any("가나다" in w for w in res.warnings)
+    assert _w(res, ZERO_W) == [f"툴사용 0건: {STR} — 기본정보 시트에서 적재한 행이 없음 (예시만 남았거나 시트·헤더가 양식과 다름)"]
+    kinds = Counter(i["kind"] for i in res.issues)
+    assert (kinds[COPY_W], kinds[ZERO_W], kinds[OFF_W]) == (1, 1, 0)
+    iss = next(i for i in res.issues if i["kind"] == COPY_W)
+    assert (iss["sheet"], iss["value"]) == (USAGE_SHEET, "SW기본정보 (2)")
+    over = _overlay(tmp_path, rules={"loader": {"other_sheets": ["작성안내", "메모"]}})
+    ld = Loader(overlay_dir=over)
+    res2 = ld.load(ld.discover(d))
+    assert _w(res2, OFF_W) == [f"양식 밖 시트: {STR} '{PERSON_MASK}'{off}"] and len(_w(res2, COPY_W)) == 1
+
+
+# ---- D3. 만료 시기 텍스트·'영구' (docs/09 #21 3단, I16·I27)
+def test_expiry_text_normalized(tmp_path):
+    """텍스트 날짜는 YYYY-MM + 경고 — 스키마 패턴 위반(Pydantic schema_issues)도 사라진다. 이미 YYYY-MM 인 텍스트는 경고 없음."""
+    d = _copy(tmp_path)
+    for row, val in ((5, "2027.03"), (6, "2027-03-31"), (9, "2027년 3월"), (10, "2027. 3. 31."), (7, "2027-03")):
+        _set_row(d / STR, USAGE_SHEET, row, {EXP: val})
+    out = _load(d, tmp_path)
+    res = out.result
+    assert {u.sw_id: u.v["license_expiry"] for u in res.usages} == dict.fromkeys(["STR-01", "STR-02", "STR-03", "STR-04", "STR-05"], "2027-03")
+    assert _w(res, "만료 시기") == [f"만료 시기 표기 변환: {STR} {USAGE_SHEET} STR-01 '2027.03' → '2027-03'",
+                                   f"만료 시기 표기 변환: {STR} {USAGE_SHEET} STR-02 '2027-03-31' → '2027-03'",
+                                   f"만료 시기 표기 변환: {STR} {USAGE_SHEET} STR-04 '2027년 3월' → '2027-03'",
+                                   f"만료 시기 표기 변환: {STR} {USAGE_SHEET} STR-05 '2027. 3. 31.' → '2027-03'"]
+    assert not [i for i in out.schema_issues if i["slot"] == "license_expiry"]
+
+
+def test_expiry_blank_tokens(tmp_path):
+    """'영구'(양식 안내 '영구면 공란', v1.1 예시 행 값)와 빈 값 토큰은 빈칸 — 원문도 남기지 않고 파일당 한 줄, 수정 요청 없음."""
+    d = _copy(tmp_path)
+    for row, val in ((5, "영구"), (6, "없음"), (7, "-"), (9, "NA")):
+        _set_row(d / STR, USAGE_SHEET, row, {EXP: val})
+    out = _load(d, tmp_path)
+    res = out.result
+    assert all(u.v.get("license_expiry") is None and "license_expiry" not in u.raw for u in res.usages)
+    assert _w(res, "빈 값 표기 만료 시기") == [f"빈 값 표기 만료 시기: {STR} 4칸 — 빈칸으로 봄 ('영구'·NA·- 등, docs/09 #21)"]
+    assert not _w(res, "만료 시기") and not [i for i in res.issues if i["kind"] == "만료 시기 형식"]
+    assert "license_expiry" not in out.turtle                                   # 구조 파일은 원래 만료 시기가 비어 있다 (라이선스 형태 '영구' 는 다른 열)
+
+
+def test_expiry_unrecognized_text_kept(tmp_path):
+    """그 밖 텍스트는 원문 보존(D4) + 경고 + 수정 요청 '만료 시기 형식' — 스키마 층은 계속 위반. 인명 유사 값은 경고·수정 요청에 옮기지 않는다."""
+    d = _copy(tmp_path)
+    _set_row(d / STR, USAGE_SHEET, 5, {EXP: "2027년 상반기"})
+    _set_row(d / STR, USAGE_SHEET, 6, {EXP: "가나다 책임 확인"})
+    out = _load(d, tmp_path)
+    res = out.result
+    assert _usage(res, "구조/STR-01").v["license_expiry"] == "2027년 상반기"
+    tail = " — 원문 보존 (YYYY-MM 으로)"
+    assert _w(res, "만료 시기 형식 아님") == [f"만료 시기 형식 아님: {STR} {USAGE_SHEET} STR-01 '2027년 상반기'{tail}",
+                                         f"만료 시기 형식 아님: {STR} {USAGE_SHEET} STR-02 '{PERSON_MASK}'{tail}"]
+    assert not any("가나다" in w for w in res.warnings)
+    iss = [(i["row"], i["tool_id"], i["column"], i["value"]) for i in res.issues if i["kind"] == "만료 시기 형식"]
+    assert iss == [(5, "STR-01", EXP, "2027년 상반기"), (6, "STR-02", EXP, "")]
+    assert ("구조/STR-01", "license_expiry") in {(i["key"], i["slot"]) for i in out.schema_issues}
+
+
+def test_expiry_value_alias_applies_to_original_text(tmp_path):
+    """값 대응표(value_aliases)에 원문 그대로 적은 만료 시기는 경고 없이 대응표가 바꾼다 — 만료 시기 규칙보다 먼저."""
+    d = _copy(tmp_path)
+    _set_row(d / STR, USAGE_SHEET, 5, {EXP: "2027년 상반기"})
+    _set_row(d / STR, USAGE_SHEET, 6, {EXP: "영구"})
+    over = _overlay(tmp_path, value_aliases={EXP: {"2027년 상반기": "2027-06", "영구": "2099-12"}})
+    res = _load(d, tmp_path, overlay_dir=over).result
+    assert (_usage(res, "구조/STR-01").v["license_expiry"], _usage(res, "구조/STR-02").v["license_expiry"]) == ("2027-06", "2099-12")
+    assert not _w(res, "만료 시기") and not _w(res, "빈 값 표기 만료 시기")
+    assert f"값 대응표 적용: {STR} 2건 (config/value_aliases.yaml)" in res.warnings
+
+
+EXPIRY_CASES = ["2027.03", "2027-3", "2027/03", "2027-03-31", "2027.03.31", "2027. 3. 31.", "2027년 3월", "2027년 3월 31일", "2027년3월",
+                "2027-03", "２０２７．０３", " 2027.03 ", "2027.1", "2027-13", "2027-03-00", "2027-03-32", "2027년 상반기", "27.03", "2027",
+                "영구", "NA", "-", "해당 없음", "없음", 2027.1, 2027, 2027.0, dt.date(2027, 3, 31), dt.datetime(2027, 3, 1)]
+
+
+@pytest.mark.parametrize("raw", EXPIRY_CASES, ids=[repr(c) for c in EXPIRY_CASES])
+def test_expiry_text_parity_with_oracle(raw):
+    """만료 시기 칸 — 적재기 Loader._convert ↔ oracle.cell_to_text (독립 구현): 값·경고 문구·빈 값 표기 건수가 같다.
+    실수 셀 2027.1 은 문자열 정규화를 타지 않는다 ('2027.1' + 엑셀 숫자 변환 가능성 — 골든 D5-expiry-float)."""
+    ld = Loader()
+    col = next(c for c in ld.spec.columns[USAGE_SHEET] if c.slot == "license_expiry")
+    rep = FileReport("f.xlsx", "", None, None)
+    ld.issues, ld._na_month_cells = [], 0
+    w1, w2, counts = [], [], Counter()
+    got, raw_back = ld._convert(col, raw, "W", w1, rep, 5, "X-1")
+    exp = oracle.cell_to_text("expiry", raw, "W", w2, counts)
+    assert (got, w1, ld._na_month_cells) == (exp, w2, counts["na_month"])
+    assert raw_back is None and rep.warnings == len(w1)
+    if raw == 2027.1:
+        assert got == "2027.1"
+    if isinstance(raw, str) and w1 and w1[0].startswith("만료 시기 형식 아님"):
+        assert [i["kind"] for i in ld.issues] == ["만료 시기 형식"]
+
+
+@pytest.mark.parametrize("val, warn, na", [("NA", False, 1), ("-", False, 1), ("ＮＡ", False, 1), ("해당 없음", False, 1),
+                                           ("API 있음", True, 0), ("모름", False, 0)])
+def test_dropdown_empty_token_parity(val, warn, na):
+    """I28 기록 (docs/09 #21 1단): 드롭다운 목록 밖 빈 값 토큰은 선택지 밖 경고 대신 파일당 건수 — 적재기 _check ↔ oracle.check_row."""
+    choices = ["없음", "모름", "COM·OLE"]
+    w_o, c = [], Counter()
+    oracle.check_row({"auto_if": ("자동화 인터페이스 *", "자동화IF", True)}, {"auto_if": val}, {"자동화IF": choices}, "W", w_o, USAGE_SHEET, c)
+    ld = Loader()
+    ld.issues, ld._na_cells = [], 0
+    w_l = []
+    ld._check(USAGE_SHEET, {"automation_if": val}, {"automation_if"}, {"자동화IF": choices}, "W", w_l, FileReport("f.xlsx", "", None, None),
+              5, "X-1", set())
+    assert w_l == w_o and (ld._na_cells, c["na_choice"]) == (na, na)
+    assert bool(w_l) == warn
+
+
+# ---- D4. 자동화 판정의 빈 값 토큰 (docs/02 7.4, I16) — Normalizer.automatable 하나 ↔ oracle · 지도 · MCP
+AUTO_CASES = [("GUI 전용", "NA", False), ("GUI 전용", "-", False), ("GUI 전용", "해당없음", False), ("GUI 전용", "n/a", False),
+              ("GUI 전용", "N/A", False), ("GUI 전용", " NA ", False), ("GUI 전용", "ＮＡ", False), ("GUI 전용", "없음", False),
+              ("GUI 전용", "모름", False), ("GUI 전용", "", False), ("GUI 전용", None, False), ("GUI 전용", "COM·OLE", True),
+              ("GUI 전용", "API 있음", True), ("CLI 지원", "NA", True), ("GUI+CLI", None, True), ("GUI+CLI(일부)", "NA", False)]
+
+
+@pytest.mark.parametrize("op, aif, want", AUTO_CASES)
+def test_automatable_parity(norm, op, aif, want):
+    u = oracle.Usage("f.xlsx", "p", "p", "X-1", "가상", "가상", "상용", op, aif, "가능", None, None, None)
+    assert norm.automatable(op, aif) == u.automatable == want
+
+
+def test_automatable_na_in_store_and_viewer(tmp_path):
+    """자동화 IF 'NA' 인 툴사용은 MCP(onto_store)·3D 지도(graph_view3d) 모두 '자동화 불가' — 전에는 둘 다 가능으로 보였다."""
+    from engenius_onto.onto_store import OntologyStore
+
+    sys.path.insert(0, str(REPO / "scripts"))
+    import graph_view3d
+
+    d = _copy(tmp_path)
+    _set_row(d / STR, USAGE_SHEET, 5, {"조작 방식": "GUI 전용", "자동화 인터페이스": "NA"})        # STR-01
+    out = _load(d, tmp_path)
+    assert _usage(out.result, "구조/STR-01").v["automation_if"] == "NA"                        # 원문 보존 (I28)
+    store = OntologyStore(run=out.out_dir)
+    autos = {u["sw_id"]: u["auto"] for u in store.snapshot().usages.values()}
+    assert (autos["STR-01"], autos["STR-02"]) == (False, True)
+    assert {r["tool_id"]: r["auto"] for r in store.part_tools("구조")["usages"]}["STR-01"] is False
+    data, _ = graph_view3d.build(out.out_dir)
+    nodes = {n["sw_id"]: n["auto"] for n in data["nodes"] if n.get("type") == "u"}
+    assert (nodes["STR-01"], nodes["STR-02"]) == (False, True)

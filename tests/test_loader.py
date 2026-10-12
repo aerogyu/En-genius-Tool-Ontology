@@ -19,7 +19,7 @@ from rdflib import Dataset, Literal, URIRef
 from rdflib.namespace import RDF, RDFS, SKOS
 
 from engenius_onto import synth
-from engenius_onto.config import CONFIG_DIR, REPO_ROOT, namespaces
+from engenius_onto.config import CONFIG_DIR, REPO_ROOT, ConfigError, namespaces
 from engenius_onto.loader import Loader, extract_template_examples
 from engenius_onto.survey_load import DATA_SETS, apply_review, run_load
 
@@ -318,7 +318,7 @@ def test_header_alias_config(tmp_path):
     (cfg / "header_map.yaml").write_text("SW입출력:\n  extensions_raw: [확장자]\n", encoding="utf-8")
     assert load_form_spec(config_dir=cfg).by_header("SW입출력")["확장자"].slot == "extensions_raw"
     (cfg / "header_map.yaml").write_text("SW입출력:\n  없는슬롯: [x]\n", encoding="utf-8")
-    with pytest.raises(ValueError):
+    with pytest.raises(ConfigError, match="알 수 없는 슬롯"):          # 설정 오류 — cli 가 traceback 없이 '[NG] 설정 오류' (I30, 2026-10-12)
         load_form_spec(config_dir=cfg)
 
 

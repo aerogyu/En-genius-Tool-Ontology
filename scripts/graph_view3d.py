@@ -27,6 +27,7 @@ from rdflib import Graph
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from engenius_onto.config import SCHEMA_FILE, ConfigError, default_overlay_dir, load_config, namespaces  # noqa: E402
+from engenius_onto.normalize import Normalizer  # noqa: E402
 from engenius_onto.registry import ACTIVE  # noqa: E402
 
 VIEW_VERSION = "v11"  # 판 번호. v11 2026-10-02: 실데이터 규모 대응(docs/11 4장) — 설정 오버레이(data/real/config/rules.yaml) 반영·활성 툴만·팬 유지·안내선 길이 제한·공용 툴 밀어내기·선 종류별 알파 바닥값·중요도 이름표(겹치면 옮김)·초기 시점 거리 하한+중심 보정·입출력 없는 툴사용 빈 원+필터·순위표 연결 상대 두 열+상위 10 기본 · v10 2026-10-01: 층 간격·두께·높낮이, 툴로 묶은 순위표 · v9 파트 이름은 약칭만 · v8 실데이터 실행 우선·제목에 데이터 종류 · v7 선은 전달 방식별 색 복원 · v6 점 색 최소(회색·흰색) · v5 담백하게·넓게·툴 기준 후보 · v4 꾸밈 · v3 2층 배치 · v2: 데이터 수에 맞춘 간격 · v1: 고정 간격
@@ -160,7 +161,7 @@ def build(run: Path) -> tuple[dict, Path]:
     consume, produce = set(rules["direction"]["consume"]), set(rules["direction"]["produce"])
     manual_values = set(rules["manual_transfer_values"])
     note_keywords = list(rules["manual_note_keywords"])
-    auto_modes, non_auto_if = set(rules["automatable"]["operation_modes"]), set(rules["automatable"]["non_automation_if"])
+    auto = Normalizer(rules, {}).automatable           # 자동화 판정 — MCP·M4 와 같은 정의 (빈 값 토큰 'NA' 는 불가, docs/02 7.4)
     labels = slot_labels()
 
     # ---- 툴사용 · 툴 · 분야
@@ -175,7 +176,7 @@ def build(run: Path) -> tuple[dict, Path]:
         usages[str(r.u)] = {"id": local(str(r.u)), "type": "u", "name": str(r.name), "sw_id": str(r.sw),
                             "field": part_code(str(r.fl)), "field_name": str(r.fl),
                             "tool": str(r.t), "tool_name": str(r.tl),
-                            "auto": op in auto_modes or (bool(aif) and aif not in non_auto_if)}
+                            "auto": auto(op, aif)}
     # 툴은 활성(status=활성)만 — 레지스트리가 '통합됨'·'폐기' 툴도 survey 그래프에 상태와 함께 남기므로(D7·C2) 거르지 않으면
     # 사용 선 없는 유령 점이 생긴다. 활성 툴은 이번 적재의 툴사용에서 나온 것이라 반드시 사용 선이 있다.
     tools: dict[str, dict] = {}

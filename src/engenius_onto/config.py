@@ -128,6 +128,23 @@ def check_aliases_shape(where: str, cfg: dict) -> dict:
     return out
 
 
+def check_header_map_shape(where: str, cfg) -> dict[str, dict[str, list[str]]]:
+    """header_map.yaml 한 파일의 형식 — {시트: {슬롯: [문구, ...]}} (I30). 틀리면 ConfigError — 오류 문구에는 파일·시트·슬롯(위치)만 쓰고
+    헤더 문구는 넣지 않는다 (사내 헤더에 인명이 섞일 수 있다). 문자열 하나('비고2')를 목록 대신 쓰면 글자 단위로 매핑되던 것을 막는다.
+    빈 값(None)은 빈 매핑·목록으로. 의미 검사(모르는 시트·슬롯, 제외 열 문구, 문구 충돌)는 form_spec.load_form_spec 이 한다."""
+    cfg = _expect(where, "(파일 전체)", cfg, "dict")
+    out: dict[str, dict[str, list[str]]] = {}
+    for sheet, slots in cfg.items():
+        slots = _expect(where, str(sheet), slots, "dict")
+        cur = out.setdefault(str(sheet), {})
+        for slot, phrases in slots.items():
+            phrases = [] if phrases is None else phrases
+            if not isinstance(phrases, list) or not all(isinstance(p, (str, int, float)) and not isinstance(p, bool) for p in phrases):
+                raise ConfigError(f"{where} {sheet}.{slot}: 형식은 문구 목록(['문구', ...]) 이어야 한다 (지금: {type(phrases).__name__})")
+            cur[str(slot)] = [str(p) for p in phrases]
+    return out
+
+
 def merge_config(name: str, base: dict, over: dict, where_base: str | None = None, where_over: str | None = None) -> dict:
     """config/<name> 위에 오버레이 <name> 을 덮은 결과 (where_*: 오류 문구에 쓰는 파일 경로 — load_config 가 실제 경로를 넘긴다).
 
@@ -137,6 +154,8 @@ def merge_config(name: str, base: dict, over: dict, where_base: str | None = Non
       merge_keys 는 쌍으로 승격해 섞는다 (옛 파일 호환). 양쪽 다 키가 없으면 옛 방식(merge_keys 키별 덮어쓰기, merge_pairs 키 없음).
     - value_aliases.yaml: 열별 깊은 병합 (같은 열의 '적힌 값' 은 오버레이가 이긴다)
     - template_examples.yaml: 시트별 예시 행 목록 합집합 (같은 행은 한 번 — 사내 양식판의 예시를 더한다, docs/09 #3)
+    - header_map.yaml: 시트·슬롯별 문구 합집합 — 저장소 문구 먼저, 오버레이의 새 문구를 뒤에 (같은 문구는 한 번; 지우기는 없다 — 사내 문구를
+      더하기만, I30). 시트 키는 원문 그대로 합친다 (v1.1 이름 'Tool 입출력' 과 정규 이름의 통합·의미 검사는 form_spec.load_form_spec)
     - 그 밖(rules.yaml 등): 키 단위 덮어쓰기 (중첩 dict 는 키별)
     형식이 틀린 값(목록 자리에 문자열 등)·값 없는 키는 파일·키 이름을 붙인 ConfigError(ValueError) 로 멈춘다 — 조용히 무시하지 않는다.
     """
@@ -182,6 +201,15 @@ def merge_config(name: str, base: dict, over: dict, where_base: str | None = Non
                         raise ConfigError(f"{w} {sheet}: 예시 행은 매핑(슬롯: 값) 이어야 한다 (지금: {type(row).__name__})")
                     if row not in cur:
                         cur.append(row)
+        return out
+    if name == "header_map.yaml":
+        out = {}
+        for w, d in srcs:
+            for sheet, slots in check_header_map_shape(w, d).items():
+                cur = out.setdefault(sheet, {})
+                for slot, phrases in slots.items():
+                    lst = cur.setdefault(slot, [])
+                    lst += [p for p in phrases if p not in lst]
         return out
     return _merge_dict_keys(base, over, srcs[1][0])
 

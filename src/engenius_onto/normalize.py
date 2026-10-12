@@ -79,6 +79,17 @@ class Normalizer:
         """셀 전체가 빈 값 토큰인지 (I16)."""
         return nfkc(s).strip().lower() in self.empty_tokens
 
+    # --- 자동화 판정 (docs/02 7.4, I16) -----------------------------------------------
+    def automatable(self, op, aif) -> bool:
+        """툴사용이 자동화 가능한가 — 조작 방식이 rules.yaml automatable.operation_modes 이거나, 자동화 IF 가 비어 있지 않고 빈 값 토큰
+        (empty_tokens — NA·-·해당없음 포함)도 아니며 non_automation_if({없음, 모름})도 아님. 목록 밖 값('API 있음')은 가능으로 둔다
+        (value_aliases 로 바로잡는다). 3D 지도(graph_view3d)·MCP(onto_store)·M4 착수 등급이 이 한 정의를 쓴다 (참조 계산 oracle 은 독립 구현)."""
+        a = self.rules["automatable"]
+        op, aif = nfc_strip(op), nfc_strip(aif)
+        if op in {nfc_strip(x) for x in a["operation_modes"]}:
+            return True
+        return bool(aif) and not self.is_empty(aif) and aif not in {nfc_strip(x) for x in a["non_automation_if"]}
+
     # --- 인명 유사 (D6·I29, docs/09 #20) --------------------------------------------
     @cached_property
     def _person_res(self) -> list:

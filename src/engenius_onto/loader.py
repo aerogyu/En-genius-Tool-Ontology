@@ -4,6 +4,10 @@
 RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 해석의 정본은 골든 interpretations (I번호).
 
 - 헤더 이름으로 매핑 (NFKC 후 공백·'*' 무시, I30) — 매핑 안 된 헤더는 경고, 의도적 제외 열(B 수식·K 문의처)은 읽지 않는다.
+  추가 문구는 config/header_map.yaml + 사내 오버레이 (시트·슬롯별 합집합; 제외 열·인명 열 문구는 설정 오류 — form_spec).
+- 엑셀 층 신호 (I37): 수식 오류 셀(#N/A 등)은 빈칸 + 열별 경고 + 행별 수정 요청 (Tool ID 칸이면 행 제외·이어받기 안 함), 캐시 없는
+  수식·숨긴 행·양식 밖(사본) 시트·툴사용 0건 파일은 경고.
+- 만료 시기 문자열: 텍스트 날짜 → YYYY-MM + 경고, '영구'·빈 값 토큰 → 빈칸, 그 밖 → 원문 + 경고·수정 요청 (I16·I27, docs/09 #21).
 - 시트·선택지 목록 이름은 양식판마다 다르다 — config/rules.yaml loader.sheets·choice_list_aliases 가 흡수 (docs/09 #13, 양식 v1.1).
 - 파트(Field) = 파일명의 약칭 (docs/10 5장). 묶음 파일(MD = MDT+MDC)은 행의 Tool ID 앞부분으로 나눈다 (config/parts.yaml).
   행의 '담당 부서' 는 분류 속성 reported_domain — 파트 설정과 다르면 경고만.
@@ -36,12 +40,43 @@ import yaml
 
 from engenius_onto.config import CONFIG_DIR, ConfigError, load_config, load_yaml, read_yaml
 from engenius_onto.form_spec import Column, FormSpec, load_form_spec, norm_header
-from engenius_onto.normalize import GENERIC_KEY_PREFIX, Normalizer, merge_keys_from_pairs, nfc_strip, read_merge_pairs
+from engenius_onto.normalize import GENERIC_KEY_PREFIX, Normalizer, merge_keys_from_pairs, nfc_strip, nfkc, read_merge_pairs
 
 USAGE_SHEET, IO_SHEET = "SW기본정보", "SW입출력"      # 스키마의 시트 이름 (실제 파일의 시트 이름은 설정으로 찾는다)
 EXCEL_SUFFIXES = {".xlsx", ".xlsm", ".xls"}
 PERSON_MASK = "[인명 유사 — 값 생략]"                  # 경고·로그에 인용할 값이 인명 유사일 때 대신 쓰는 문구 (Loader._q, docs/09 #20·C5)
 ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠﻿"), None)
+# 엑셀 수식 결과 오류 (I37) — 셀 형식 'e' 는 모두, 문자열이면 이 표기와 같을 때 (openpyxl ERROR_CODES + 새 엑셀 오류)
+EXCEL_ERRORS = ("#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#SPILL!", "#CALC!", "#FIELD!", "#BLOCKED!",
+                "#CONNECT!", "#BUSY!", "#UNKNOWN!", "#GETTING_DATA")
+# 만료 시기 텍스트 날짜 (I27, docs/09 #21 3단) — NFKC·앞뒤 공백 뒤 문자열 전체. 구분자 앞뒤 공백 허용, 월 1~12·일 1~31 만
+MONTH_TEXT_RES = (
+    re.compile(r"(?P<y>[0-9]{4})\s*[.\-/]\s*(?P<m>[0-9]{1,2})\s*\.?"),                                      # 2027.03 · 2027-3 · 2027/03 · 2027. 3.
+    re.compile(r"(?P<y>[0-9]{4})\s*[.\-/]\s*(?P<m>[0-9]{1,2})\s*[.\-/]\s*(?P<d>[0-9]{1,2})\s*\.?"),      # 2027-03-31 · 2027.03.31 · 2027. 3. 31.
+    re.compile(r"(?P<y>[0-9]{4})\s*년\s*(?P<m>[0-9]{1,2})\s*월(?:\s*(?P<d>[0-9]{1,2})\s*일)?"),           # 2027년 3월 · 2027년 3월 31일
+)
+
+
+def month_text(s) -> str | None:
+    """만료 시기 텍스트 → 'YYYY-MM' (MONTH_TEXT_RES 가운데 하나에 전체가 맞고 월·일이 범위 안일 때), 아니면 None (I27)."""
+    t = unicodedata.normalize("NFKC", "" if s is None else str(s)).strip()
+    for rx in MONTH_TEXT_RES:
+        m = rx.fullmatch(t)
+        if m:
+            mo, d = int(m["m"]), int(m["d"]) if m.groupdict().get("d") else 1
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                return f"{m['y']}-{mo:02d}"
+    return None
+
+
+def excel_error(cell) -> str | None:
+    """셀이 수식 결과 오류면 그 표기('#N/A' 등), 아니면 None (I37). 셀 형식 'e' 는 표기와 무관하게 오류."""
+    v = cell.value
+    if getattr(cell, "data_type", None) == "e":
+        return str(v).strip() if v not in (None, "") else "#오류"
+    if isinstance(v, str) and v.strip().upper() in EXCEL_ERRORS:
+        return v.strip().upper()
+    return None
 
 
 def id_key(s) -> str:
@@ -251,7 +286,11 @@ class Loader:
         self.lcfg = self.rules["loader"]
         self.norm = Normalizer.from_config(self.config_dir, self.overlay_dir)
         self._note_overlay("extensions.yaml")
-        self.spec: FormSpec = load_form_spec(schema_file, self.config_dir)
+        sheets = self.lcfg["sheets"]
+        self.sheet_cands = {USAGE_SHEET: sheets["usage"], IO_SHEET: sheets["io"]}
+        # 헤더 추가 문구: 저장소 + 사내 오버레이(시트·슬롯별 합집합, 시트 키는 v1.1 이름도 — I30)
+        self.spec: FormSpec = load_form_spec(schema_file, self.config_dir, self.overlay_dir, sheet_names=self.sheet_cands)
+        self._note_overlay("header_map.yaml")
         self.examples = self._cfg("template_examples.yaml")      # 오버레이는 시트별 합집합 (사내 양식판의 예시 — docs/09 #3)
         self.near_ratio, self.near_min_cols = self._near_settings()
         self.example_notes = {k for k in (cell_key(e.get("note")) for e in self.examples.get(USAGE_SHEET, []))
@@ -261,10 +300,10 @@ class Loader:
         self.person_all = [re.compile(p) for p in self.rules.get("person_patterns_all") or []]
         self.free_text = set(self.rules["free_text_slots"])
         self.month_slots = set(self.lcfg.get("month_slots", ["license_expiry"]))
+        self.month_blank = {nfkc(v).strip().lower() for v in self.lcfg.get("month_blank_values") or []}   # '영구' 등 (I16)
+        self.other_sheets = {norm_header(s) for s in self.lcfg.get("other_sheets") or []}             # 양식 밖이지만 아는 시트 (I37)
         d = self.rules["direction"]
         self.dir_short = {**{x: "in" for x in d["consume"]}, **{x: "out" for x in d["produce"]}}
-        sheets = self.lcfg["sheets"]
-        self.sheet_cands = {USAGE_SHEET: sheets["usage"], IO_SHEET: sheets["io"]}
         self.choice_aliases = {name: [name, *alts] for name, alts in (self.lcfg.get("choice_list_aliases") or {}).items()}
         self.absent_ok = set(self.lcfg.get("absent_ok_slots") or [])
         parts_cfg = self._cfg("parts.yaml", optional=True)
@@ -273,6 +312,13 @@ class Loader:
         self.synthetic_parts = set(parts_cfg.get("synthetic_parts") or [])
         self.value_aliases = self._value_aliases(self._cfg("value_aliases.yaml", optional=True))
         self.min_contain = int(self.rules.get("candidate_min_contain_len", 3))
+        # 파일마다 _load_file 이 새로 채우는 엑셀 층 상태 (I37)·빈 값 표기 건수 — 여기서는 빈 값으로만 (메서드 단독 호출 대비)
+        self._err_cells: dict[tuple[str, int], dict[str, str]] = {}
+        self._hidden: dict[str, set[int]] = {}
+        self._used_sheets: set[str] = set()
+        self._formula_cells: dict[str, set[tuple[int, int]]] = {}
+        self._na_cells = self._na_int_cells = self._na_month_cells = 0
+        self.issues: list[dict] = []
         self.known_tool_keys: set[str] = set()                  # 레지스트리 활성 툴 키 (load() 가 받는다)
         self.prefix_held: list[tuple[str, str]] = []            # 접두 흡수를 보류한 그룹의 키 쌍 (_absorptions → _candidates '제조사 접두')
 
@@ -489,13 +535,17 @@ class Loader:
 
     # ---- 시트 읽기 ----------------------------------------------------------------
     def _read_sheet(self, wb, sheet: str, rep: FileReport, warnings: list, excluded: list):
-        """([(행 번호, {슬롯: 셀 값})], 이 파일에 있는 슬롯). 빈 행은 건너뛰고, 연속 빈 행이 blank_rows_end 개면 끝으로 본다."""
+        """([(행 번호, {슬롯: 셀 값})], 이 파일에 있는 슬롯). 빈 행은 건너뛰고, 연속 빈 행이 blank_rows_end 개면 끝으로 본다.
+        엑셀 층 신호 (I37): 수식 결과 오류 셀(#N/A 등)은 빈칸으로 보고 행별로 self._err_cells 에 남긴 뒤 열마다 경고 1줄, 캐시 없는 수식
+        (self._formula_cells 좌표인데 값이 없음)은 열마다 경고 1줄, 숨긴 행은 self._hidden 에 (경고는 예시 판별 뒤 _load_file 이).
+        셋 다 내용 행(빈 행·시트 끝 뒤 행 제외)만 센다 — 끌어 내린 수식만 있는 빈 응답 행은 빈 행이다."""
         fname = rep.name
         actual = resolve_sheet(wb.sheetnames, self.sheet_cands[sheet])
         if actual is None:
             warnings.append(f"시트 없음: {fname} '{sheet}' — 이 시트는 적재하지 않음 (찾은 이름 후보: config/rules.yaml loader.sheets)")
             rep.warnings += 1
             return [], set()
+        self._used_sheets.add(actual)
         ws = wb[actual]
         hr, start = self.lcfg["header_row"], self.lcfg["data_start_row"]
         header = [c.value for c in ws[hr]] if ws.max_row >= hr else []
@@ -504,6 +554,8 @@ class Loader:
             if _blank(h):
                 continue
             nh = norm_header(h)
+            if nh in self.spec.ignored[sheet]:                                # 의도적 제외 열(문의처 등)은 매핑보다 먼저 — 읽지 않는다 (절대 규칙 5)
+                continue
             if nh in by_h:
                 col = by_h[nh]
                 if col in mapping.values():                                   # #19 중복 헤더 — 앞 열 사용
@@ -511,7 +563,7 @@ class Loader:
                     rep.warnings += 1
                     continue
                 mapping[idx] = col
-            elif nh not in self.spec.ignored[sheet]:
+            else:
                 warnings.append(f"매핑 안 된 헤더: {fname} {sheet} '{nfc_strip(h)}'")
                 rep.warnings += 1
         present = {c.slot for c in mapping.values()}
@@ -520,9 +572,25 @@ class Loader:
             warnings.append(f"양식 열 없음: {fname} {sheet} {missing}")
             rep.warnings += 1
         fill = self._merged_fill(ws, start, mapping, fname, sheet, rep, warnings)
+        formulas = self._formula_cells.get(actual, set())
+        errs: Counter = Counter()                                               # 슬롯 → 오류 칸 수 (I37)
+        nocache: Counter = Counter()                                            # 슬롯 → 캐시 없는 수식 칸 수
+        hidden: set[int] = set()
         rows, blanks, ended, tail = [], 0, False, []
         for n in range(start, ws.max_row + 1):
-            v = {c.slot: fill.get((n, i), ws.cell(n, i + 1).value) for i, c in mapping.items()}
+            v, err_here, nocache_here = {}, {}, []
+            for i, c in mapping.items():
+                if (n, i) in fill:
+                    v[c.slot] = fill[(n, i)]
+                    continue
+                x = ws.cell(n, i + 1)
+                code = excel_error(x)
+                if code:
+                    v[c.slot], err_here[c.slot] = None, code
+                else:
+                    v[c.slot] = x.value
+                    if x.value is None and (n, i + 1) in formulas:
+                        nocache_here.append(c.slot)
             if all(_blank(x) for x in v.values()):
                 blanks += 1
                 if blanks >= self.lcfg["blank_rows_end"]:
@@ -533,6 +601,23 @@ class Loader:
                 tail.append(n)
                 continue
             rows.append((n, v))
+            if err_here:
+                self._err_cells[(sheet, n)] = err_here
+                errs.update(err_here.keys())
+            nocache.update(nocache_here)
+            rd = ws.row_dimensions.get(n)                                      # get — 인덱싱은 빈 행 정보를 새로 만든다
+            if rd is not None and rd.hidden:
+                hidden.add(n)
+        self._hidden[sheet] = hidden
+        for col in self.spec.columns[sheet]:                                   # 열 순서대로 한 줄씩 (헤더는 양식 문구 — 값 아님)
+            if errs[col.slot]:
+                warnings.append(f"수식 오류 셀: {fname} {sheet} '{col.header.rstrip(' *')}' {errs[col.slot]}칸 — 빈칸으로 봄 "
+                                "(#N/A·#REF! 등 수식 결과 오류, 수정 요청표에 행별로)")
+                rep.warnings += 1
+            if nocache[col.slot]:
+                warnings.append(f"캐시 없는 수식: {fname} {sheet} '{col.header.rstrip(' *')}' {nocache[col.slot]}칸 — 값을 읽지 못함 "
+                                "(엑셀에서 열어 저장하면 읽힘)")
+                rep.warnings += 1
         if tail:
             warnings.append(f"빈 행 {self.lcfg['blank_rows_end']}개 뒤 내용 행: {fname} {sheet} {len(tail)}행 — 적재하지 않음 "
                             f"(첫 행 {tail[0]})")
@@ -554,8 +639,9 @@ class Loader:
             idxs = [c - 1 for c in range(rng.min_col, rng.max_col + 1) if c - 1 in cols]
             if not idxs:
                 continue
-            top = ws.cell(rng.min_row, rng.min_col).value
-            if _blank(top):
+            top_cell = ws.cell(rng.min_row, rng.min_col)
+            top = top_cell.value
+            if _blank(top) or excel_error(top_cell):                         # 오류 칸은 채우지 않는다 — 첫 칸에서 '수식 오류 셀' 로 센다 (I37)
                 continue
             for r in range(max(rng.min_row, start), rng.max_row + 1):
                 for i in idxs:
@@ -563,6 +649,61 @@ class Loader:
             warnings.append(f"병합 셀: {fname} {sheet} {rng.coord} — 위 칸 값으로 채움")
             rep.warnings += 1
         return fill
+
+    def _scan_formulas(self, rep: FileReport, sheets: list[str], warnings: list) -> dict[str, set[tuple[int, int]]]:
+        """{시트: 수식 칸 좌표 (행, 열)} — 데이터 시작 행부터 (I37). 본 로드(data_only)는 수식의 캐시값만 보여 캐시 없는 수식이 그냥
+        빈칸이 된다 — 수식 여부만 보려고 읽기 전용으로 한 번 더 연다 (값은 쓰지 않는다; dimension 은 다시 잰다 — #5).
+        실패해도 적재는 계속하고 경고 '수식 검사 못 함' (캐시 없는 수식 경고만 빠진다)."""
+        out: dict[str, set[tuple[int, int]]] = {}
+        if not sheets:
+            return out
+        try:
+            wf = openpyxl.load_workbook(rep.path, read_only=True, data_only=False)
+            try:
+                start = self.lcfg["data_start_row"]
+                for name in sheets:
+                    ws = wf[name]
+                    ws.reset_dimensions()
+                    out[name] = {(c.row, c.column) for row in ws.iter_rows(min_row=start) for c in row
+                                 if getattr(c, "data_type", None) == "f"}
+            finally:
+                wf.close()
+        except Exception as e:                                          # noqa: BLE001 — 본 로드는 이미 됐다
+            warnings.append(f"수식 검사 못 함: {rep.name} — {type(e).__name__} (캐시 없는 수식 경고를 내지 않음, 적재는 계속)")
+            rep.warnings += 1
+            return {}
+        return out
+
+    def _extra_sheets(self, wb, rep: FileReport, warnings: list) -> None:
+        """양식 밖 시트 (I37) — 읽은 기본정보·입출력 시트, 선택지 시트, rules.yaml loader.other_sheets(작성안내 등, 공백·'*' 무시) 밖의
+        내용 있는 시트. 2행 헤더가 기본정보·입출력 양식 열의 절반 이상과 맞으면(헤더 추가 문구 포함) '양식 사본 시트'(+ 수정 요청표),
+        아니면 '양식 밖 시트' 경고만. 적재는 하지 않는다 (무엇이 응답인지는 사람이 판단 — HITL). 시트 이름은 _q 로 인용 (인명 가림)."""
+        hr, start = self.lcfg["header_row"], self.lcfg["data_start_row"]
+        known = set(self._used_sheets)
+        choices = resolve_sheet(wb.sheetnames, self.lcfg["choices_sheet"])
+        if choices:
+            known.add(choices)
+        for ws in wb.worksheets:
+            name = ws.title
+            if name in known or norm_header(name) in self.other_sheets:
+                continue
+            rows = list(ws.iter_rows(values_only=True))
+            filled = [any(not _blank(v) for v in r) for r in rows]
+            if not any(filled):
+                continue
+            hdr = {norm_header(h) for h in (rows[hr - 1] if len(rows) >= hr else ()) if not _blank(h)}
+            form = [s for s in (USAGE_SHEET, IO_SHEET)
+                    if len(hdr & set(self.spec.by_header(s))) * 2 >= len(self.spec.columns[s])]
+            state = " (숨김)" if ws.sheet_state != "visible" else ""
+            label = self._q(nfc_strip(name))
+            if form:
+                content = sum(filled[start - 1:])
+                warnings.append(f"양식 사본 시트: {rep.name} '{label}'{state} — {form[0]} 와 같은 헤더, 내용 {content}행, 적재하지 않음")
+                self._issue(rep, form[0], None, "", None, None if label == PERSON_MASK else nfc_strip(name), "양식 사본 시트",
+                            "응답이 이 시트에 있으면 원래 시트로 옮기고 사본 시트는 지워 주세요 (사본 시트는 읽지 않습니다)")
+            else:
+                warnings.append(f"양식 밖 시트: {rep.name} '{label}'{state} — 읽지 않음 (아는 시트면 rules.yaml loader.other_sheets 에 추가)")
+            rep.warnings += 1
 
     def _read_choices(self, wb) -> dict[str, list[str]]:
         """{정규화 목록 이름: 값}. 목록 이름 행은 2행 (1행 제목)."""
@@ -619,8 +760,10 @@ class Loader:
         return ", ".join(([f"{eq}/{n} 열 같음"] if n else []) + (["비고가 예시 문구"] if note else []))
 
     # ---- 셀 규칙 (D5) -------------------------------------------------------------
-    def _convert(self, col: Column, value, where: str, warnings: list, rep: FileReport):
-        """문자열 슬롯의 숫자·날짜 셀 변환 (I27). 정수 슬롯은 (정수 | None, 원문 | None)."""
+    def _convert(self, col: Column, value, where: str, warnings: list, rep: FileReport, row: int | None = None, tool_id=None):
+        """문자열 슬롯의 숫자·날짜 셀 변환 (I27). 정수 슬롯은 (정수 | None, 원문 | None).
+        만료 시기(loader.month_slots)의 **문자열 셀**은 _month_text (I16·I27 — 실수 셀 2027.1 은 아래 실수 경로 그대로; 문자열이 된 뒤에
+        정규화하면 '2027-01' 로 잘못 바뀐다). row·tool_id 는 수정 요청표 행용."""
         if col.kind == "int":
             if value is None or (isinstance(value, str) and not value.strip()):
                 return None, None
@@ -656,7 +799,34 @@ class Loader:
             warnings.append(f"날짜 셀: {where} {col.header} → {d.isoformat()}")
             rep.warnings += 1
             return d.isoformat(), None
+        if col.slot in self.month_slots and isinstance(value, str) and not _blank(value):
+            return self._month_text(col, value, where, warnings, rep, row, tool_id), None
         return nfc_strip(value), None
+
+    def _month_text(self, col: Column, value: str, where: str, warnings: list, rep: FileReport, row: int | None, tool_id) -> str | None:
+        """만료 시기 문자열 (docs/09 #21 3단, I16·I27). 순서: 값 대응표(value_aliases)에 있는 원문 → 그대로 (대응표가 바꾼다) ·
+        빈 값 토큰·loader.month_blank_values('영구') → 빈칸 (원문 없음, 파일당 한 줄) · 이미 YYYY-MM → 그대로 · 텍스트 날짜
+        (2027.03·2027/3·2027-03-31·2027. 3. 31.·2027년 3월) → YYYY-MM + 경고 '만료 시기 표기 변환' · 그 밖 → 원문 보존 + 경고
+        '만료 시기 형식 아님' + 수정 요청표 '만료 시기 형식' (인명 유사면 값 생략 — 스키마 층(Pydantic·SHACL)도 계속 위반으로 본다, D4)."""
+        s = nfc_strip(value)
+        if s in self.value_aliases.get(col.slot, {}):
+            return s
+        if self.norm.is_empty(s) or nfkc(s).strip().lower() in self.month_blank:
+            self._na_month_cells += 1
+            return None
+        ym = month_text(s)
+        if ym == s:                                                      # 이미 YYYY-MM (스키마 패턴) — 경고 없음
+            return s
+        if ym:
+            warnings.append(f"만료 시기 표기 변환: {where} '{self._q(s)}' → '{ym}'")
+            rep.warnings += 1
+            return ym
+        warnings.append(f"만료 시기 형식 아님: {where} '{self._q(s)}' — 원문 보존 (YYYY-MM 으로)")
+        rep.warnings += 1
+        if row is not None:
+            self._issue(rep, col.sheet, row, tool_id, col.header, None if self._looks_person(s) else s, "만료 시기 형식",
+                        "YYYY-MM 으로 적어 주세요 (예: 2027-03). 영구면 비워 두세요")
+        return s
 
     def _apply_value_aliases(self, v: dict, rep: FileReport) -> int:
         n = 0
@@ -668,7 +838,8 @@ class Loader:
         return n
 
     def _check(self, sheet: str, v: dict, present: set, choices: dict, where: str, warnings: list, rep: FileReport,
-               row: int, tool_id, missing_lists: set) -> None:
+               row: int, tool_id, missing_lists: set, err_slots=()) -> None:
+        """err_slots: 수식 오류로 빈칸이 된 슬롯 (I37) — 필수값 누락 경고는 내되 수정 요청은 '수식 오류 셀' 한 행만 (중복 방지)."""
         for col in self.spec.columns[sheet]:
             if col.slot not in present:
                 continue
@@ -676,7 +847,8 @@ class Loader:
             if col.required and _blank(val):
                 warnings.append(f"필수값 누락: {where} '{col.header}'")
                 rep.warnings += 1
-                self._issue(rep, sheet, row, tool_id, col.header, None, "필수값 누락", "빈칸 — 값을 적거나 '모름'을 고르세요")
+                if col.slot not in err_slots:
+                    self._issue(rep, sheet, row, tool_id, col.header, None, "필수값 누락", "빈칸 — 값을 적거나 '모름'을 고르세요")
                 continue
             if col.choice_list and not _blank(val) and choices:
                 lst = self._choice_list(choices, col.choice_list)
@@ -712,6 +884,12 @@ class Loader:
             warnings.append(f"읽을 수 없는 파일: {fname} — {rep.unreadable} (적재 안 함, 이번 실행은 폐기 판정을 하지 않음)")
             rep.warnings += 1
             return [], []
+        # 엑셀 층 신호 (I37) — 파일마다 새로: 수식 칸 좌표·오류 칸·숨긴 행·읽은 시트
+        self._err_cells: dict[tuple[str, int], dict[str, str]] = {}
+        self._hidden: dict[str, set[int]] = {}
+        self._used_sheets: set[str] = set()
+        self._formula_cells = self._scan_formulas(rep, [s for s in (resolve_sheet(wb.sheetnames, self.sheet_cands[k])
+                                                                    for k in (USAGE_SHEET, IO_SHEET)) if s], warnings)
         try:
             choices = self._read_choices(wb)
             if not choices:
@@ -719,6 +897,7 @@ class Loader:
                 rep.warnings += 1
             urows, upresent = self._read_sheet(wb, USAGE_SHEET, rep, warnings, excluded)
             irows, ipresent = self._read_sheet(wb, IO_SHEET, rep, warnings, excluded)
+            self._extra_sheets(wb, rep, warnings)
         finally:
             wb.close()
         cols_u = {c.slot: c for c in self.spec.columns[USAGE_SHEET]}
@@ -727,10 +906,32 @@ class Loader:
         aliased = 0
         self._na_cells = 0
         self._na_int_cells = 0
+        self._na_month_cells = 0
 
         def exclude(sheet, row, reason):
             excluded.append({"file": fname, "sheet": sheet, "row": row, "reason": reason})
             rep.excluded += 1
+
+        # 엑셀 층 신호의 행 단위 처리 (I37) — 예시 행(정확 일치)을 거른 뒤의 응답 행만
+        hidden_seen: dict[str, list[int]] = {USAGE_SHEET: [], IO_SHEET: []}
+
+        def excel_rows(sheet: str, n: int, tool_id, id_slot: str) -> bool:
+            """숨긴 행 기록 + 수식 오류 칸의 수정 요청 행. Tool ID 칸이 오류면 행을 제외하고 True (입출력은 이어받기 대상도 아님)."""
+            if n in self._hidden.get(sheet, ()):
+                hidden_seen[sheet].append(n)
+                self._issue(rep, sheet, n, tool_id, None, None, "숨긴 행",
+                            "숨긴 행도 응답으로 읽었습니다 — 지울 행이면 행 삭제, 아니면 숨기기 해제")
+            errs = self._err_cells.get((sheet, n), {})
+            cols = cols_u if sheet == USAGE_SHEET else cols_i
+            if id_slot in errs:
+                exclude(sheet, n, "Tool ID 수식 오류 (I37)")
+                self._issue(rep, sheet, n, "", cols[id_slot].header, errs[id_slot], "수식 오류 셀",
+                            "Tool ID 칸이 수식 오류(#N/A 등)입니다 — Tool ID 를 값으로 적어 주세요")
+                return True
+            for slot, code in errs.items():
+                self._issue(rep, sheet, n, tool_id, cols[slot].header, code, "수식 오류 셀",
+                            "수식 결과가 오류(#N/A 등)라 빈칸으로 읽었습니다 — 값을 직접 적거나 수식을 고쳐 주세요")
+            return False
 
         # 예시 행 (I15): 시트별 정확 일치·유사 행 수 — 끝에서 설정 낡음 점검. 기본정보 유사 행의 수정 요청 행은 교체되면 종류를 바꾼다
         n_exact = {USAGE_SHEET: 0, IO_SHEET: 0}
@@ -757,6 +958,8 @@ class Loader:
                 n_exact[USAGE_SHEET] += 1
                 continue
             near = near_check(USAGE_SHEET, n, raw, upresent, raw.get("source_key"))
+            if excel_rows(USAGE_SHEET, n, raw.get("source_key"), "source_key"):
+                continue
             if _blank(raw.get("source_key")):
                 name = nfc_strip(raw.get("reported_tool_name"))
                 warnings.append(f"SW ID 없는 내용 행: {fname} {USAGE_SHEET} '{name}' — 건너뜀")
@@ -767,11 +970,12 @@ class Loader:
             where = f"{fname} {USAGE_SHEET} {cell_key(raw.get('source_key'))}"
             v, rawvals = {}, {}
             for slot, val in raw.items():
-                v[slot], r = self._convert(cols_u[slot], val, where, warnings, rep)
+                v[slot], r = self._convert(cols_u[slot], val, where, warnings, rep, n, raw.get("source_key"))
                 if r is not None:
                     rawvals[slot] = r
             aliased += self._apply_value_aliases(v, rep)
-            self._check(USAGE_SHEET, v, upresent, choices, where, warnings, rep, n, v.get("source_key"), missing_lists)
+            self._check(USAGE_SHEET, v, upresent, choices, where, warnings, rep, n, v.get("source_key"), missing_lists,
+                        self._err_cells.get((USAGE_SHEET, n), {}))
             u = UsageRec(fname, rep.field, n, v, rawvals, part=self._part_of(rep, v.get("source_key"), warnings, n),
                          near_example=near)
             k = id_key(u.sw_id)
@@ -818,6 +1022,9 @@ class Loader:
                 prev_n = prev_id = None
                 continue
             near = near_check(IO_SHEET, n, raw, ipresent, raw.get("owner_source_key"))   # 응답이므로 이어받기를 끊지 않는다 (I22)
+            if excel_rows(IO_SHEET, n, raw.get("owner_source_key"), "owner_source_key"):
+                prev_n = prev_id = None                              # Tool ID 오류 행은 이어받지도 넘겨주지도 않는다 (I22 보호, I37)
+                continue
             if _blank(raw.get("owner_source_key")) and fill_down and prev_id is not None and prev_n == n - 1:
                 # 같은 툴의 입출력을 여러 행에 적으며 첫 행에만 ID 를 적은 경우 (Leo 2026-10-09) — 바로 위 행과 붙어 있을 때만
                 raw = {**raw, "owner_source_key": prev_id}
@@ -835,9 +1042,10 @@ class Loader:
             where = f"{fname} {IO_SHEET} {cell_key(raw.get('owner_source_key'))} '{cell_key(raw.get('data_name'))}'"
             v = {}
             for slot, val in raw.items():
-                v[slot], _ = self._convert(cols_i[slot], val, where, warnings, rep)
+                v[slot], _ = self._convert(cols_i[slot], val, where, warnings, rep, n, raw.get("owner_source_key"))
             aliased += self._apply_value_aliases(v, rep)
-            self._check(IO_SHEET, v, ipresent, choices, where, warnings, rep, n, v.get("owner_source_key"), missing_lists)
+            self._check(IO_SHEET, v, ipresent, choices, where, warnings, rep, n, v.get("owner_source_key"), missing_lists,
+                        self._err_cells.get((IO_SHEET, n), {}))
             sw = nfc_strip(v.get("owner_source_key"))
             owner = by_id.get(id_key(sw))                            # D3: 소유는 같은 파일 안에서 (#18 표기 차이 흡수)
             dval = nfc_strip(v.get("direction"))
@@ -874,6 +1082,18 @@ class Loader:
         if self._na_int_cells:
             warnings.append(f"빈 값 표기 정수 칸: {fname} {self._na_int_cells}칸 — 빈칸으로 봄 (docs/09 #21)")
             rep.warnings += 1
+        if self._na_month_cells:
+            warnings.append(f"빈 값 표기 만료 시기: {fname} {self._na_month_cells}칸 — 빈칸으로 봄 ('영구'·NA·- 등, docs/09 #21)")
+            rep.warnings += 1
+        for sh in (USAGE_SHEET, IO_SHEET):                                  # I37 — 숨긴 행은 적재하고 시트마다 한 줄
+            if hidden_seen[sh]:
+                warnings.append(f"숨긴 행: {fname} {sh} {len(hidden_seen[sh])}행 — 응답으로 적재함 (첫 행 {hidden_seen[sh][0]})")
+                rep.warnings += 1
+        if rep.usage_rows == 0:                                             # I37 — 예시만 남았거나 시트·헤더가 양식과 다름
+            warnings.append(f"툴사용 0건: {fname} — 기본정보 시트에서 적재한 행이 없음 (예시만 남았거나 시트·헤더가 양식과 다름)")
+            rep.warnings += 1
+            self._issue(rep, USAGE_SHEET, None, "", None, None, "툴사용 0건",
+                        "응답 행이 하나도 읽히지 않았습니다 — 시트 이름·헤더를 양식대로 두고 예시 아래에 적어 주세요")
         # 입출력이 하나도 없는 툴사용 — 정상 고립일 수 있어 '확인 요청' 으로만 수정 요청표에 싣는다 (docs/11 3장 6번, 경고 아님)
         owners = {id(x.owner) for x in ios if x.owner is not None}
         for u in usages:
@@ -1200,10 +1420,11 @@ class Loader:
 
 
 # --------------------------------------------------------------------------- 템플릿 예시
-def extract_template_examples(form_xlsx: Path, config_dir: Path | None = None) -> dict:
-    """양식의 예시 행(데이터 시작 행부터 내용이 있는 행)을 슬롯 이름으로 뽑는다 → config/template_examples.yaml."""
-    rules = load_yaml("rules.yaml", config_dir)["loader"]
-    spec = load_form_spec(config_dir=config_dir)
+def extract_template_examples(form_xlsx: Path, config_dir: Path | None = None, overlay_dir: Path | None = None) -> dict:
+    """양식의 예시 행(데이터 시작 행부터 내용이 있는 행)을 슬롯 이름으로 뽑는다 → config/template_examples.yaml.
+    overlay_dir(사내 오버레이)를 주면 그 rules.yaml·header_map.yaml 도 쓴다 — 사내 양식판의 시트 이름·헤더 문구 (I30)."""
+    rules = load_config("rules.yaml", config_dir, overlay_dir)[0]["loader"]
+    spec = load_form_spec(config_dir=config_dir, overlay_dir=overlay_dir)
     cands = {USAGE_SHEET: rules["sheets"]["usage"], IO_SHEET: rules["sheets"]["io"]}
     wb = openpyxl.load_workbook(form_xlsx, read_only=True, data_only=True)
     out = {}
@@ -1232,7 +1453,7 @@ def write_template_examples(forms: list[Path], config_dir: Path | None = None, o
     저장소 파일을 고치면 업데이트가 '.new' 로 남기고 selftest(양식 일치 검사)가 실패하므로 사내 양식판은 이쪽으로 넣는다."""
     data: dict[str, list] = {USAGE_SHEET: [], IO_SHEET: []}
     for form in forms:
-        for sheet, rows in extract_template_examples(form, config_dir).items():
+        for sheet, rows in extract_template_examples(form, config_dir, overlay_dir).items():
             data[sheet] += [r for r in rows if r not in data[sheet]]
     if overlay_dir is not None:
         path = Path(overlay_dir) / "template_examples.yaml"

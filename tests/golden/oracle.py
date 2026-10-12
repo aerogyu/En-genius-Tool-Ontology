@@ -51,6 +51,10 @@ VERSION_TOKEN = re.compile(r"^(v\d+(\.\d+)*|\d{4}r\d+|r\d+[a-z]?|sp\d+|\d+(\.\d+
 EXT_SEP = re.compile("[/,;·ㆍᆞ・\\s]+")
 PARTNER_SEP = re.compile("[,;/·ㆍᆞ・\\n]+")                                            # [I17]
 PERSON_PATTERN = re.compile(r"(책임|선임|수석|연구원|과장|차장|부장|대리|사원|팀장)\s*\(\s*내선")   # [D6]
+EXPIRY_BLANK = {"영구"}                                                                 # [I16] rules.yaml loader.month_blank_values
+# [I27] 만료 시기 텍스트 날짜 — NFKC 뒤 전체: 연 구분자 월 (구분자 일)? 점? | 연 '년' 월 '월' (일 '일')?  (적재기는 패턴 3개로 따로 구현)
+EXPIRY_TEXT = re.compile(r"(?P<y>[0-9]{4})\s*(?:[./-]\s*(?P<m>[0-9]{1,2})(?:\s*[./-]\s*(?P<d>[0-9]{1,2}))?\s*\.?"
+                         r"|년\s*(?P<m2>[0-9]{1,2})\s*월(?:\s*(?P<d2>[0-9]{1,2})\s*일)?)")
 
 USAGE_KEYS = {  # 명세 키 → (양식 헤더, 선택지 목록, 필수)
     "sw_id": ("SW ID *", None, True), "name": ("SW명(정식) *", None, True), "version": ("버전 *", None, True),
@@ -373,8 +377,9 @@ class Usage:
 
     @property
     def automatable(self) -> bool:
+        """[7.4·I16] 조작 방식이 자동화 가능 값이거나, 자동화 IF 가 비어 있지 않고 빈 값 토큰(NA·- 등)도 {없음, 모름}도 아님."""
         op, aif = (self.op or "").strip(), (self.auto_if or "").strip()
-        return op in AUTO_OPS or bool(aif and aif not in NON_AUTO_IF)
+        return op in AUTO_OPS or bool(aif and _nfkc(aif).strip().lower() not in EMPTY_TOKENS and aif not in NON_AUTO_IF)
 
     def sort_key(self):
         users = self.users if isinstance(self.users, int) else -1   # [I6]
@@ -423,12 +428,41 @@ class Feed:
 
 
 # --------------------------------------------------------------------------- 셀 값 규칙 (docs/02 5-2)
-def cell_to_text(key: str, value, where: str, warnings: list) -> object:
-    """문자열 슬롯의 숫자·날짜 셀 변환 [D5]. 정수 슬롯(users, qty)은 그대로 두되 빈 값 토큰('NA'·'-')은 빈칸 [I16, docs/09 #21]."""
+def expiry_text(s: str, where: str, warnings: list, counts: Counter | None = None) -> object:
+    """[I16·I27] 만료 시기 **문자열** 칸: 빈 값 토큰·'영구' → None (파일당 한 줄 — counts['na_month']); 텍스트 날짜 → 'YYYY-MM'
+    (원문이 이미 그 표기가 아니면 경고 '만료 시기 표기 변환'); 그 밖 → 원문 + 경고 '만료 시기 형식 아님'."""
+    t = _nfkc(s).strip()
+    if t.lower() in EMPTY_TOKENS or t.lower() in EXPIRY_BLANK:
+        if counts is not None:
+            counts["na_month"] += 1
+        return None
+    orig = unicodedata.normalize("NFC", s).strip()
+    m = EXPIRY_TEXT.fullmatch(t)
+    if m:
+        month = int(m["m"] or m["m2"])
+        day = int(m["d"] or m["d2"] or 1)
+        if 1 <= month <= 12 and 1 <= day <= 31:
+            ym = f"{m['y']}-{month:02d}"
+            if ym != orig:
+                warnings.append(f"만료 시기 표기 변환: {where} '{orig}' → '{ym}'")
+            return ym
+    warnings.append(f"만료 시기 형식 아님: {where} '{orig}' — 원문 보존 (YYYY-MM 으로)")
+    return orig
+
+
+def cell_to_text(key: str, value, where: str, warnings: list, counts: Counter | None = None) -> object:
+    """문자열 슬롯의 숫자·날짜 셀 변환 [D5]. 정수 슬롯(users, qty)은 그대로 두되 빈 값 토큰('NA'·'-')은 빈칸 [I16, docs/09 #21] —
+    counts['na_int'] (파일당 한 줄). 만료 시기 문자열은 expiry_text [I27] — 실수 셀(2027.1)은 아래 실수 경로 그대로."""
     if value is None:
         return None
     if key in INT_SLOTS:
-        return None if isinstance(value, str) and value.strip().lower() in EMPTY_TOKENS else value
+        if isinstance(value, str) and _nfkc(value).strip().lower() in EMPTY_TOKENS:
+            if counts is not None and value.strip():
+                counts["na_int"] += 1
+            return None
+        return value
+    if key == "expiry" and isinstance(value, str) and value.strip():
+        return expiry_text(value, where, warnings, counts)
     if isinstance(value, bool):
         return str(value)
     if isinstance(value, int):
@@ -447,7 +481,7 @@ def cell_to_text(key: str, value, where: str, warnings: list) -> object:
     return value
 
 
-def check_row(keys: dict, v: dict, choices: dict, where: str, warnings: list, sheet: str) -> None:
+def check_row(keys: dict, v: dict, choices: dict, where: str, warnings: list, sheet: str, counts: Counter | None = None) -> None:
     for k, (header, lst, required) in keys.items():
         val = v.get(k)
         if k == "dir" and val in DIRECTION:
@@ -456,7 +490,11 @@ def check_row(keys: dict, v: dict, choices: dict, where: str, warnings: list, sh
             warnings.append(f"필수값 누락: {where} '{header}'")
             continue
         if lst and val is not None and str(val) not in choices.get(lst, []):
-            warnings.append(f"선택지 밖 값: {where} '{header}' = '{val}'")
+            if _nfkc(val).strip().lower() in EMPTY_TOKENS:   # [I28] 목록 밖 빈 값 토큰(NA·-)은 원문 보존, 선택지 경고 대신 파일당 한 줄
+                if counts is not None:
+                    counts["na_choice"] += 1
+            else:
+                warnings.append(f"선택지 밖 값: {where} '{header}' = '{val}'")
         if k in FREE_TEXT and val and PERSON_PATTERN.search(str(val)):
             warnings.append(f"인명 유사 패턴: {where} '{header}'")
 
@@ -516,6 +554,7 @@ def compute(spec: dict, repo: Path) -> dict:
             choices["온톨로지분류"] += spec.get("extra_categories", [])
         stats = {"usage_rows": 0, "io_rows": 0, "excluded": 0, "warnings": 0, "superseded": False}
         w0 = len(warnings)
+        counts: Counter = Counter()                                  # [I16·I28] 파일당 한 줄로 세는 빈 값 표기
 
         # 헤더 [docs/02 5장 1]: 바뀐 문구는 정규화 비교로 매핑, 매핑 안 되는 헤더는 경고
         known = {norm_header(h) for h, _, _ in USAGE_KEYS.values()} | {norm_header(h) for h, _, _ in IO_KEYS.values()} \
@@ -541,8 +580,8 @@ def compute(spec: dict, repo: Path) -> dict:
             where = f"{fname} SW기본정보 {v.get('sw_id')}"
             for k in list(v):
                 if k in USAGE_KEYS:
-                    v[k] = cell_to_text(k, v[k], where, warnings)
-            check_row(USAGE_KEYS, v, choices, where, warnings, "SW기본정보")
+                    v[k] = cell_to_text(k, v[k], where, warnings, counts)
+            check_row(USAGE_KEYS, v, choices, where, warnings, "SW기본정보", counts)
             # 파트 = 파일 분야 (v0.3, docs/10 — 행의 '담당 부서' 는 분류 속성일 뿐 키가 아니다. P17 개정 2026-09-30)
             us = Usage(fname, ff, ff, str(v["sw_id"]), v["name"], v["vendor"], v["kind"], v.get("op"),
                        v.get("auto_if"), v["airgap"], v.get("freq"), v.get("users"), v.get("prio"))
@@ -577,10 +616,16 @@ def compute(spec: dict, repo: Path) -> dict:
             where = f"{fname} SW입출력 {v['sw_id']} '{v['name']}'"
             for k in list(v):
                 if k in IO_KEYS:
-                    v[k] = cell_to_text(k, v[k], where, warnings)
-            check_row(IO_KEYS, v, choices, where, warnings, "SW입출력")
+                    v[k] = cell_to_text(k, v[k], where, warnings, counts)
+            check_row(IO_KEYS, v, choices, where, warnings, "SW입출력", counts)
             raw_ios.append((fname, ff, v))
             stats["io_rows"] += 1
+        if counts["na_choice"]:
+            warnings.append(f"빈 값 표기(NA·-·해당없음 등) 드롭다운 칸: {fname} {counts['na_choice']}칸 — 선택지 검사에서 뺌 (원문 보존)")
+        if counts["na_int"]:
+            warnings.append(f"빈 값 표기 정수 칸: {fname} {counts['na_int']}칸 — 빈칸으로 봄 (docs/09 #21)")
+        if counts["na_month"]:
+            warnings.append(f"빈 값 표기 만료 시기: {fname} {counts['na_month']}칸 — 빈칸으로 봄 ('영구'·NA·- 등, docs/09 #21)")
         stats["warnings"] = len(warnings) - w0
         per_file[fname] = stats
 

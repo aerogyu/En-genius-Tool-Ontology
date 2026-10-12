@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from engenius_onto.config import REPO_ROOT, default_overlay_dir, load_config, namespaces
+from engenius_onto.normalize import Normalizer
 from engenius_onto.registry import ACTIVE
 
 RDFS = "http://www.w3.org/2000/01/rdf-schema#"
@@ -111,7 +112,7 @@ class OntologyStore:
         consume, produce = set(rules["direction"]["consume"]), set(rules["direction"]["produce"])
         manual_values = set(rules["manual_transfer_values"])
         note_keywords = list(rules["manual_note_keywords"])
-        auto_modes, non_auto_if = set(rules["automatable"]["operation_modes"]), set(rules["automatable"]["non_automation_if"])
+        auto = Normalizer(rules, {}).automatable                    # 자동화 판정 — 지도·M4 와 같은 정의 (빈 값 토큰 'NA' 는 불가, docs/02 7.4)
         self._person = [re.compile(rules["person_pattern"])] + [re.compile(p) for p in rules.get("person_patterns_all") or []]
         snap = Snapshot(run=run.name, dataset=run_dataset(run))
         aliases_cfg, _ = load_config("tool_aliases.yaml", overlay_dir=_overlay_of(run))
@@ -140,7 +141,7 @@ class OntologyStore:
             op, aif = p.get("operation_mode", ""), p.get("automation_if", "")
             snap.usages[r["u"]] = {"tool": r["t"], "part": snap.parts.get(r["f"], {}).get("code", ""), "sw_id": p.get("source_key", ""),
                                    "name": p.get("reported_tool_name", ""), "props": p,
-                                   "auto": op in auto_modes or (bool(aif) and aif not in non_auto_if)}
+                                   "auto": auto(op, aif)}
 
         cats = {r["c"]: r["cl"] for r in sel("SELECT ?c ?cl WHERE { ?c a eg:DataCategory ; rdfs:label ?cl }")}
         partners: dict[str, list] = defaultdict(list)                # 입출력 하나가 상대 툴 여럿을 적을 수 있다 (연계 Tool명 '·' 구분)

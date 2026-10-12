@@ -168,6 +168,7 @@ def test_unreadable_file_is_skipped_and_nothing_retired(tmp_path):
     out = run_load(input_dir=d, registry_dir=reg, out_root=tmp_path / "out", shacl=False)
     assert not out.result.complete and out.log["complete"] is False
     assert any(w.startswith("읽을 수 없는 파일") for w in out.result.warnings)
+    assert not any(w.startswith("툴사용 0건") for w in out.result.warnings)   # 읽지 못한 파일은 0건 경고 대상이 아니다 (I37)
     assert out.log["counts"]["usages"] == 31                     # 34 - 제어 3
     rows = {r["key"]: r["status"] for r in csv_rows(reg / "fields.csv")}
     assert rows["제어"] == "활성"                                  # 읽지 못한 분야를 폐기로 바꾸지 않는다

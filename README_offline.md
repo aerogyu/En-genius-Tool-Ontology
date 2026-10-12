@@ -126,13 +126,21 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
    경고 `중복 SW ID — 예시 유사 행 제외`, 수정 요청 `예시 행 남음`. 한 시트에 고친 예시만 있고 정확한 예시가 하나도 없으면 `예시 행 판별 설정 점검`
    (아래 '알아 둘 것' — 대개 예시를 고쳐 남긴 것이고, 여러 파일에 같이 나오면 그 양식판의 예시가 설정과 다른 것). diag 파트별 표 끝에 **'예시 유사'** 열(건수만)이 붙는다 —
    분야별 툴사용 수가 맞지 않을 때(277 vs 282) 어느 파트인지 본다. 예시가 자기 툴에서 온 파트(SAS·TA)는 진짜 답이 예시와 비슷해 이 경고가 날 수 있다 — 내용이 맞으면 그대로 둔다.
+   **같은 판부터 엑셀 층·만료 시기 경고** (값 없이 위치·건수만): `수식 오류 셀`(`#N/A`·`#REF!` 같은 수식 오류는 빈칸으로 읽음 — 열마다 한 줄, 수정 요청표에는 행마다; Tool ID 칸이 오류면
+   그 행은 적재하지 않고 아래 행에 ID 를 이어 주지도 않는다) · `캐시 없는 수식`(값 없이 수식만 있는 칸 — **엑셀에서 열어 저장하면 읽힌다**) · `수식 검사 못 함`(검사만 빠지고 적재는 계속) ·
+   `숨긴 행`(숨긴·필터로 가린 행도 응답으로 적재 — 지울 행이면 행 삭제) · `양식 사본 시트`(`Tool 기본정보 (2)` 처럼 양식과 같은 헤더의 다른 시트 — **읽지 않는다**, 응답이 거기 있으면
+   원래 시트로 옮겨 달라고 요청) · `양식 밖 시트`(그 밖 내용 있는 시트 — 읽지 않음; 아는 시트면 아래 '알아 둘 것'의 `other_sheets`) · `툴사용 0건`(기본정보에서 한 행도 못 읽은 파일) ·
+   `만료 시기 표기 변환`(`2027.03`·`2027년 3월` → `2027-03`) · `만료 시기 형식 아님`(그 밖 글 — 원문 보존) · `빈 값 표기 만료 시기`(`영구`·`NA`·`-` 는 빈칸으로 봄 — 양식 안내 '영구면 공란').
+   수정 요청표에 새 종류: `수식 오류 셀` · `숨긴 행` · `양식 사본 시트` · `툴사용 0건` · `만료 시기 형식`.
 3. **드롭다운 대신 직접 적은 값**: 뜻이 분명한 것은 **`data\real\config\value_aliases.yaml`** 에 `열 이름: {적힌 값: 드롭다운 값}` 으로 적고 2번을 다시 한다
    (엑셀은 고치지 않는다). 계산에 쓰이는 열부터: 방향 · 전달 방법 · 조작 방식 · 자동화 인터페이스. 애매한 것만 수정 요청표로 되묻는다.
    **`data\real\config\` 는 사내 설정 오버레이** (2026-10-02 판부터, git 밖) — `load.bat real` 이 저장소 `config\` 위에 자동으로 덮어 읽는다. 파일 이름은 저장소와 같게
-   (`value_aliases.yaml` · `tool_aliases.yaml` · `rules.yaml`). 합치는 법: `value_aliases` 는 열별로 더하고, `tool_aliases` 는 `aliases`·`distinct`·`merge_pairs` 를
-   합집합으로, `rules` 는 키 단위로 덮는다 — 저장소 `config\` 는 손대지 않아도 되고, 업데이트가 `config\` 를 덮어도 사내 설정은 남는다.
+   (`value_aliases.yaml` · `tool_aliases.yaml` · `rules.yaml` · 2026-10-12 판부터 `header_map.yaml`). 합치는 법: `value_aliases` 는 열별로 더하고, `tool_aliases` 는 `aliases`·`distinct`·`merge_pairs` 를
+   합집합으로, `header_map` 은 시트·열(슬롯)별 헤더 문구를 더하고, `rules` 는 키 단위로 덮는다 — 저장소 `config\` 는 손대지 않아도 되고, 업데이트가 `config\` 를 덮어도 사내 설정은 남는다.
+   값 대응표는 **원문 그대로** 적는다 — 만료 시기도 적힌 글 그대로(`2027년 상반기: 2027-06`) 적으면 만료 시기 규칙보다 먼저 바뀐다.
    (합성 데이터나 `--input` 적재에서 쓰려면 `--overlay <폴더>` 를 붙이고, 끄려면 `--no-overlay`.)
-4. **확인**: `scripts\graph_view.bat` (적재한 그래프 3D — 활성 툴만 그리고 통합·폐기 툴 수는 `(통합·폐기 N 제외)` 로 표시, 적재가 쓴 오버레이 `rules.yaml` 로 판정하면 '설정 오버레이 적용' 이 붙는다; 점을 드래그한 뒤 창 크기를 바꿔도 자리가 유지된다) ·
+4. **확인**: `scripts\graph_view.bat` (적재한 그래프 3D — 활성 툴만 그리고 통합·폐기 툴 수는 `(통합·폐기 N 제외)` 로 표시, 적재가 쓴 오버레이 `rules.yaml` 로 판정하면 '설정 오버레이 적용' 이 붙는다; 점을 드래그한 뒤 창 크기를 바꿔도 자리가 유지된다;
+   2026-10-12 판부터 자동화 인터페이스가 `NA`·`-` 같은 빈 값 표기면 '자동화 불가' 로 표시 — MCP 서버 답과 같은 판정) ·
    `scripts\push.bat` (Fuseki — 그 실행에 `derived.ttl` 이 없으면 Fuseki 의 derived 그래프를 비운다. 옛 도출 결과가 남지 않게 하는 것이니 정상).
 5. **툴 통합·별개 판정 (HITL)**: `output\<실행ID>\tool_review.csv` 의 '판정' 열에 `통합`/`별개` 를 적고(엑셀에서 그냥 Ctrl+S; '다른 이름으로 저장' 이면 CSV UTF-8 — cp949 로 저장돼도 읽는다)
    **`scripts\apply_review.bat` 에 `tool_review.csv` 를 끌어다 놓는다** (또는 cmd: `scripts\apply_review.bat output\<실행ID>\tool_review.csv`) → 2번을 다시 한다.
@@ -151,6 +159,8 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
    폴더에 `(1)` 사본·같은 내용 파일이 있었다면 이제 하나만 적재되어 툴사용 수가 줄 수 있다 · diag 첫 줄에 '같은 내용 N' 이 붙는다 (정상).
    예시를 고쳐 남긴 행이 진짜 행과 Tool ID 가 같았던 파트는 그 툴사용의 툴이 **진짜 행의 툴로 바뀐다** (USE ID 는 (파트, Tool ID) 키라 그대로, 옛 툴은 다른 사용이 없으면 폐기) ·
    고친 예시만 남은 파트는 툴사용 수는 그대로이고 경고만 는다 (정상).
+   만료 시기 `영구` 는 빈칸으로, `2027.03` 류는 `2027-03` 으로 바뀐다 · 자동화 인터페이스가 `NA` 인 툴사용은 3D 지도·MCP 에서 '자동화 불가' 로 바뀌어 **허브 후보 순위가 달라질 수 있다** ·
+   툴 이름 칸이 `#N/A` 였다면 그 행이 `미상:` 툴로 바뀌고 옛 툴은 폐기된다 (정상).
 
 알아 둘 것:
 - 규칙에 안 맞는 파일명(인명·`- 복사본`·`(최종)` 등)은 `Tool조사_규칙밖_<해시>.xlsx` 로만 기록되고 파트를 모른다 — 이름을 고쳐 다시 적재.
@@ -162,7 +172,14 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
   전용 파일(약칭 = 파트)이 아닌 쪽 행은 구분 키(`@MD`·`@file-<해시>`)로 따로 센다 — 같은 응답이 두 번 들어간 것이면 **옛 파일(묶음 파일·사본)을 폴더에서 빼고 다시 적재**.
   경고 **'규칙 밖 파일의 Tool ID 가 다른 파일과 겹침'**: 이름만 틀린 재발송·사본으로 보인다 — 파일명을 규칙대로 고치면 재발송 판정으로 하나만 적재된다.
 - 읽을 수 없는 파일(암호·DRM·.xls·손상)은 건너뛰고 경고한다. 그 실행은 "안 보인 파트를 폐기" 판정을 하지 않는다.
-- 설정만 고치고 코드는 손대지 않는다: `config\parts.yaml`(파트·담당 부서) · `config\rules.yaml`(시트 이름·선택지) · `config\header_map.yaml`(헤더 문구) ·
+- **헤더 문구가 다른 사내 양식 (2026-10-12 판부터)**: 저장소 `config\header_map.yaml` 을 고치지 말고 **`data\real\config\header_map.yaml`** 에 더한다 —
+  `Tool 입출력: {extensions_raw: [확장자]}` 처럼 `시트 이름: {열 슬롯 이름: [헤더 문구, …]}` (시트 이름은 `SW입출력` 이나 v1.1 이름 `Tool 입출력` 둘 다, 슬롯 이름은 저장소 파일·스키마).
+  저장소 문구와 합쳐 읽는다. 문구는 **목록**(`[ ]`)으로 · `실무 문의처` 처럼 인명 열의 헤더나 다른 열의 양식 문구·두 열에 같은 문구를 적으면 `[NG] 설정 오류`(적재 안 함, 헤더 문구는 찍지 않는다).
+  이미 저장소 `config\header_map.yaml` 을 고쳤다면 더한 줄을 오버레이로 옮기고 업데이트의 `.new` 를 받아들인다 (6-1). 헤더 문구에 인명을 적지 않는다.
+- **양식 밖 시트·만료 시기 (2026-10-12 판부터)**: `rules.yaml` 새 키 `loader.other_sheets`(읽지 않아도 경고하지 않는 시트 — 기본 `[작성안내]`; 사내 시트를 더하려면
+  `data\real\config\rules.yaml` 에 `loader: {other_sheets: [작성안내, 개정이력]}` 처럼 **목록 통째**) · `loader.month_blank_values`(만료 시기에서 빈칸으로 보는 말 — 기본 `[영구]`) ·
+  `loader.month_slots`(만료 시기 열 — 기본 `[license_expiry]`).
+- 설정만 고치고 코드는 손대지 않는다: `config\parts.yaml`(파트·담당 부서) · `config\rules.yaml`(시트 이름·선택지) · `config\header_map.yaml`(헤더 문구 — 사내 문구는 위 오버레이) ·
   사내 값은 `data\real\config\value_aliases.yaml`·`tool_aliases.yaml`(3·5번). `rules.yaml` 에 2026-10-02 판부터 새 키 세 개: `tool_token_map`(`C++`→`cpp` 등 토큰 치환) ·
   `generic_tool_names`(툴 이름으로 안 보는 말 — 자체개발·사내툴·매크로 등) · `candidate_min_contain_len`(포함으로 통합 후보를 올리는 최소 글자 수, 3). 사내에서 바꾸려면 `data\real\config\rules.yaml` 에 그 키만 적는다.
 - **확장자 규칙을 사내에서 조정**하려면 `data\real\config\extensions.yaml` (2026-10-12 판부터 키 두 개 추가: `non_extension_tokens` 확장자가 아닌 말 · `compound_extensions` 묶음 확장자).
@@ -175,7 +192,7 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
   `.venv\Scripts\python -m engenius_onto template-examples --form <그 양식 xlsx> --overlay` → `data\real\config\template_examples.yaml` 에 그 양식의 예시가 **더해지고**
   (저장소 예시와 합쳐 읽는다, 다시 돌려도 새 행만) 다시 적재하면 그 예시가 정확한 예시로 빠진다. **`--overlay` 없이 돌리지 않는다** — 저장소 `config\template_examples.yaml` 을
   덮어써 업데이트가 `.new` 로 남기고 selftest 가 실패한다. 오버레이 `template_examples.yaml` 은 양식 예시 값이 들어 있어 **사내 전용**.
-- **밖으로 가져가도 되는 설정은 `parts`·`rules`·`header_map`·`fuseki` 네 가지만** (값 없음). `tool_aliases.yaml`·`value_aliases.yaml`·`template_examples.yaml`(오버레이)은 실 툴명·셀 값이 들어 있어 **사내 전용**.
+- **밖으로 가져가도 되는 설정은 `parts`·`rules`·`header_map`·`fuseki` 네 가지만** (값 없음 — 오버레이 `header_map.yaml` 도 헤더 문구뿐이면 된다; 인명이 섞인 헤더는 적지 않는다). `tool_aliases.yaml`·`value_aliases.yaml`·`template_examples.yaml`(오버레이)은 실 툴명·셀 값이 들어 있어 **사내 전용**.
 - `data\real\`·`output\`·`fuseki-data\` 는 사내에만 둔다. 밖으로는 `diag.txt` 만.
 
 ## 6-1. 업데이트 받기 (zip 대신 텍스트 파일, 2026-09-30~)
