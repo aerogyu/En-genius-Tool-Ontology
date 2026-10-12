@@ -185,6 +185,15 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
 - **레지스트리 CSV(`data\real\registry\*.csv`)는 엑셀로 열어 저장하지 않는다** — 엑셀이 Tool ID 칸을 바꾼다 (`3-1`→`03월 01일`, `01`→`1`). 2026-10-12 판부터 적재가 검사해
   라벨 끝 값으로 설명되는 칸은 되살리고(`레지스트리 엑셀 손상 복원`, 저장할 때 고쳐 쓴다) 설명되지 않으면 `레지스트리 엑셀 손상 의심`(USE ID 만 찍힌다) — 그때는 레지스트리를 백업에서
   되돌리거나 그 행의 `source_key` 를 `label` 끝의 Tool ID 로 메모장에서 고친 뒤 다시 적재한다 (그대로 두면 그 툴사용·입출력이 새 ID 를 받고 옛 ID 는 폐기된다).
+- **파트 약칭을 바꿀 때 (2026-10-12 판부터)**: 정식 이름만 바뀌면 `parts.yaml` 의 `name` 만 고친다 (ID 그대로). **약칭**이 바뀌면(임시 코드 → 확정, 오타)
+  먼저 `data\real\registry` 폴더를 통째로 복사해 두고, `data\real\config\parts.yaml` 에
+  `parts: {새약칭: {name: …, parts: […], domains: […], renamed_from: [옛약칭]}, 옛약칭: {status: 폐기}}` 처럼 적어 다시 적재한다 → 경고 `파트 약칭 개명 반영: 옛 → 새 (FLD-… 유지 …)`
+  (FLD·툴사용·입출력 ID 가 그대로; 주인 없는 고아 입출력만 바뀐다). 파일명이 아직 옛 약칭이어도 새 약칭으로 읽고 `옛 약칭 파일명` 경고 (다음 회신부터 새 이름으로) —
+  옛·새 약칭 파일이 같이 있으면 같은 파트의 재발송으로 보고 날짜가 늦은 하나만 적재한다. 여러 번 바꿨으면 마지막 약칭 한 곳에 옛 약칭을 모두 적는다.
+  옛 약칭 항목을 `status: 폐기` 로 두지 않거나, 두 파트에 같은 옛 약칭을 적으면 `[NG] 설정 오류` (적재 안 함).
+  경고 **`파트 신규·폐기 동시`** 는 한 실행에서 새 파트가 생기고 다른 파트가 폐기됐다는 뜻이다 — 파트를 나누거나 합친 것이면 정상, **약칭을 바꾼 것이면**(renamed_from 을 깜빡함)
+  그 적재 전 레지스트리 사본으로 되돌리고 위처럼 적어 다시 적재한다. 사본이 없으면 메모장으로 `data\real\registry\fields.csv` 에서 새 약칭 행의 `key` 를 다른 글자(예 `STR_취소`)로,
+  옛 약칭 행의 `key` 를 새 약칭으로 바꾼 뒤 다시 적재 — 옛 ID 가 되살아나고 그사이 생긴 ID 는 폐기로 남는다. (고치지 않고 renamed_from 만 적으면 `파트 약칭 개명 보류` 경고만 나고 바뀌지 않는다.)
 - **헤더 문구가 다른 사내 양식 (2026-10-12 판부터)**: 저장소 `config\header_map.yaml` 을 고치지 말고 **`data\real\config\header_map.yaml`** 에 더한다 —
   `Tool 입출력: {extensions_raw: [확장자]}` 처럼 `시트 이름: {열 슬롯 이름: [헤더 문구, …]}` (시트 이름은 `SW입출력` 이나 v1.1 이름 `Tool 입출력` 둘 다, 슬롯 이름은 저장소 파일·스키마).
   저장소 문구와 합쳐 읽는다. 문구는 **목록**(`[ ]`)으로 · `실무 문의처` 처럼 인명 열의 헤더나 다른 열의 양식 문구·두 열에 같은 문구를 적으면 `[NG] 설정 오류`(적재 안 함, 헤더 문구는 찍지 않는다).
@@ -266,6 +275,9 @@ C:\EnGenius\engenius-tool-ontology\.venv\Scripts\python EnGenius_update_<이전>
   `[fuseki] server stopped` 를 찍고 열린 채로 기다리므로 이유를 읽을 수 있다.)
 - `[NG] FUSEKI_HOME` / Java 없음 → `scripts\env.bat` 경로 확인. JDK 는 설치 프로그램이 아니라 zip 이라 관리자 권한이 필요 없다.
 - PowerShell 실행 정책 오류는 `.ps1` 에만 해당 — 여기 스크립트는 전부 `.bat`.
+- `[NG] 레지스트리 사용 중: 다른 적재가 이 레지스트리를 쓰는 중이다 — 잠금 파일 …\.load.lock (pid=… started=…)` (2026-10-12 판부터) → `load.bat` 창이 하나 더 열려 있으면
+  그 적재가 끝날 때까지 기다렸다 다시 한다 (두 적재가 한 레지스트리를 동시에 쓰면 ID 가 섞인다). 열린 적재가 없는데 이 줄이 나오면 (적재 창을 X 로 닫았거나 PC 가 꺼져 남은 파일)
+  그 `.load.lock` 파일(`data\real\registry\` 안)을 지우고 다시 한다. 같은 초에 두 번 적재하면 두 번째 실행 폴더는 1초 뒤 이름으로 생긴다 (덮어쓰지 않는다).
 - `.bat` 없이 직접 치고 싶으면 (PowerShell, 저장소 폴더에서): `$env:PYTHONPATH="src"` 한 뒤 `.venv\Scripts\python -m engenius_onto --help`.
   cmd 에서는 `set PYTHONPATH=src`. 이걸 빼먹으면 `No module named engenius_onto` 가 난다.
   **그리고 `set PYTHONUTF8=1`** — 한국어 Windows 에서 이것이 없으면 파이썬이 한국어 YAML(스키마·설정)을 cp949 로 읽어 `UnicodeDecodeError` 가 나고

@@ -11,6 +11,9 @@ __pycache__/
 .pytest_cache/
 .env
 
+# 적재 잠금 파일 (레지스트리 폴더 — 합성 레지스트리는 git 추적이라 강제 종료로 남은 잠금이 커밋되지 않게, docs/09 7장)
+.load.lock
+
 # Fuseki 데이터베이스 파일
 fuseki-data/
 run/

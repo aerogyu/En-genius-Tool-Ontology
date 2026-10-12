@@ -9,6 +9,8 @@
   만료 시기 텍스트·'영구'(docs/09 #21 3단, I16·I27) · 드롭다운 빈 값 토큰(I28 기록) · 자동화 판정 빈 값 토큰(Normalizer.automatable ↔ oracle·지도·MCP)
 - E. 검토표·별칭·레지스트리 (묶음 review): 인명 유사 연계 조각 회귀(#20 (2)) · 검토표 CSV 수식 방지·apply-review 칸 검사(#25d) ·
   연계 Tool명 미해석 행·partner_missing(#17, I10·I35) · 별칭 미적용 경고·제조사 안 뗀 이름 별칭(#2 (3)·(4)) · 레지스트리 엑셀 손상(#15 (4))
+- F. 식별자·실행 안전 (묶음 ids): 정식 이름 변경 회귀 · 약칭 개명 renamed_from(#25b, I31 — 레지스트리 rekey·옛 약칭 파일명·재발송·묶음 앞부분·보류·설정 오류) ·
+  '파트 신규·폐기 동시' 휴리스틱 · 동시 적재 잠금 · 같은 초 두 실행 (docs/09 7장)
 합성 파일 사본만 쓴다 (공개 상용 툴 이름·가상 이름). 인명 시험 값은 가상 자리표시('가나다 책임')만.
 """
 
@@ -1600,3 +1602,339 @@ def test_excel_explains(orig, cur, want):
 
 def test_committed_registry_has_no_excel_damage():
     assert Registry(REGISTRY_DIR).notices == []
+
+
+# --------------------------------------------------------------------------- F. 식별자·실행 안전 (묶음 ids, 2026-10-12)
+# #25b 파트 약칭 개명(parts.yaml renamed_from) · 정식 이름 변경 회귀 · '파트 신규·폐기 동시' 휴리스틱 · 동시 적재 잠금 · 같은 초 두 실행 (docs/09 7장)
+from engenius_onto import cli  # noqa: E402
+from engenius_onto.rdf_writer import SurveyWriter  # noqa: E402
+from engenius_onto.registry import LOCK_NAME, RegistryBusyError  # noqa: E402
+
+STR_NEW = "SW조사_STR_20260925.xlsx"
+RENAMED_W = "파트 약칭 개명 반영"
+HELD_W = "파트 약칭 개명 보류"
+TURNOVER_W = "파트 신규·폐기 동시"
+OLD_NAME_W = "옛 약칭 파일명"
+F_NOW = dt.datetime(2026, 10, 12, 9, 0, 0)
+
+
+def _parts_cfg(tmp: Path, name: str, parts: dict, drop_synthetic: tuple = (), bundles: dict | None = None) -> Path:
+    """저장소 config 사본 — parts.yaml 의 parts 에 항목을 더하고 synthetic_parts 에서 약칭을 뺀다 (합성 약칭 '구조' 를 STR 로 바꾸는 시험)."""
+    cfg = tmp / f"cfg_{name}"
+    shutil.copytree(CONFIG_DIR, cfg)
+    p = yaml.safe_load((cfg / "parts.yaml").read_text(encoding="utf-8"))
+    p["parts"].update(parts)
+    p["synthetic_parts"] = [x for x in p["synthetic_parts"] if x not in drop_synthetic]
+    if bundles is not None:
+        p["file_bundles"] = bundles
+    (cfg / "parts.yaml").write_text(yaml.safe_dump(p, allow_unicode=True), encoding="utf-8")
+    return cfg
+
+
+STR_PART = {"name": "구조 파트", "domains": ["구조"], "status": "확정"}
+
+
+def _rename_cfg(tmp: Path, name: str = "rename") -> Path:
+    return _parts_cfg(tmp, name, {"STR": {**STR_PART, "renamed_from": ["구조"]}}, drop_synthetic=("구조",))
+
+
+def _survey(tmp: Path, name: str, files: dict[str, str]) -> Path:
+    """합성 파일 복사 — files: {놓을 이름: 원본 이름}."""
+    d = tmp / name
+    for dst, src in files.items():
+        _place(d, src, dst)
+    return d
+
+
+def _fields(reg: Path) -> dict[str, dict]:
+    return {r["key"]: r for r in read_csv_rows(reg / "fields.csv")[0]}
+
+
+def _ids_of(out, part: str) -> tuple[dict[str, str], set[str]]:
+    """그 파트의 {Tool ID: USE ID} · 그 파트 툴사용이 가진 입출력 ID 집합 (고아 포함 — 파일 약칭으로)."""
+    use = {u.sw_id: u.node_id for u in out.result.usages if u.field == part}
+    ios = {x.node_id for x in out.result.ios if (x.owner.field if x.owner else x.file_field) == part}
+    return use, ios
+
+
+def _wt(out, prefix: str) -> list[str]:
+    return [w for w in out.result.warnings if w.startswith(prefix)]
+
+
+def _base_two(tmp: Path):
+    """기준 적재 — 구조·터빈 두 파일, 빈 레지스트리."""
+    reg = tmp / "registry"
+    out = run_load(input_dir=_survey(tmp, "s0", {STR: STR, TURB: TURB}), registry_dir=reg, out_root=tmp / "o0", shacl=False,
+                   now=F_NOW)
+    return reg, out
+
+
+# ---- F1. 정식 이름 변경 (parts.yaml name) — 이미 라벨만 바뀐다 (회귀 잠금)
+def test_part_name_change_keeps_ids(tmp_path):
+    reg, base = _base_two(tmp_path)
+    fld = _fields(reg)["구조"]["id"]
+    use0, io0 = _ids_of(base, "구조")
+    survey = _survey(tmp_path, "s1", {STR: STR, TURB: TURB})
+    for i, name in enumerate(("구조해석 파트", "구조해석2 파트"), start=1):
+        cfg = _parts_cfg(tmp_path, f"n{i}", {"구조": {"name": name, "domains": ["구조"], "status": "확정"}})
+        out = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / f"o{i}", shacl=False, config_dir=cfg)
+        row = _fields(reg)["구조"]
+        assert row["id"] == fld and row["label"] == f"{name} (구조)" and row["status"] == "활성"
+        assert f'"{name} (구조)"@ko' in out.turtle
+        assert _ids_of(out, "구조") == (use0, io0)
+        assert not _wt(out, TURNOVER_W) and not _wt(out, RENAMED_W)
+
+
+# ---- F2. 약칭 개명 (renamed_from) — 옛 약칭 파일명 → 새 약칭 파일명, ID 유지
+def test_part_code_rename_keeps_ids(tmp_path):
+    reg, base = _base_two(tmp_path)
+    fld = _fields(reg)["구조"]["id"]
+    use0, io0 = _ids_of(base, "구조")
+    assert len(use0) == 5 and io0
+    cfg = _rename_cfg(tmp_path)
+    # ① 설정만 먼저 바꾸고 파일명은 옛 약칭 그대로 — 새 약칭으로 읽고 '옛 약칭 파일명' 경고, 레지스트리 키는 STR 로
+    out1 = run_load(input_dir=_survey(tmp_path, "s1", {STR: STR, TURB: TURB}), registry_dir=reg, out_root=tmp_path / "o1",
+                    shacl=False, config_dir=cfg)
+    assert _wt(out1, RENAMED_W) == [f"파트 약칭 개명 반영: 구조 → STR ({fld} 유지 — 툴사용·입출력 ID 도 유지)"]
+    assert _wt(out1, OLD_NAME_W) == [f"옛 약칭 파일명: {STR} — 약칭 '구조' → 'STR' 로 읽음 "
+                                     "(config/parts.yaml renamed_from — 다음 회신부터 새 약칭 파일명으로)"]
+    assert {u.field for u in out1.result.usages if u.file == STR} == {"STR"}
+    assert _ids_of(out1, "STR") == (use0, io0)
+    rows = _fields(reg)
+    assert "구조" not in rows and rows["STR"]["id"] == fld and rows["STR"]["label"] == "구조 파트 (STR)" and rows["STR"]["status"] == "활성"
+    assert "구조 파트 (STR)" in out1.turtle
+    assert not _wt(out1, TURNOVER_W)
+    assert out1.log["registry"]["transitions"]["field"] == {"created": 0, "revived": 0}
+    # ② 새 약칭 파일명으로 다시 — 경고 없이 같은 ID (멱등)
+    out2 = run_load(input_dir=_survey(tmp_path, "s2", {STR_NEW: STR, TURB: TURB}), registry_dir=reg, out_root=tmp_path / "o2",
+                    shacl=False, config_dir=cfg)
+    assert not _wt(out2, RENAMED_W) and not _wt(out2, OLD_NAME_W) and not _wt(out2, TURNOVER_W) and not _wt(out2, HELD_W)
+    assert _ids_of(out2, "STR") == (use0, io0)
+    assert _fields(reg)["STR"]["id"] == fld
+    assert {r["status"] for r in read_csv_rows(reg / "usages.csv")[0]} == {"활성"}       # 옛 툴사용이 폐기되지 않았다
+
+
+def test_part_code_rename_supersedes_old_file(tmp_path):
+    """I31·I33: 옛 약칭 파일과 새 약칭 파일이 함께 있으면 같은 파트의 재발송 — 최신(STR) 하나만 (고치기 전: 둘 다 적재돼 툴사용 34 → 39)."""
+    survey = tmp_path / "survey"
+    shutil.copytree(SURVEY_DIR, survey)
+    _place(survey, STR, STR_NEW)
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    out = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "out", shacl=False, config_dir=_rename_cfg(tmp_path))
+    assert out.log["counts"]["usages"] == 34
+    assert _wt(out, "재발송으로 대체: SW조사_구조") == [f"재발송으로 대체: {STR} → {STR_NEW} (적재 안 함) (내용 같음)"]
+    assert not _wt(out, OLD_NAME_W)                                   # 대체된 옛 약칭 파일은 '옛 약칭 파일명' 경고 대상이 아니다
+    assert [f.name for f in out.result.loaded_files if f.field == "STR"] == [STR_NEW]
+    committed = {r["key"]: r["id"] for r in read_csv_rows(REGISTRY_DIR / "fields.csv")[0]}
+    assert _fields(reg)["STR"]["id"] == committed["구조"]
+    assert len(_wt(out, RENAMED_W)) == 1 and not _wt(out, TURNOVER_W)
+
+
+def test_part_new_and_retired_then_rename_conflict(tmp_path):
+    """renamed_from 없이 약칭을 바꾸면 '파트 신규·폐기 동시' (새 FLD·새 USE ID) — 그 뒤 renamed_from 을 넣으면 '파트 약칭 개명 보류'(둘 다 있음, 손대지 않음).
+    읽지 못한 파일이 있는 실행(폐기 판정 안 함)에서는 휴리스틱이 나오지 않는다."""
+    reg, base = _base_two(tmp_path)
+    old = _fields(reg)["구조"]["id"]
+    use0, _ = _ids_of(base, "구조")
+    no_rename = _parts_cfg(tmp_path, "plain", {"STR": STR_PART})
+    survey = _survey(tmp_path, "s1", {STR_NEW: STR, TURB: TURB})
+    out = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "o1", shacl=False, config_dir=no_rename)
+    new = _fields(reg)["STR"]["id"]
+    assert new != old and _fields(reg)["구조"]["status"] == "폐기"
+    assert set(_ids_of(out, "STR")[0].values()).isdisjoint(use0.values())
+    w = _wt(out, TURNOVER_W)
+    assert len(w) == 1 and w[0].startswith(f"파트 신규·폐기 동시: 신규 STR({new}) · 폐기 구조({old}) — 약칭을 바꾼 것이면 ")
+    assert "renamed_from: [옛 약칭]" in w[0]
+    assert "  파트 신규·폐기 동시: 1" in (out.out_dir / "diag.txt").read_text(encoding="utf-8")
+    # 이제 renamed_from 을 넣으면 — 옛·새 키가 둘 다 있어 손대지 않고 경고 (예외 없음, 새 ID 그대로)
+    out2 = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "o2", shacl=False, config_dir=_rename_cfg(tmp_path))
+    held = _wt(out2, HELD_W)
+    assert len(held) == 1 and held[0].startswith(f"파트 약칭 개명 보류: '구조'({old})·'STR'({new}) 가 레지스트리에 둘 다 있음 — ")
+    assert _fields(reg)["STR"]["id"] == new and _fields(reg)["구조"]["id"] == old
+    assert not _wt(out2, RENAMED_W) and not _wt(out2, TURNOVER_W)
+    # README_offline 6장의 사본 없는 되돌리기: fields.csv 에서 새 약칭 행 key → 다른 글자, 옛 약칭 행 key → 새 약칭 (메모장) → 옛 ID 가 되살아난다
+    rows, _ = read_csv_rows(reg / "fields.csv")
+    for r in rows:
+        r["key"] = {"STR": "STR_취소", "구조": "STR"}.get(r["key"], r["key"])
+    with (reg / "fields.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+    out_fix = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "o2b", shacl=False, config_dir=_rename_cfg(tmp_path, "rename2"))
+    assert _fields(reg)["STR"]["id"] == old and _fields(reg)["STR_취소"]["status"] == "폐기"
+    assert _ids_of(out_fix, "STR")[0] == use0
+    assert not _wt(out_fix, HELD_W) and not _wt(out_fix, RENAMED_W) and not _wt(out_fix, TURNOVER_W)
+    # 읽지 못한 파일이 있는 실행 — 신규 FLD 가 생겨도 폐기 판정이 없으니 휴리스틱도 없다
+    reg3, _ = _base_two(tmp_path / "t3")
+    bad = _survey(tmp_path, "s3", {STR_NEW: STR, TURB: TURB})
+    (bad / "SW조사_제어_20260924.xlsx").write_bytes(b"not a real workbook")
+    out3 = run_load(input_dir=bad, registry_dir=reg3, out_root=tmp_path / "o3", shacl=False, config_dir=no_rename)
+    assert not out3.result.complete and not _wt(out3, TURNOVER_W)
+    assert _fields(reg3)["구조"]["status"] == "활성"
+
+
+def test_part_turnover_masks_person_like_key(tmp_path):
+    """휴리스틱 경고의 약칭은 레지스트리 원문 — 옛 판 키가 인명 유사면 FLD ID 만 (값 가림, C5)."""
+    reg = tmp_path / "registry"
+    reg.mkdir()
+    (reg / "fields.csv").write_text("id,key,label,status,merged_into\nFLD-001,가나다 책임,가나다 책임,활성,\n", encoding="utf-8-sig")
+    out = run_load(input_dir=_survey(tmp_path, "s", {STR: STR}), registry_dir=reg, out_root=tmp_path / "o", shacl=False)
+    w = _wt(out, TURNOVER_W)
+    assert len(w) == 1 and w[0].startswith("파트 신규·폐기 동시: 신규 구조(FLD-002) · 폐기 FLD-001 — ") and "가나다" not in w[0]
+
+
+@pytest.mark.parametrize("parts, drop, match", [
+    ({"STR": {**STR_PART, "renamed_from": "구조"}}, ("구조",), r"STR\.renamed_from: 형식은 목록"),
+    ({"STR": {**STR_PART, "renamed_from": ["구조"]}}, (), r"옛 약칭 '구조' 이 file_bundles 키·synthetic_parts 에 있다"),
+    ({"STR": {**STR_PART, "renamed_from": ["구조"]}, "STR2": {**STR_PART, "renamed_from": ["구조"]}}, ("구조",),
+     r"옛 약칭 '구조' 이 두 파트\(STR·STR2\)의 renamed_from 에 있다"),
+    ({"STR": {**STR_PART, "renamed_from": ["TEST"]}}, (), r"옛 약칭 'TEST' 이 parts 에 아직 있다 — 지우거나 'status: 폐기' 로"),
+    ({"STR": {**STR_PART, "renamed_from": ["STR"]}}, (), r"옛 약칭이 비었거나 새 약칭과 같다"),
+    ({"STR": {**STR_PART, "renamed_from": ["MD"]}}, (), r"옛 약칭 'MD' 이 file_bundles 키"),
+    ({"STR": {**STR_PART, "renamed_from": ["S1"]}, "S1": {**STR_PART, "status": "폐기", "renamed_from": ["S0"]}}, (),
+     r"S1\.renamed_from: 'S1' 은 'STR' 의 옛 약칭이다 — 마지막 약칭 한 곳에"),
+], ids=["not-list", "still-synthetic", "two-parts", "still-active-part", "self", "bundle-code", "chain"])
+def test_parts_renamed_from_config_errors(tmp_path, parts, drop, match):
+    cfg = _parts_cfg(tmp_path, "bad", parts, drop_synthetic=drop)
+    with pytest.raises(ConfigError, match=match):
+        Loader(config_dir=cfg)
+
+
+def test_parts_renamed_from_retired_entry_ok_and_cli_error(tmp_path, capsys):
+    """옛 약칭 항목이 status: 폐기 면 허용 (사내 오버레이는 저장소 키를 지울 수 없다) — 오버레이로 개명. 설정 오류는 load 가 '[NG] 설정 오류' rc 2."""
+    over = tmp_path / "over"
+    over.mkdir()
+    (over / "parts.yaml").write_text(yaml.safe_dump({"parts": {"TST": {"name": "시험 파트", "domains": ["시험"], "renamed_from": ["TEST"]},
+                                                               "TEST": {"status": "폐기"}}}, allow_unicode=True), encoding="utf-8")
+    ld = Loader(overlay_dir=over)
+    assert ld.renames == {"TEST": "TST"} and "parts.yaml" in ld.overlay_files
+    assert ld.file_label("Tool조사_TEST_20261012.xlsx", "0" * 64) == ("Tool조사_TEST_20261012.xlsx", "TST", "20261012", 0)
+    (over / "parts.yaml").write_text(yaml.safe_dump({"parts": {"TST": {"renamed_from": ["TEST"]}}}, allow_unicode=True), encoding="utf-8")
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    rc = cli.main(["load", "--registry", str(reg), "--out", str(tmp_path / "out"), "--overlay", str(over), "--no-shacl"])
+    err = capsys.readouterr().err
+    assert rc == 2 and err.startswith("[NG] 설정 오류: ") and "옛 약칭 'TEST' 이 parts 에 아직 있다" in err and "Traceback" not in err
+    assert not (tmp_path / "out").exists() and not (reg / LOCK_NAME).exists()
+
+
+def test_bundle_part_rename_maps_prefix(tmp_path):
+    """묶음 파일 안 파트 개명 (MDA → MDZ): 행의 옛 Tool ID 'MDA-1' 은 새 파트 MDZ 로, 기준 USE ID 유지 — file_bundles 목록에 옛 약칭이 남아 있어도."""
+    bundle = {"MDX": ["MDA", "MDB"]}
+    parts = {"MDA": {"name": "가상 A 파트", "domains": ["구조"]}, "MDB": {"name": "가상 B 파트", "domains": ["구조"]}}
+    survey = tmp_path / "survey"
+    _rename_ids(_place(survey, STR, "Tool조사_MDX_20260930.xlsx"),
+                {"STR-01": "MDA-1", "STR-02": "MDA-2", "STR-03": "MDB-1", "STR-04": "MDB-2", "STR-05": "MDB-3"})
+    reg = tmp_path / "registry"
+    base = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "o0", shacl=False,
+                    config_dir=_parts_cfg(tmp_path, "b0", parts, bundles=bundle))
+    before = {u.sw_id: (u.field, u.node_id) for u in base.result.usages}
+    fld = _fields(reg)["MDA"]["id"]
+    renamed = {"MDZ": {"name": "가상 Z 파트", "domains": ["구조"], "renamed_from": ["MDA"]}, "MDB": parts["MDB"]}
+    cfg = tmp_path / "b1"
+    shutil.copytree(CONFIG_DIR, cfg)
+    (cfg / "parts.yaml").write_text(yaml.safe_dump({"parts": renamed, "file_bundles": bundle}, allow_unicode=True), encoding="utf-8")
+    out = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "o1", shacl=False, config_dir=cfg)
+    after = {u.sw_id: (u.field, u.node_id) for u in out.result.usages}
+    assert {k: v[0] for k, v in after.items()} == {"MDA-1": "MDZ", "MDA-2": "MDZ", "MDB-1": "MDB", "MDB-2": "MDB", "MDB-3": "MDB"}
+    assert {k: v[1] for k, v in after.items()} == {k: v[1] for k, v in before.items()}
+    assert _wt(out, RENAMED_W) == [f"파트 약칭 개명 반영: MDA → MDZ ({fld} 유지 — 툴사용·입출력 ID 도 유지)"]
+    assert not _wt(out, "묶음 파일 파트 미정") and not _wt(out, OLD_NAME_W) and not _wt(out, TURNOVER_W)
+    assert out.result.part_labels["MDZ"] == "가상 Z 파트 (MDZ)"
+
+
+# ---- F3. 한 레지스트리 동시 적재 잠금 (docs/09 7장)
+def _csv_bytes(reg: Path) -> dict[str, bytes]:
+    return {p.name: p.read_bytes() for p in sorted(reg.glob("*.csv"))}
+
+
+def test_registry_lock_blocks_second_load(tmp_path):
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    lock = reg / LOCK_NAME
+    lock.write_text("pid=4321 started=2026-10-12T09:00:00+09:00\n", encoding="utf-8")
+    before = _csv_bytes(reg)
+    survey = _survey(tmp_path, "s", {STR: STR})
+    with pytest.raises(RegistryBusyError) as e:
+        run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "out", shacl=False)
+    msg = str(e.value)
+    assert str(lock) in msg and "(pid=4321 started=2026-10-12T09:00:00+09:00)" in msg and "그 잠금 파일을 지우고 다시 실행한다" in msg
+    assert _csv_bytes(reg) == before and not (tmp_path / "out").exists()
+    assert lock.read_text(encoding="utf-8").startswith("pid=4321")              # 남의 잠금은 지우지 않는다
+    lock.unlink()
+    seen = []
+    real = SurveyWriter.write
+
+    def spy(self, *a, **kw):                                                       # 적재 도중에는 잠금이 있다 — 내 pid
+        seen.append(lock.read_text(encoding="utf-8"))
+        return real(self, *a, **kw)
+
+    import os
+
+    from _pytest.monkeypatch import MonkeyPatch
+    with MonkeyPatch.context() as mp:
+        mp.setattr(SurveyWriter, "write", spy)
+        out = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "out", shacl=False)
+    assert re.fullmatch(rf"pid={os.getpid()} started=\d{{4}}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d\n", seen[0])
+    assert not lock.exists() and (out.out_dir / "survey.ttl").is_file()
+
+
+def test_lock_and_run_dir_released_on_failure(tmp_path, monkeypatch):
+    """적재 도중 예외 — 잠금 파일이 지워지고, 레지스트리는 그대로, 빈 실행 폴더도 남지 않는다."""
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    before = _csv_bytes(reg)
+
+    def boom(self, *a, **kw):
+        raise RuntimeError("시험용 실패")
+
+    monkeypatch.setattr(SurveyWriter, "write", boom)
+    with pytest.raises(RuntimeError, match="시험용 실패"):
+        run_load(input_dir=_survey(tmp_path, "s", {STR: STR}), registry_dir=reg, out_root=tmp_path / "out", shacl=False, now=F_NOW)
+    assert not (reg / LOCK_NAME).exists() and _csv_bytes(reg) == before
+    assert list((tmp_path / "out").iterdir()) == []
+
+
+def test_dry_run_ignores_lock(tmp_path):
+    """save_registry=False 는 레지스트리를 쓰지 않아 잠그지 않는다 — 남의 잠금이 있어도 적재하고, 그 잠금은 건드리지 않는다."""
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    (reg / LOCK_NAME).write_text("pid=1 started=x\n", encoding="utf-8")
+    out = run_load(input_dir=_survey(tmp_path, "s", {STR: STR}), registry_dir=reg, out_root=tmp_path / "out", shacl=False,
+                   save_registry=False)
+    assert len(out.result.usages) == 5 and (reg / LOCK_NAME).read_text(encoding="utf-8") == "pid=1 started=x\n"
+
+
+def test_cli_load_registry_busy_rc2(tmp_path, capsys):
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    (reg / LOCK_NAME).write_text("pid=4321 started=2026-10-12T09:00:00+09:00\n", encoding="utf-8")
+    rc = cli.main(["load", "--registry", str(reg), "--out", str(tmp_path / "out"), "--no-shacl"])
+    err = capsys.readouterr().err
+    assert rc == 2 and err.startswith("[NG] 레지스트리 사용 중: 다른 적재가 이 레지스트리를 쓰는 중이다 — 잠금 파일 ") and "Traceback" not in err
+    assert len(err.strip().splitlines()) == 1 and (reg / LOCK_NAME).exists() and not (tmp_path / "out").exists()
+
+
+def test_lock_file_is_git_ignored():
+    """합성 레지스트리(git 추적)에 강제 종료로 남은 잠금이 커밋되지 않게 — .gitignore 에 있다."""
+    assert LOCK_NAME in (REPO / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+
+# ---- F4. 같은 초 두 실행 (docs/09 7장) — 1초 밀어 새 폴더, 앞 실행 산출물을 덮어쓰지 않는다
+def test_same_second_runs_get_distinct_run_dirs(tmp_path):
+    out_root = tmp_path / "out"
+    reg_a, reg_b = tmp_path / "reg_a", tmp_path / "reg_b"
+    shutil.copytree(REGISTRY_DIR, reg_a)
+    a = run_load(registry_dir=reg_a, out_root=out_root, now=F_NOW, shacl=False)
+    ttl_a = (a.out_dir / "survey.ttl").read_bytes()
+    b = run_load(input_dir=_survey(tmp_path, "s", {STR: STR}), registry_dir=reg_b, out_root=out_root, now=F_NOW, shacl=False)
+    assert a.run_id == "20261012T090000" and b.run_id == "20261012T090001" and a.out_dir != b.out_dir
+    assert (a.out_dir / "survey.ttl").read_bytes() == ttl_a
+    assert b.log["loaded_at"].startswith("2026-10-12T09:00:01")
+    load_a = set(re.findall(r"LOAD-\d{8}T\d{6}-\d{2}", a.turtle))
+    load_b = set(re.findall(r"LOAD-\d{8}T\d{6}-\d{2}", b.turtle))
+    assert load_a and load_b and not (load_a & load_b)
+    c = run_load(input_dir=_survey(tmp_path, "s2", {TURB: TURB}), registry_dir=tmp_path / "reg_c", out_root=out_root, now=F_NOW, shacl=False)
+    assert c.run_id == "20261012T090002"
+    assert sorted(p.name for p in out_root.iterdir()) == ["20261012T090000", "20261012T090001", "20261012T090002"]

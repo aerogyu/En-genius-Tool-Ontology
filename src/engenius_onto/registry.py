@@ -1,6 +1,7 @@
 """ID 레지스트리 (docs/02 4장, D3·D7) — FLD·TOOL·USE·CAT ID 를 CSV 로 고정해 재적재해도 같은 ID 를 쓴다.
 
-- 키: 분야 = 이름, 툴 = 정규화 키, 분류 = 이름, 툴사용 = (FLD ID, SW ID 원문) — 원천 파일명은 키에 넣지 않는다 (D3).
+- 키: 분야 = 파트 약칭 (v0.3 — 파일명의 약칭, docs/10), 툴 = 정규화 키, 분류 = 이름, 툴사용 = (FLD ID, SW ID 원문) — 원천 파일명은 키에 넣지 않는다 (D3).
+  약칭 개명(parts.yaml renamed_from)은 분야 행의 키만 바꾼다(rekey) — FLD ID 가 그대로라 툴사용·입출력 ID 도 그대로 (docs/09 #25b).
   파일 간 같은 (파트, Tool ID) 충돌 때만 전용 파일이 아닌 쪽 SW ID 에 '@<파일 약칭 | file-sha256 앞 10자>' 꼬리 (I36 — 이것도 파일명이 아니다).
 - 이번 적재에 없는 분야·툴·분류는 지우지 않고 status=폐기 로 남긴다 — survey 그래프에도 폐기 상태로 계속 낸다 (D7).
   폐기된 ID 는 재발급하지 않는다 (다시 나오면 같은 ID 로 활성 복귀). 통합됨 행도 그 키가 다시 활성 그룹으로 보이면
@@ -12,20 +13,59 @@
   툴사용 행의 라벨은 '<파트 이름> <Tool ID>[ (<구분>)]' 이라(rdf_writer) 라벨 끝이 키와 같아야 한다 — 다르고 그 차이가 엑셀 변환으로 정확히
   설명되면(excel_explains) 키를 라벨 끝 값으로 되살리고 알림 '레지스트리 엑셀 손상 복원', 설명되지 않으면 알림 '레지스트리 엑셀 손상 의심' 만
   (ID 만 인용 — 값 없음). 분야·툴·분류 키는 라벨로 대조할 수 없어 엑셀 날짜 모양(DATE_SHAPE)만 '의심' 으로 알린다.
+- 동시 적재 잠금 (docs/09 7장): 적재는 레지스트리 폴더에 잠금 파일 `.load.lock` 을 O_CREAT|O_EXCL 로 만들고 끝나면 지운다 (registry_lock).
+  이미 있으면 RegistryBusyError — 자동으로 풀지 않는다 (강제 종료로 남은 파일은 사람이 지운다. Windows 의 os.kill(pid, 0) 은 살아 있는지
+  보는 것이 아니라 그 프로세스를 끝내므로 pid 로 확인하지 않는다).
 """
 
 from __future__ import annotations
 
 import calendar
 import csv
+import datetime as dt
 import os
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from engenius_onto.config import read_csv_rows
 
 ACTIVE, MERGED, RETIRED = "활성", "통합됨", "폐기"
+LOCK_NAME = ".load.lock"         # 레지스트리 폴더의 동시 적재 잠금 파일 (.gitignore — 합성 레지스트리는 git 추적이라)
+
+
+class RegistryBusyError(RuntimeError):
+    """레지스트리를 다른 적재가 쓰는 중 (잠금 파일이 있다) — CLI 는 '[NG] 레지스트리 사용 중: …' 한 줄, rc 2."""
+
+
+@contextmanager
+def registry_lock(directory: Path):
+    """레지스트리 폴더 잠금 (docs/09 7장) — 읽기부터 저장·산출물 쓰기까지 한 적재만. 잠금 파일에는 pid·시작 시각만 (인명·PC 이름 없음).
+    이미 잠겨 있으면 RegistryBusyError (그 파일 내용 앞 80자를 붙인다). 끝나면(예외·Ctrl+C 포함) 지운다 — 창을 강제로 닫으면 남을 수 있다."""
+    d = Path(directory)
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / LOCK_NAME
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            info = path.read_text(encoding="utf-8", errors="replace").strip()[:80]
+        except OSError:
+            info = ""
+        raise RegistryBusyError(
+            f"다른 적재가 이 레지스트리를 쓰는 중이다 — 잠금 파일 {path}" + (f" ({info})" if info else "") +
+            ". 다른 적재 창이 열려 있으면 그 적재가 끝난 뒤 다시 실행한다. 열린 적재가 없으면 (적재 창을 강제로 닫았거나 PC 가 꺼져 남은 파일) "
+            "그 잠금 파일을 지우고 다시 실행한다") from None
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(f"pid={os.getpid()} started={dt.datetime.now().astimezone().replace(microsecond=0).isoformat()}\n")
+        yield path
+    finally:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 # 엑셀이 날짜로 바꿔 저장한 모양 (#15 (4)) — '03월 01일'(ko-KR, 실측) · '2026-03-01[ 00:00[:00]]' · '3/1[/2026]' · '1-Mar'
 DATE_SHAPE = re.compile(r"\d{1,2}월\s?\d{1,2}일|\d{4}-\d{2}-\d{2}(?:\s\d{1,2}:\d{2}(?::\d{2})?)?|\d{1,2}/\d{1,2}(?:/\d{2,4})?|\d{1,2}-[A-Za-z]{3}")
@@ -85,6 +125,7 @@ class Table:
     seen: set = field(default_factory=set)
     created: set = field(default_factory=set)    # 이번 적재에서 새로 발급한 ID
     revived: set = field(default_factory=set)    # 폐기·통합됨에서 활성으로 되살린 ID (C2)
+    retired_now: set = field(default_factory=set)   # 이번 적재에서 활성 → 폐기로 바꾼 ID (#25b '파트 신규·폐기 동시', C2 (c))
 
     @property
     def spec(self):
@@ -120,11 +161,23 @@ class Table:
         self.seen.add(r["id"])
         return r["id"]
 
+    def rekey(self, old: tuple, new: tuple) -> tuple[str, str | None, str | None]:
+        """키만 바꾼다 (#25b 약칭 개명 — ID·상태 유지, 라벨은 뒤의 assign 이 갱신). (결과, 옛 키 행 ID, 새 키 행 ID):
+        'rekeyed' — 옛 키 행만 있어 키를 새 키로 바꿈 · 'conflict' — 둘 다 있어 손대지 않음 · 'absent' — 옛 키 행이 없음 (이미 바꿨거나 처음)."""
+        r_old, r_new = self.find(old), self.find(new)
+        if r_old is None:
+            return "absent", None, r_new["id"] if r_new else None
+        if r_new is not None:
+            return "conflict", r_old["id"], r_new["id"]
+        r_old.update(dict(zip(self.spec[3], new)))
+        return "rekeyed", r_old["id"], r_old["id"]
+
     def retire_unseen(self) -> list[dict]:
         out = []
         for r in self.rows:
             if r["id"] not in self.seen and r["status"] == ACTIVE:
                 r["status"] = RETIRED
+                self.retired_now.add(r["id"])
             if r["id"] not in self.seen:
                 out.append(r)
         return out
@@ -188,6 +241,10 @@ class Registry:
 
     def assign(self, kind: str, key, label: str) -> str:
         return self.tables[kind].assign(key if isinstance(key, tuple) else (key,), label)
+
+    def rekey(self, kind: str, old, new) -> tuple[str, str | None, str | None]:
+        """Table.rekey — 키가 열 하나인 종류는 문자열로 넘겨도 된다 (분야 약칭 개명, #25b)."""
+        return self.tables[kind].rekey(old if isinstance(old, tuple) else (old,), new if isinstance(new, tuple) else (new,))
 
     def id_of(self, kind: str, key) -> str | None:
         r = self.tables[kind].find(key if isinstance(key, tuple) else (key,))

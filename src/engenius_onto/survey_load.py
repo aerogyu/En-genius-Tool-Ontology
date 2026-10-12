@@ -5,6 +5,8 @@
   load_log.json      파일별 건수·제외 행(사유)·경고·행 단위 스키마 검증·통합 후보·레지스트리 요약·SHACL 결과
   tool_review.csv    툴 통합 후보 검토표 — '판정' 열을 채워 apply-review 로 config/tool_aliases.yaml 에 반영 (6.1-5)
 레지스트리 CSV(data/<synthetic|real>/registry/)는 제자리에서 갱신한다.
+실행 안전 (docs/09 7장): 레지스트리 폴더 잠금 `.load.lock` 을 쥐고 적재한다 (있으면 RegistryBusyError — 자동 해제 없음), 실행 폴더가
+이미 있으면(같은 초) 1초씩 밀어 새로 만든다. 약칭 개명(parts.yaml renamed_from)은 쓰기 전에 레지스트리 분야 키를 바꾼다 (docs/09 #25b).
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -20,7 +23,7 @@ from engenius_onto.config import (CONFIG_DIR, REAL_CONFIG_DIR, REPO_ROOT, check_
 from engenius_onto.loader import LoadResult, Loader
 from engenius_onto.normalize import link_root as _root, merge_keys_from_pairs, nfc_strip, read_merge_pairs
 from engenius_onto.rdf_writer import SchemaTerms, SurveyWriter
-from engenius_onto.registry import ACTIVE, Registry
+from engenius_onto.registry import ACTIVE, Registry, registry_lock
 
 DATA_SETS = {  # --data 이름 → (조사 파일 폴더, 레지스트리 폴더)
     "synthetic": (REPO_ROOT / "data" / "synthetic" / "survey", REPO_ROOT / "data" / "synthetic" / "registry"),
@@ -121,8 +124,6 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
     inp, regdir = DATA_SETS[data]
     inp, regdir = Path(input_dir or inp), Path(registry_dir or regdir)
     now = (now or dt.datetime.now()).astimezone().replace(microsecond=0)
-    run_id = now.strftime("%Y%m%dT%H%M%S")
-    out_dir = Path(out_root or REPO_ROOT / "output") / run_id
     if overlay_dir is None and overlay and data == "real" and input_dir is None:
         overlay_dir = default_overlay_dir(config_dir)
     loader = Loader(config_dir=config_dir or CONFIG_DIR, overlay_dir=overlay_dir)
@@ -131,16 +132,83 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
     paths = loader.discover(inp)
     if not paths:
         raise FileNotFoundError(f"조사 파일이 없다: {inp} (*.xlsx)")
+    # 동시 적재 잠금 (docs/09 7장) — 레지스트리 읽기부터 저장·산출물 쓰기까지. dry-run(save_registry=False)은 레지스트리를 쓰지 않아 잠그지 않는다
+    with registry_lock(regdir) if save_registry else nullcontext():
+        out_dir, now = _reserve_run_dir(Path(out_root or REPO_ROOT / "output"), now)   # 같은 초 두 실행 — 1초씩 밀어 새 폴더 (덮어쓰지 않는다)
+        try:
+            return _run_load(loader, paths, regdir, out_dir, now, data, input_dir, overlay_dir, shacl, save_registry)
+        except BaseException:
+            _drop_if_empty(out_dir)                           # 실패한 실행의 빈 폴더를 남기지 않는다 (latest_run 은 survey.ttl 있는 폴더만 고르지만)
+            raise
+
+
+RUN_DIR_TRIES = 60    # 같은 초 실행 폴더가 있으면 1초씩 밀어 볼 횟수 (docs/09 7장)
+
+
+def _reserve_run_dir(root: Path, now: dt.datetime) -> tuple[Path, dt.datetime]:
+    """output/<실행ID> 를 새로 만든다 — 이미 있으면(같은 초의 다른 실행) 1초씩 밀어 실행 ID·적재 시각을 함께 바꾼다 (docs/09 7장).
+    실행 ID 형식(YYYYMMDDTHHMMSS)은 그대로라 LOAD ID 패턴(#25c)이 깨지지 않는다. (실행 폴더, 민 시각)."""
+    for _ in range(RUN_DIR_TRIES):
+        out_dir = root / now.strftime("%Y%m%dT%H%M%S")
+        try:
+            out_dir.mkdir(parents=True)
+            return out_dir, now
+        except FileExistsError:
+            now += dt.timedelta(seconds=1)
+    raise RuntimeError(f"실행 폴더를 만들지 못함: {root} 에 같은 시각부터 {RUN_DIR_TRIES}초치 실행 폴더가 이미 있다")
+
+
+def _drop_if_empty(path: Path) -> None:
+    try:
+        path.rmdir()                                          # 비어 있을 때만 지워진다
+    except OSError:
+        pass
+
+
+def _apply_part_renames(reg: Registry, renames: dict[str, str], warnings: list) -> None:
+    """약칭 개명 (docs/09 #25b, parts.yaml renamed_from): 레지스트리 분야 키를 옛 → 새로 — FLD ID 가 그대로라 툴사용 키 (FLD ID, Tool ID)와
+    입출력 해시도 그대로다. 옛·새 키 행이 둘 다 있으면(개명 설정 없이 한 번 적재한 뒤) 손대지 않고 경고. 약칭은 설정 값이라 그대로 인용한다."""
+    for old, new in sorted(renames.items()):
+        status, old_id, new_id = reg.rekey("field", old, new)
+        if status == "rekeyed":
+            warnings.append(f"파트 약칭 개명 반영: {old} → {new} ({old_id} 유지 — 툴사용·입출력 ID 도 유지)")
+        elif status == "conflict":
+            warnings.append(f"파트 약칭 개명 보류: '{old}'({old_id})·'{new}'({new_id}) 가 레지스트리에 둘 다 있음 — 개명 전 레지스트리 사본으로 "
+                            "되돌린 뒤 다시 적재 (사본이 없으면 README_offline 6장 '파트 약칭을 바꿀 때'; 새 ID 로 계속 가려면 renamed_from 을 지운다)")
+
+
+def _part_turnover(reg: Registry, loader: Loader, warnings: list) -> None:
+    """한 실행에서 FLD 가 새로 생기고 다른 FLD 가 활성 → 폐기면 경고 (docs/09 #25b 5번 휴리스틱) — 약칭을 renamed_from 없이 바꾼 흔적일 수 있다.
+    읽지 못한 파일이 있는 실행은 폐기 판정을 하지 않으므로(retired_now 비어 있음) 나오지 않는다. 키가 인명 유사면 FLD ID 만."""
+    t = reg.tables["field"]
+    if not t.created or not t.retired_now:
+        return
+
+    def show(ids: set) -> str:
+        rows = sorted((r for r in t.rows if r["id"] in ids), key=lambda r: r["id"])
+        return ", ".join(r["id"] if loader._looks_person(r["key"]) else f"{r['key']}({r['id']})" for r in rows)
+
+    warnings.append(f"파트 신규·폐기 동시: 신규 {show(t.created)} · 폐기 {show(t.retired_now)} — 약칭을 바꾼 것이면 개명 전 레지스트리 사본으로 "
+                    "되돌리고 config/parts.yaml 새 약칭 항목에 renamed_from: [옛 약칭] 을 적어 다시 적재하면 FLD·툴사용·입출력 ID 가 유지된다 "
+                    "(파트를 나누거나 합친 것이면 정상 — docs/10 3장 4)")
+
+
+def _run_load(loader: Loader, paths: list[Path], regdir: Path, out_dir: Path, now: dt.datetime, data: str,
+              input_dir: Path | None, overlay_dir: Path | None, shacl: bool, save_registry: bool) -> LoadOutput:
+    """run_load 의 본체 — 잠금·실행 폴더 예약 안쪽."""
+    run_id = out_dir.name
     reg = Registry(regdir)
     if save_registry:
         reg.check_writable()                                  # #23 — 적재 전에 확인
     known = {r["key"] for r in reg.rows("tool") if r["status"] == ACTIVE}   # 제조사 접두 흡수의 생존 키 선택 (TOOL ID 유지)
     res = loader.load(paths, known_tool_keys=known)
     res.warnings.extend(reg.notices)                          # #15 — cp949 로 읽은 레지스트리 등
+    _apply_part_renames(reg, res.part_renames, res.warnings)  # #25b — 분야 키를 바꾼 뒤 assign (FLD ID 유지)
 
     terms = SchemaTerms.load()
     writer = SurveyWriter(terms)
     loads = writer.write(res, reg, run_id, now, retire=res.complete)
+    _part_turnover(reg, loader, res.warnings)                 # #25b 휴리스틱 — finalize 뒤 (신규·폐기 집합)
     ttl = writer.turtle()
     issues = validate_rows(res, terms)
 

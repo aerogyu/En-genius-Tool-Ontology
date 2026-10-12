@@ -10,7 +10,8 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
 - 만료 시기 문자열: 텍스트 날짜 → YYYY-MM + 경고, '영구'·빈 값 토큰 → 빈칸, 그 밖 → 원문 + 경고·수정 요청 (I16·I27, docs/09 #21).
 - 시트·선택지 목록 이름은 양식판마다 다르다 — config/rules.yaml loader.sheets·choice_list_aliases 가 흡수 (docs/09 #13, 양식 v1.1).
 - 파트(Field) = 파일명의 약칭 (docs/10 5장). 묶음 파일(MD = MDT+MDC)은 행의 Tool ID 앞부분으로 나눈다 (config/parts.yaml).
-  행의 '담당 부서' 는 분류 속성 reported_domain — 파트 설정과 다르면 경고만.
+  행의 '담당 부서' 는 분류 속성 reported_domain — 파트 설정과 다르면 경고만. 약칭을 바꾸면 새 약칭 항목의 renamed_from 에 옛 약칭을 적는다 —
+  옛 약칭 파일명·Tool ID 앞부분은 새 약칭으로 읽고, run_load 가 레지스트리 분야 키를 바꿔 ID 를 유지한다 (I31, docs/09 #25b).
 - 예시 행은 위치가 아니라 적재 열 전체가 템플릿 예시와 같은지로 판별 (I15) — config/template_examples.yaml (+ 오버레이).
   예시의 정보 열 80% 이상이 같거나 비고가 예시 문구인 '예시와 거의 같은 행' 은 경고 후 응답으로 적재하고, 같은 Tool ID 의 진짜 행이 뒤에
   있으면 진짜 행을 쓴다 (I15 개정, docs/09 #3). 시트에 예시 유사 행만 있고 정확한 예시가 0 이면 설정 점검 경고.
@@ -208,6 +209,7 @@ class FileReport:
     copy: int = 0                    # 파일명 사본 번호 '(n)' — 없으면 0 (I31·I33)
     index: int = 0                   # 입력 폴더 정렬 순번 (1부터) — 해시 이름 파일을 사람이 찾게 (#8)
     duplicate_of: str | None = None  # 같은 내용(sha256) 파일이라 적재하지 않음 — 남긴 파일의 기록 이름 (I33)
+    renamed_from: str | None = None  # 파일명이 옛 약칭(parts.yaml renamed_from)이면 그 옛 약칭 — field 는 새 약칭 (#25b)
 
     def stats(self) -> dict:
         """골든 per_file 과 dict 전체를 비교한다 — 키를 더하지 않는다 (copy·index·duplicate_of 는 load_log files[] 에만)."""
@@ -229,6 +231,7 @@ class LoadResult:
     issues: list[dict] = field(default_factory=list)       # 행 단위 문제 (수정 요청표·diag 용)
     part_labels: dict[str, str] = field(default_factory=dict)
     partner_candidates: list[dict] = field(default_factory=list)   # 검토표 '연계SW 미해석' 행 (Loader._partner_review, docs/09 #17)
+    part_renames: dict[str, str] = field(default_factory=dict)      # {옛 약칭: 새 약칭} — run_load 가 레지스트리 분야 키를 바꾼다 (#25b)
 
     def unresolved_partners(self) -> dict[str, dict]:
         """CQ09 조사 누락 후보 — 해석 못 한 연계 Tool명 키별 {mentions, fields} (I10, load_log unresolved_partners)."""
@@ -330,6 +333,7 @@ class Loader:
         self.parts = parts_cfg.get("parts") or {}
         self.bundles = {k: list(v) for k, v in (parts_cfg.get("file_bundles") or {}).items()}
         self.synthetic_parts = set(parts_cfg.get("synthetic_parts") or [])
+        self.renames = self._part_renames()                     # {옛 약칭: 새 약칭} (parts.yaml renamed_from, docs/09 #25b)
         self.value_aliases = self._value_aliases(self._cfg("value_aliases.yaml", optional=True))
         self.min_contain = int(self.rules.get("candidate_min_contain_len", 3))
         # 파일마다 _load_file 이 새로 채우는 엑셀 층 상태 (I37)·빈 값 표기 건수 — 여기서는 빈 값으로만 (메서드 단독 호출 대비)
@@ -386,9 +390,44 @@ class Loader:
             out.setdefault(slot, {}).update({nfc_strip(k): nfc_strip(v) for k, v in (mapping or {}).items()})
         return out
 
+    def _part_renames(self) -> dict[str, str]:
+        """parts.yaml 파트 항목의 선택 키 renamed_from → {옛 약칭: 새 약칭} (docs/09 #25b, Leo 결정 2026-10-12 — 별도 field_renames.yaml 대신).
+        새 약칭 항목에 옛 약칭을 모두 적는다 (여러 번 바꿨으면 마지막 약칭 한 곳에 — 사슬 없음). 옛 약칭 파일명은 새 약칭으로 읽고(I31·I33),
+        run_load 가 레지스트리 분야 키를 옛 → 새로 바꿔 FLD·툴사용·입출력 ID 를 유지한다. 설정 오류(ConfigError, 약칭만 인용 — 값 아님):
+        목록이 아님 · 옛 = 새 · 같은 옛 약칭이 두 파트에 · 옛 약칭이 아직 쓰이는 파트(parts 키인데 status 가 '폐기' 가 아님 — 오버레이는 키를 지울 수
+        없어 status: 폐기 로 둔다)·묶음 약칭(file_bundles 키 — 묶음 파일 약칭 개명은 범위 밖)·합성 약칭(synthetic_parts) · 옛 약칭에 또 renamed_from."""
+        where = "config/parts.yaml (또는 data/real/config 오버레이) parts"
+        out: dict[str, str] = {}
+        for new, ent in self.parts.items():
+            new = nfc_strip(new)
+            olds = ent.get("renamed_from") if isinstance(ent, dict) else None
+            if olds is None:
+                continue
+            if not isinstance(olds, list):
+                raise ConfigError(f"{where}.{new}.renamed_from: 형식은 목록([옛 약칭, …]) 이어야 한다 (지금: {type(olds).__name__})")
+            for o in olds:
+                old = nfc_strip(o)
+                if not old or old == new:
+                    raise ConfigError(f"{where}.{new}.renamed_from: 옛 약칭이 비었거나 새 약칭과 같다")
+                if old in out:
+                    raise ConfigError(f"{where}: 옛 약칭 '{old}' 이 두 파트({out[old]}·{new})의 renamed_from 에 있다")
+                ent_old = self.parts.get(old)
+                if old in self.parts and nfc_strip(ent_old.get("status") if isinstance(ent_old, dict) else None) != "폐기":
+                    raise ConfigError(f"{where}.{new}.renamed_from: 옛 약칭 '{old}' 이 parts 에 아직 있다 — 지우거나 'status: 폐기' 로 둔다 "
+                                      "(오버레이는 저장소 parts.yaml 의 키를 지울 수 없다)")
+                if old in self.bundles or old in self.synthetic_parts:
+                    raise ConfigError(f"{where}.{new}.renamed_from: 옛 약칭 '{old}' 이 file_bundles 키·synthetic_parts 에 있다 "
+                                      "(묶음 파일 약칭 개명은 지원하지 않는다 — docs/10 3장)")
+                out[old] = new
+        for old, new in out.items():
+            if isinstance(self.parts.get(old), dict) and self.parts[old].get("renamed_from"):
+                raise ConfigError(f"{where}.{old}.renamed_from: '{old}' 은 '{new}' 의 옛 약칭이다 — 마지막 약칭 한 곳에 옛 약칭을 모두 적는다 (사슬 없음)")
+        return out
+
     @property
     def known_codes(self) -> set[str]:
-        return set(self.parts) | set(self.bundles) | self.synthetic_parts
+        """파일명 약칭으로 인정하는 값 — parts · file_bundles · synthetic_parts · 옛 약칭(renamed_from — 새 약칭으로 읽는다, I31)."""
+        return set(self.parts) | set(self.bundles) | self.synthetic_parts | set(self.renames)
 
     def part_label(self, code: str) -> str:
         name = nfc_strip((self.parts.get(code) or {}).get("name"))
@@ -410,12 +449,13 @@ class Loader:
     def file_label(self, name: str, sha: str, used: set[str] | None = None) -> tuple[str, str | None, str | None, int]:
         """(기록용 이름, 약칭, 날짜, 사본 번호). 규칙 밖이거나 모르는 약칭이면 해시 이름 — 인명이 섞였을 수 있는 원래 이름은 남기지 않는다 (#8).
         used: 이번 실행에서 이미 쓴 기록 이름 — 해시 이름이 겹치면(같은 내용 사본) '-2'·'-3' 을 붙인다 (I31; 날짜 8자리 조건 때문에
-        유일화한 이름도 파일명 규칙에 맞지 않는다). 규칙 안 이름이 겹치는 것(NFC 로 같아지는 두 이름)도 해시 이름으로 돌린다."""
+        유일화한 이름도 파일명 규칙에 맞지 않는다). 규칙 안 이름이 겹치는 것(NFC 로 같아지는 두 이름)도 해시 이름으로 돌린다.
+        옛 약칭(parts.yaml renamed_from) 파일명은 원래 이름 그대로 기록하고 약칭은 새 약칭으로 돌려준다 (#25b — 재발송 판정이 옛·새 파일을 잇는다)."""
         used = used if used is not None else set()
         code, date, copy = self.parse_name(name)
         label = unicodedata.normalize("NFC", name)
         if code is not None and code in self.known_codes and Path(name).suffix == ".xlsx" and label not in used:
-            return label, code, date, copy
+            return label, self.renames.get(code, code), date, copy
         stem, suffix, n = f"Tool조사_규칙밖_{sha[:10]}", Path(name).suffix.lower(), 1
         label = stem + suffix
         while label in used:
@@ -436,7 +476,9 @@ class Loader:
             sha = hashlib.sha256(p.read_bytes()).hexdigest()
             label, code, date, copy = self.file_label(p.name, sha, used)
             used.add(label)
-            reports.append(FileReport(label, sha, code, date, path=p, copy=copy, index=idx))
+            old = self.parse_name(p.name)[0] if code is not None else None      # 옛 약칭 파일명이면 (#25b)
+            reports.append(FileReport(label, sha, code, date, path=p, copy=copy, index=idx,
+                                      renamed_from=old if old != code else None))
         # 재발송 (I33): 같은 파트는 (날짜, 사본 번호, 파일명) 최신만 — 같은 날짜면 브라우저 사본 '(n)' 의 번호가 큰 쪽(나중에 받은 파일)
         latest: dict[str, FileReport] = {}
         for r in reports:
@@ -455,6 +497,11 @@ class Loader:
                 warnings.append(f"재발송으로 대체: {r.name} → {r.superseded_by} (적재 안 함){same}")
                 r.warnings += 1
         self._same_content(reports, warnings)
+        for r in reports:                       # 옛 약칭 파일명을 실제로 적재할 때만 (대체·같은 내용은 위 경고로 충분, #25b)
+            if r.renamed_from and r.superseded_by is None and r.duplicate_of is None:
+                warnings.append(f"옛 약칭 파일명: {r.name} — 약칭 '{r.renamed_from}' → '{r.field}' 로 읽음 "
+                                "(config/parts.yaml renamed_from — 다음 회신부터 새 약칭 파일명으로)")
+                r.warnings += 1
 
         usages: list[UsageRec] = []
         ios: list[IORec] = []
@@ -478,7 +525,7 @@ class Loader:
         conflicts = self._conflicts(tools)
         labels = {u.field: self.part_label(u.field) for u in usages if u.field}
         return LoadResult(reports, usages, ios, tools, warnings, excluded, candidates, conflicts, alias_map,
-                          self.issues, labels, partner_candidates=partner_rows)
+                          self.issues, labels, partner_candidates=partner_rows, part_renames=dict(self.renames))
 
     def _same_content(self, reports: list[FileReport], warnings: list) -> None:
         """I33 뒤에: 대체되지 않은 파일 가운데 내용(sha256)이 같은 파일은 한 번만 적재한다 — 규칙 안 파일 우선, 다음 입력 순서.
@@ -1128,11 +1175,14 @@ class Loader:
         return usages, ios
 
     def _part_of(self, rep: FileReport, tool_id, warnings: list, row: int) -> str | None:
-        """행의 파트: 보통 파일 약칭, 묶음 파일(parts.yaml file_bundles)은 Tool ID 앞부분 (docs/10 3-1)."""
+        """행의 파트: 보통 파일 약칭, 묶음 파일(parts.yaml file_bundles)은 Tool ID 앞부분 (docs/10 3-1).
+        앞부분이 옛 약칭(renamed_from)이면 새 약칭으로 — 묶음 안 파트를 개명해도 행의 옛 Tool ID 를 그대로 받는다 (#25b;
+        file_bundles 목록에 옛 약칭이 남아 있어도 같은 결과)."""
         if rep.field not in self.bundles:
             return rep.field
         prefix = id_key(tool_id).split("-")[0]
-        if prefix in self.bundles[rep.field]:
+        prefix = self.renames.get(prefix, prefix)
+        if prefix in {self.renames.get(p, p) for p in self.bundles[rep.field]}:
             return prefix
         warnings.append(f"묶음 파일 파트 미정: {rep.name} {nfc_strip(tool_id)} — Tool ID 앞부분이 {self.bundles[rep.field]} 가 아님, "
                         f"'{rep.field}' 로 적재")
