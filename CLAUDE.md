@@ -67,7 +67,9 @@
   **2차 잔여 완료 (2026-10-12, Leo "잔여 전부", 작은 결정 전부 권장안 — docs/09 0장·각 # '수리 결과 (2026-10-12)')**: 6묶음 `f6ca669`(#10 확장자 + 공통 인명 가림 `Loader._q`)·
   `f855acb`(#1 잔여: '(n)' 사본·같은 내용 한 번만·파일 간 같은 (파트, Tool ID) 구분 키 I36)·`2f650fe`(#3 예시 유사 행)·`d8be811`(#21 만료 시기·'영구'·자동화 판정 통일·header_map 오버레이·엑셀 층 신호 I37)·
   `430b398`(#17 연계SW 미해석 검토 행·partner_missing·#25d·별칭 미적용·#15(4) 레지스트리 엑셀 손상 복원)·`5e92e97`(#25b `parts.yaml renamed_from`·동시 적재 잠금 `.load.lock`·같은 초 두 실행)
-  → 5관점 적대적 검토 17건 확인·수리 `450beeb` → 수리분 재검토. pytest 562·skip 3, 골든 aggregates 불변. **#25c(LOAD ID 패턴)는 M4 스키마 v0.4 로**.
+  → 5관점 적대적 검토 17건 수리 `450beeb` → 재검토 9건 `3f668cd` → 재검토 6건 `d50da9e` (17→9→6, 마지막은 드문 입력뿐이라 멈춤). pytest 581·skip 3, 골든 aggregates 불변.
+  **#25c(LOAD ID 패턴)는 M4 스키마 v0.4 로**. **사내 반입**: `EnGenius_update_a3e4e0f_to_d50da9e.py.txt` (import-package `93057bb`, a3e4e0f 이후 어느 판에든 —
+  a3e4e0f·988405d 복사본 리허설 통과: 적용 → TO 와 파일 일치 → selftest 581 → 합성 적재·diag·지도·mcp_check 8/8). **Leo 적용 확인되면 다음은 `--from d50da9e`**.
   남은 것(작음·Leo 결정 필요): C8·N1 — 인명 유사 값이 Tool ID·노드 키 칸에 들어가면 load_log·survey.ttl·레지스트리에 원문이 남는다(diag 엔 없음) ·
   점 없는 형식명 앞 확장자('x_t(.x_b)')를 남길지 · 한셀/LibreOffice 저장본 수용 시험(사내) · MD 묶음+분할 파일 동시 수신 시 대체할지.
   M4 설계 반영 사항은 docs/11 3장 4·7·11번 + 5장 Q1·Q4~Q7 (Handoff declared/confidence·automatable 슬롯·ToolCandidate·part_code·'모름' 미확인 표시·폐쇄망 폐지 커밋 범위에 스키마 enum 포함).
@@ -98,7 +100,7 @@
   (hub_candidates 를 툴로 묶은 순위로 — LLM 이 툴사용 행을 다시 매겨 지도와 순위가 달랐음, import-package 947bc90). **Leo 적용 확인되면 다음은 `--from 988405d`**.
   설계 원칙: 순위·합계 같은 집계는 서버가 끝내 주고 LLM 은 전달만 (도구 설명에 '다시 매기지 말 것').
   **다음 세션 할 일**: ① Leo 확인 — 988405d 적용·재연결 뒤 '툴 기준 후보 상위 10' 이 지도 순서와 같은지, 개인 PC 점검표(답 대조·지어내기·도구 선택·인명·재적재 반영·속도·**실제 묻고 싶은 질문 목록**)
-  ② 미회신 3 파트 회신 → 재적재 → diag 숫자 (이어받기로 'SW ID 없는 내용 행 50' 감소 확인, 277 vs 282) ③ ~~M3.1 2차 잔여~~ (2026-10-12 완료 — 사내 반입 업데이트 `--from 988405d`) → **M4**(멈추고 Leo 확인 ②)
+  ② 미회신 3 파트 회신 → 재적재 → diag 숫자 (이어받기로 'SW ID 없는 내용 행 50' 감소 확인, 277 vs 282) ③ ~~M3.1 2차 잔여~~ (2026-10-12 완료 — 사내 반입 `a3e4e0f_to_d50da9e`; 적용 뒤 재적재 diag 로 새 경고 종류·수정 요청 행 증가 확인, 자동화 IF 'NA' 반영으로 MCP·지도 순위 변화 확인) → **M4**(멈추고 Leo 확인 ②)
   ④ M4 뒤 HTTP/SSE 공유 서버(띄울 곳·인바운드·토큰) — 플랫폼은 'HTTP/SSE 주소' · '로컬 명령(인자 한 줄씩)' 두 방식 지원 확인됨.
   **플랫폼 MCP 서버 모음 저장소 (2026-10-12)**: Leo 가 org 저장소에 초대됨 — 작업 브랜치 dev/4(Leo 개발용, Tool Ontology·SANTA·AutoCAD MCP 등을 거기서 개발해 main 에 합칠 계획),
   clone `C:\EnGenius\HAS-En-Genius-MCP-Factory` (Python 3.13 venv). 온톨로지 MCP 는 그쪽 `mcp_server/servers/ontology/` 에 **얇은 어댑터**(fastmcp + 그 저장소 net.run_server)로 붙이고
