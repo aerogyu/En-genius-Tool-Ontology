@@ -11,7 +11,9 @@
 - 레지스트리는 데이터 옆에 둔다: data/synthetic/registry/, 사내는 data/real/registry/. 합성용을 실데이터에 쓰지 않는다.
 - CSV 는 utf-8-sig 로 쓰고, 읽을 때는 utf-8-sig → cp949 순으로 시도한다 (#15 — 엑셀로 저장한 사본 대비). 저장은 늘 utf-8-sig.
   열이 모자란 행(메모장 손 편집)은 빈칸으로 읽고, 상태 칸이 비면 활성으로 본다 + 알림 '레지스트리 상태 칸 빈 행' (ID 만 — 빈 상태는
-  되살림·폐기 판정 어디에도 걸리지 않아 그래프에 상태 없는 활성 유령으로 남았다, 2026-10-12 재검토 수리).
+  되살림·폐기 판정 어디에도 걸리지 않아 그래프에 상태 없는 활성 유령으로 남았다, 2026-10-12 재검토 수리). 상태 앞뒤 공백은 떼고, 세 상태 밖의
+  값(오타)도 활성 + 알림 '레지스트리 상태 칸 값 이상'. ID·키 칸이 빈 줄(',,,,'·공백 줄)은 버리고 알림 '레지스트리 빈 행 무시', 키는 있는데 ID 가
+  '<접두>-<숫자>' 가 아닌 줄은 적재를 멈춘다 (RegistryFormatError — 줄 번호만; Registry._read_rows).
 - 엑셀 손상 검사 (#15 (4), Leo 결정 2026-10-12): 레지스트리 CSV 를 엑셀로 열어 저장하면 Tool ID 칸이 바뀐다 ('3-1'→'03월 01일', '01'→'1').
   툴사용 행의 라벨은 '<파트 이름> <Tool ID>[ (<구분>)]' 이라(rdf_writer) 라벨 끝이 키와 같아야 한다 — 다르고 그 차이가 엑셀 변환으로 정확히
   설명되면(excel_explains) 키를 라벨 끝 값으로 되살리고 알림 '레지스트리 엑셀 손상 복원', 설명되지 않으면 알림 '레지스트리 엑셀 손상 의심' 만
@@ -33,7 +35,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from engenius_onto.config import read_csv_rows
+from engenius_onto.config import read_csv_table
 
 ACTIVE, MERGED, RETIRED = "활성", "통합됨", "폐기"
 LOCK_NAME = ".load.lock"         # 레지스트리 폴더의 동시 적재 잠금 파일 (.gitignore — 합성 레지스트리는 git 추적이라)
@@ -41,6 +43,10 @@ LOCK_NAME = ".load.lock"         # 레지스트리 폴더의 동시 적재 잠�
 
 class RegistryBusyError(RuntimeError):
     """레지스트리를 다른 적재가 쓰는 중 (잠금 파일이 있다) — CLI 는 '[NG] 레지스트리 사용 중: …' 한 줄, rc 2."""
+
+
+class RegistryFormatError(ValueError):
+    """레지스트리 CSV 에 키는 있는데 ID 칸이 비었거나 모양이 다른 행이 있다 (손 편집 — 줄 번호만 인용) — CLI 는 '[NG] 레지스트리 오류: …' 한 줄, rc 2."""
 
 
 @contextmanager
@@ -169,7 +175,8 @@ class Table:
         r = self.find(key)
         if r is None:
             _, prefix, width, keys = self.spec
-            n = max((int(x["id"].split("-")[1]) for x in self.rows), default=0) + 1
+            nums = (re.fullmatch(rf"{prefix}-(\d+)", x["id"]) for x in self.rows)   # 모양이 맞는 ID 만 센다 (Registry 가 읽을 때 거르지만 겹으로)
+            n = max((int(m.group(1)) for m in nums if m), default=0) + 1
             r = {"id": f"{prefix}-{n:0{width}d}", **dict(zip(keys, key)), "label": label,
                  "status": ACTIVE, "merged_into": ""}
             self.rows.append(r)
@@ -230,25 +237,62 @@ class Registry:
         self.dir = Path(directory)
         self.tables = {k: Table(k) for k in KINDS}
         self.notices: list[str] = []          # 읽기 중 알림 (cp949 로 읽음 등) — run_load 가 경고로 옮긴다
+        broken: list[str] = []                # 키가 있는데 ID 칸이 비었거나 모양이 다른 행 — 다 읽은 뒤 RegistryFormatError
         for kind, t in self.tables.items():
             p = self.dir / KINDS[kind][0]
             if p.is_file():
-                t.rows, enc = read_csv_rows(p)
+                rows, lines, enc = read_csv_table(p)
                 if enc != "utf-8-sig":
                     self.notices.append(f"레지스트리 CSV 를 {enc} 로 읽음: {p.name} — 저장할 때 utf-8-sig 로 되돌린다 (#15)")
-                blank_status = []
-                for r in t.rows:
-                    r.setdefault("merged_into", "")
-                    for k, v in list(r.items()):          # 열이 모자란 행(메모장 손 편집에서 꼬리 쉼표가 빠짐) — csv 가 None 으로 채운다
-                        if v is None:
-                            r[k] = ""
-                    if not (r.get("status") or "").strip():   # 상태 칸이 빈 행 — 활성으로 본다 (빈 상태로 두면 assign·폐기 판정 어디에도
-                        r["status"] = ACTIVE                  # 걸리지 않아 영영 그 상태로 남고, 그래프에는 상태 없는 툴 = 활성 유령이 된다)
-                        blank_status.append(r.get("id") or "?")
-                if blank_status:
-                    self.notices.append(f"레지스트리 상태 칸 빈 행: {p.name} {len(blank_status)}행 ({_ids(blank_status)}) — 활성으로 봄 "
-                                        "(이번 적재에 없으면 폐기로 바뀐다; 손 편집으로 열이 빠졌는지 확인 — 저장할 때 상태를 채워 쓴다)")
+                t.rows = self._read_rows(kind, p.name, rows, lines, broken)
+        if broken:
+            raise RegistryFormatError(
+                f"레지스트리 ID 칸이 비었거나 모양이 다른 행: {len(broken)}행 ({_ids(broken)}) — 키는 있는데 ID('<접두>-<숫자>')가 없어 어느 ID 인지 알 수 없다 "
+                "(이대로 적재하면 그 키가 새 ID 를 받는다). 레지스트리 CSV 를 백업에서 되돌리거나 그 줄의 ID 칸을 고친 뒤 다시 적재한다 "
+                "(레지스트리 CSV 는 엑셀로 저장하지 않는다 — docs/09 #15)")
         self._check_excel_damage()
+
+    def _read_rows(self, kind: str, name: str, rows: list[dict], lines: list[int], broken: list[str]) -> list[dict]:
+        """CSV 행 정리 (#15 손 편집·엑셀 저장, 2026-10-12 재검토 수리) — 값은 알림에 넣지 않는다 (ID·줄 번호만).
+        · 열이 모자란 행(메모장에서 꼬리 쉼표가 빠짐) — csv 가 채운 None 을 빈칸으로
+        · ID 칸이 '<접두>-<숫자>' 가 아닌 행 (앞뒤 공백은 뗀다): 키 칸도 비었으면 버리고 알림 '레지스트리 빈 행 무시' (엑셀·메모장에서 내용만 지운 줄
+          ',,,,' · 공백 한 줄 · 3f668cd 가 그런 줄을 저장한 ',,,폐기,') — 전에는 새 ID 발급(assign 의 번호 계산)이 IndexError 로 멈추거나 그래프에
+          빈 IRI 툴(egid:)이 생겼다. 키가 있으면 broken 에 줄 번호를 모은다 (적재를 멈춘다 — 그 키의 ID 를 사람이 정한다)
+        · 상태 칸 — 앞뒤 공백은 뗀다('활성 '), 비었거나 세 상태(활성·통합됨·폐기) 밖이면 활성으로 보고 알림 (빈 상태·오타는 assign 의 되살림·
+          retire_unseen 의 폐기·load_log 상태 건수 어디에도 걸리지 않아 그 값으로 영영 남았다 — 이번 적재에 없으면 폐기, 저장할 때 고쳐 쓴다)"""
+        _f, prefix, _w, cols = KINDS[kind]
+        id_shape = re.compile(rf"{prefix}-\d+")
+        kept, empty, blank_status, odd_status = [], [], [], []
+        for r, line in zip(rows, lines):
+            r.setdefault("merged_into", "")
+            for k, v in list(r.items()):
+                if v is None:
+                    r[k] = ""
+            rid = (r.get("id") or "").strip()
+            if not id_shape.fullmatch(rid):
+                if any((r.get(c) or "").strip() for c in cols):
+                    broken.append(f"{name} {line}줄")
+                else:
+                    empty.append(str(line))
+                continue
+            r["id"] = rid
+            st = (r.get("status") or "").strip()
+            if st in (ACTIVE, MERGED, RETIRED):
+                r["status"] = st
+            else:
+                r["status"] = ACTIVE
+                (odd_status if st else blank_status).append(rid)
+            kept.append(r)
+        if empty:
+            self.notices.append(f"레지스트리 빈 행 무시: {name} {len(empty)}행 ({_ids([f'{x}줄' for x in empty])}) — ID·키 칸이 빈 줄 "
+                                "(엑셀·메모장에서 내용만 지운 줄), 저장할 때 뺀다")
+        if blank_status:
+            self.notices.append(f"레지스트리 상태 칸 빈 행: {name} {len(blank_status)}행 ({_ids(blank_status)}) — 활성으로 봄 "
+                                "(이번 적재에 없으면 폐기로 바뀐다; 손 편집으로 열이 빠졌는지 확인 — 저장할 때 상태를 채워 쓴다)")
+        if odd_status:
+            self.notices.append(f"레지스트리 상태 칸 값 이상: {name} {len(odd_status)}행 ({_ids(odd_status)}) — 활성·통합됨·폐기 밖의 값이라 활성으로 봄 "
+                                "(이번 적재에 없으면 폐기, 다른 툴로 통합된 키면 통합됨으로 바뀐다 — 저장할 때 상태를 고쳐 쓴다)")
+        return kept
 
     def _check_excel_damage(self) -> None:
         """레지스트리 CSV 의 엑셀 손상 (#15 (4), Leo 결정 2026-10-12 — 설명되는 행만 자동 복원 + 알림, 나머지는 알림만, ID 만 인용).

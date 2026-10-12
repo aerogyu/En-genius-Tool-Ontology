@@ -15,6 +15,8 @@
   E 승인 인명 패턴 보충·검토표 표기 칸 가림·열 모자란 레지스트리 행·잠금 없는 레지스트리 복사 · F 같은 날짜 옛·새 약칭 파일·범용 이름 툴 키 개명
 - 재검토 수리 (2026-10-12) — A 제외 행(Tool ID 없음·수식 오류·빈 행 뒤)·정수 열 원문 인명 검사(↔ oracle)·툴 키 인용 경고·속성 충돌 값·SHACL 메시지 가림 ·
   D 선택지 시트 먼 서식 칸 · E 연계 행 힌트 키 가림·레지스트리 빈 상태 · F 옛 약칭 '(n)' 사본 vs 새 약칭 파일·사본 번호는 같은 이름끼리만
+- 재검토 수리 2 (2026-10-12) — A 스키마 검증 메시지 가림·SHACL 메시지의 이스케이프된 줄바꿈·탭·툴 키 인용은 보고 이름까지(_qk) ·
+  E 레지스트리 빈 줄 버림·키 있는 줄의 빈 ID 는 적재 중지(rc 2)·상태 칸 공백·오타
 합성 파일 사본만 쓴다 (공개 상용 툴 이름·가상 이름). 인명 시험 값은 가상 자리표시('가나다 책임')만.
 """
 
@@ -462,6 +464,91 @@ def test_shacl_results_mask_person_like(tmp_path):
     assert len(masked) >= 3 and all(r["focus"] and r["path"] for r in masked)
     assert _no_tokens(json.dumps(sh, ensure_ascii=False), (out.out_dir / "load_log.json").read_text(encoding="utf-8"))
     assert "나다라 선임에게" in out.turtle                                                       # 그래프 값은 보존 (D6)
+
+
+def test_shacl_message_mask_escaped_literals_unit():
+    """Jena 는 RDF term 의 줄바꿈·탭을 '\\r\\n'·'\\t' 두 글자로 보인다 — 이름과 직급 사이에 Alt+Enter·탭이 든 값은 인명 패턴의 \\s* 가 맞지 않아
+    가려지지 않았다 (2026-10-12 재검토 수리). 판정만 이스케이프를 풀어서, 출력은 PERSON_MASK 아니면 원래 글 그대로 (정규식 '\\d' 등은 손대지 않음)."""
+    from engenius_onto.survey_load import _nt_unescape, mask_shacl_message
+
+    looks = Normalizer.from_config().looks_person
+    bs = chr(92)                                                                 # 백슬래시 한 글자 (Jena 메시지에 실제로 든 모양)
+    assert not looks(f"가나다{bs}r{bs}n책임") and _nt_unescape(f"가나다{bs}r{bs}n책임") == "가나다\r\n책임"
+    for lit in (f"가나다{bs}r{bs}n책임", f"가나다{bs}n책임", f"가나다{bs}t책임 메일", f"{bs}uAC00{bs}uB098{bs}uB2E4 책임", f"가나다{bs}u0009책임"):
+        m = f'InConstraint["입력(소비)", "출력(생산)"] : RDF term "{lit}" not in expected values'
+        assert mask_shacl_message(m, looks) == f'InConstraint["입력(소비)", "출력(생산)"] : RDF term "{PERSON_MASK}" not in expected values', lit
+    keep = f'Pattern[^{bs}d{{4}}-{bs}d{{2}}$]: Does not match: "2027.03{bs}t"'
+    assert mask_shacl_message(keep, looks) == keep
+    assert _nt_unescape(f"a{bs}q{bs}{bs}b{bs}uZZZZ") == f"a{bs}q{bs}b{bs}uZZZZ"                   # 모르는 이스케이프는 그대로, \\\\ 는 하나로
+
+
+@pytest.mark.shacl
+def test_shacl_results_mask_newline_tab_values(tmp_path):
+    """엑셀 Alt+Enter 줄바꿈·탭이 이름과 직급 사이에 든 선택지 값 — 적재기 경고는 가렸는데 load_log shacl.results 에는 Jena 가 이스케이프한 원문
+    ('RDF term \"가나다\\r\\n책임\"')이 남았다 (2026-10-12 재검토 수리)."""
+    from engenius_onto.shacl_check import find_tools
+
+    if not find_tools():
+        pytest.skip("FUSEKI_HOME/JAVA 없음")
+    d = _copy(tmp_path)
+    _set_row(d / STR, IO_SHEET, 9, {"방향": "가나다\n책임"})
+    _set_row(d / STR, IO_SHEET, 10, {"전달 방법": "가나다\t책임 메일"})
+    out = run_load(input_dir=d, registry_dir=tmp_path / "registry", out_root=tmp_path / "out", shacl=True)
+    sh = out.log["shacl"]
+    assert sh["ran"] and not sh["conforms"]
+    assert len([r for r in sh["results"] if PERSON_MASK in r["message"]]) >= 2
+    assert any(w.startswith("선택지 밖 값:") and PERSON_MASK in w for w in out.result.warnings)
+    assert _no_tokens((out.out_dir / "load_log.json").read_text(encoding="utf-8"))
+
+
+def test_schema_issue_messages_mask_person_like(tmp_path):
+    """load_log schema_issues[].message — 생성 Pydantic 모델의 형식 검사기가 값을 통째로 인용한다 ('Invalid license_expiry format: <원문>').
+    '만료 시기 형식 아님' 값은 원문 그대로 모델에 가서 인명 유사 메모가 load_log 에 옮겨졌다 (옆 경고에서는 가려져 있었다 — N5 와 같은 종류,
+    2026-10-12 재검토 수리). 메시지만 가리고 slot·행은 그대로, 그래프 값은 보존 (D6). key 는 C8 범위라 이 시험이 보지 않는다."""
+    from engenius_onto.survey_load import mask_issue_message
+
+    d = _copy(tmp_path)
+    _set_row(d / STR, USAGE_SHEET, 5, {"만료 시기": "2027-03 (가나다 책임 확인)"})                  # STR-01
+    out = _load(d, tmp_path)
+    assert f"만료 시기 형식 아님: {STR} {USAGE_SHEET} STR-01 '{PERSON_MASK}' — 원문 보존 (YYYY-MM 으로)" in out.result.warnings
+    got = [i for i in out.schema_issues if i["slot"] == "license_expiry"]
+    assert [(i["row"], i["message"]) for i in got] == [(5, f"Value error, Invalid license_expiry format: {PERSON_MASK}")]
+    log = json.loads((out.out_dir / "load_log.json").read_text(encoding="utf-8"))
+    assert _no_tokens(json.dumps(log["schema_issues"], ensure_ascii=False), (out.out_dir / "load_log.json").read_text(encoding="utf-8"))
+    assert "2027-03 (가나다 책임 확인)" in out.turtle
+    looks = Normalizer.from_config().looks_person
+    assert mask_issue_message("Value error, Invalid extensions format: 가나다 책임", ["dat", "가나다 책임"], looks) == \
+        f"Value error, Invalid extensions format: {PERSON_MASK}"                                  # 목록 값은 조각마다
+    assert mask_issue_message("Value error, Invalid id format: egid:X 1", "egid:X 1", looks) == "Value error, Invalid id format: egid:X 1"
+    assert mask_issue_message("Input should be a valid integer 가나다 책임", 3, looks) == PERSON_MASK   # 값과 따로 남으면 통째로
+
+
+def test_tool_key_quotes_mask_names_with_text_after_rank(tmp_path):
+    """툴 키는 공백을 지워 '가나다 책임 해석툴' → '가나다책임해석툴' — 직급 뒤에 한글이 이어져 키만으로는 인명 패턴에 안 걸린다 (원문은 걸린다).
+    키를 인용하는 경고(흡수 보류·흡수)와 검토표 '비슷한 키' 힌트는 그 키를 낸 보고 이름까지 판정한다 (Loader._qk, 2026-10-12 재검토 수리 —
+    전에는 '인명 유사 패턴' 경고가 같은 이름을 잡는 적재에서 키가 원문대로 나갔다)."""
+    ld = Loader()
+    assert ld._looks_person("가나다 책임 해석툴") and not ld._looks_person("가나다책임해석툴") and not ld._looks_person("altair가나다책임해석툴")
+    d = _copy(tmp_path / "held")
+    _set_names(d / STR, {"STR-04": "Altair 가나다 책임 해석툴", "STR-05": "가나다 책임 해석툴"})
+    res = ld.load(ld.discover(d), known_tool_keys={"altair가나다책임해석툴", "가나다책임해석툴"})   # 둘 다 기존 활성 — 흡수 보류
+    assert any(w.startswith("인명 유사 패턴:") for w in res.warnings)
+    assert _w(res, "제조사 접두 흡수 보류") == [f"제조사 접두 흡수 보류: 기존 툴 둘 이상 ({PERSON_MASK}, {PERSON_MASK}) — 검토표에서 판정"]
+    ld2 = Loader()
+    res2 = ld2.load(ld2.discover(d))                                                          # 기존 툴 없음 — 흡수
+    assert _w(res2, "제조사 접두 흡수:") == [f"제조사 접두 흡수: {STR} STR-04 '{PERSON_MASK}' → '{PERSON_MASK}' (제조사 접두를 뗀 키)"]
+    assert _no_tokens("\n".join(res.warnings + res2.warnings))
+    d2 = _copy(tmp_path / "hint")
+    _set_names(d2 / STR, {"STR-01": "가나다 책임 해석툴"})
+    _set_io_cells(d2 / STR, {("STR-02", "익형 형상"): {H_PARTNER: "가나다해석"}})
+    out = _load(d2, tmp_path / "hint")
+    rows = [r for r in _review_rows(out) if r["사유"] == PARTNER and r["툴B_키"] == "가나다해석"]
+    assert len(rows) == 1 and rows[0]["툴A_키"] == ""
+    assert rows[0]["툴A_표기"] == f"(기존 툴이면 툴A_키에 그 툴 키를 적는다 — 비슷한 키: {PERSON_MASK} 0.77)"
+    assert "가나다책임해석툴" not in (out.out_dir / "tool_review.csv").read_text(encoding="utf-8-sig")
+    plain = Loader()                                                                          # 대조 — 보고 이름이 인명 유사가 아니면 키 그대로
+    plain._key_names = {"hypermesh": {"HyperMesh"}}
+    assert plain._qk("hypermesh") == "hypermesh" and plain._qk("가나다책임") == PERSON_MASK
 
 
 # --------------------------------------------------------------------------- B. 파일 층 (docs/09 #1 잔여 · #8 C4)
@@ -2052,6 +2139,85 @@ def test_registry_blank_status_tool_not_a_ghost(tmp_path):
     assert [str(o) for o in g.objects(tool, t.props["status"])] == ["폐기"]
 
 
+EMPTY_ROW_TAIL = " — ID·키 칸이 빈 줄 (엑셀·메모장에서 내용만 지운 줄), 저장할 때 뺀다"
+
+
+def test_registry_empty_rows_dropped_and_new_id_issued(tmp_path):
+    """엑셀·메모장에서 내용만 지운 줄(',,,,')·공백 한 줄·3f668cd 가 그런 줄을 저장한 ',,,폐기,' — 전에는 새 ID 발급(assign 의 번호 계산)이
+    IndexError traceback 으로 멈추고, 새 ID 가 없는 적재는 그래프에 빈 IRI 툴(egid: a eg:Tool)을 만들고 그 줄을 ',,,폐기,' 로 굳혔다
+    (2026-10-12 재검토 수리). 이제 읽을 때 버리고 알림(줄 번호만), 저장할 때 뺀다. 새 툴은 다음 번호를 받는다."""
+    reg = copy_registry(REGISTRY_DIR, tmp_path / "registry")
+    n_tools = len(read_csv_rows(reg / "tools.csv")[0])
+    with (reg / "tools.csv").open("a", encoding="utf-8", newline="") as f:
+        f.write(",,,,\n \n,,,폐기,\n")
+    with (reg / "usages.csv").open("a", encoding="utf-8", newline="") as f:
+        f.write(",,,,,\n")
+    n_use = len(read_csv_rows(reg / "usages.csv")[0])
+    rg = Registry(reg)
+    assert rg.notices == [f"레지스트리 빈 행 무시: tools.csv 3행 ({n_tools + 2}줄, {n_tools + 3}줄, {n_tools + 4}줄){EMPTY_ROW_TAIL}",
+                          f"레지스트리 빈 행 무시: usages.csv 1행 ({n_use + 1}줄){EMPTY_ROW_TAIL}"]
+    assert len(rg.rows("tool")) == n_tools and all(r["id"] for r in rg.rows("tool"))
+    d = _copy(tmp_path)
+    _set_names(d / STR, {"STR-01": "가상 새툴 QWZ"})                                            # 새 TOOL ID 가 필요한 적재
+    rc = cli.main(["load", "--input", str(d), "--registry", str(reg), "--out", str(tmp_path / "out"), "--no-shacl"])
+    assert rc == 0
+    run = next((tmp_path / "out").iterdir())
+    log = json.loads((run / "load_log.json").read_text(encoding="utf-8"))
+    assert set(rg.notices) <= set(log["warnings"]) and log["registry"]["transitions"]["tool"]["created"] == 1
+    rows = read_csv_rows(reg / "tools.csv")[0]
+    assert len(rows) == n_tools + 1 and all(re.fullmatch(r"TOOL-\d{6}", r["id"]) for r in rows)
+    assert next(r for r in rows if r["label"] == "가상 새툴 QWZ")["id"] == f"TOOL-{n_tools + 1:06d}"
+    assert sum(log["registry"]["tool"].values()) == len(rows)
+    assert all(r["id"] for r in read_csv_rows(reg / "usages.csv")[0])
+    g = Graph().parse(data=(run / "survey.ttl").read_text(encoding="utf-8"), format="turtle")
+    assert not [s for s in set(g.subjects()) if str(s).endswith("/id/")]                       # 빈 IRI 툴 없음
+    assert Registry(reg).notices == []
+
+
+def test_registry_keyed_row_without_id_stops_load(tmp_path, capsys):
+    """키는 있는데 ID 칸이 비었거나 모양이 다른 줄 (메모장에서 ID 를 지움·'TOOL-00000x') — 어느 ID 인지 알 수 없어 적재를 멈춘다
+    (rc 2, traceback 없이 한 줄 — 줄 번호만, 값 없음). 이대로 적재하면 그 키가 새 ID 를 받는다. 레지스트리·실행 폴더는 손대지 않는다."""
+    reg = copy_registry(REGISTRY_DIR, tmp_path / "registry")
+    path = reg / "tools.csv"
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    assert lines[1].startswith("TOOL-000001,catia,") and lines[3].startswith("TOOL-000003,")
+    lines[1] = "," + lines[1].split(",", 1)[1]
+    lines[3] = "TOOL-00000x," + lines[3].split(",", 1)[1]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
+    before = {p.name: p.read_bytes() for p in reg.glob("*.csv")}
+    with pytest.raises(RegistryFormatError) as e:
+        Registry(reg)
+    assert "모양이 다른 행: 2행 (tools.csv 2줄, tools.csv 4줄) — " in str(e.value) and "catia" not in str(e.value)
+    rc = cli.main(["load", "--input", str(_copy(tmp_path)), "--registry", str(reg), "--out", str(tmp_path / "out"), "--no-shacl"])
+    err = capsys.readouterr().err
+    assert rc == 2 and err.startswith("[NG] 레지스트리 오류: 레지스트리 ID 칸이 비었거나 모양이 다른 행: 2행 (tools.csv 2줄, tools.csv 4줄)")
+    assert "Traceback" not in err and {p.name: p.read_bytes() for p in reg.glob("*.csv")} == before
+    assert not (reg / LOCK_NAME).exists() and not [p for p in (tmp_path / "out").glob("*") if p.is_dir()]
+
+
+def test_registry_status_whitespace_and_typo(tmp_path):
+    """상태 칸의 꼬리 공백('활성 ')은 떼고, 세 상태 밖의 값('페기')은 활성으로 보고 알림 — 전에는 빈칸만 잡아 그런 행이 폐기·되살림·상태 건수
+    어디에도 걸리지 않았다 (2026-10-12 재검토 수리). 구조 파일만 적재 — 둘 다 이번 적재에 없어 폐기로 저장, 상태 건수 합 = 행 수."""
+    reg = copy_registry(REGISTRY_DIR, tmp_path / "registry")
+    path = reg / "tools.csv"
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    assert lines[1] == "TOOL-000001,catia,CATIA V5,활성," and lines[3].startswith("TOOL-000003,") and lines[3].endswith(",활성,")
+    lines[1] = "TOOL-000001,catia,CATIA V5,활성 ,"
+    lines[3] = lines[3][: -len("활성,")] + "페기,"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
+    rg = Registry(reg)
+    assert rg.notices == ["레지스트리 상태 칸 값 이상: tools.csv 1행 (TOOL-000003) — 활성·통합됨·폐기 밖의 값이라 활성으로 봄 "
+                          "(이번 적재에 없으면 폐기, 다른 툴로 통합된 키면 통합됨으로 바뀐다 — 저장할 때 상태를 고쳐 쓴다)"]
+    assert "페기" not in rg.notices[0].split(" — ")[0]                                          # 값은 인용하지 않는다 (ID 만)
+    assert {r["id"]: r["status"] for r in rg.rows("tool")}["TOOL-000001"] == "활성"
+    out = run_load(input_dir=_copy(tmp_path), registry_dir=reg, out_root=tmp_path / "out", shacl=False)   # 구조 파일만 — CATIA·Fluent 없음
+    rows = read_csv_rows(path)[0]
+    status = {r["id"]: r["status"] for r in rows}
+    assert status["TOOL-000001"] == status["TOOL-000003"] == "폐기"
+    assert sum(out.log["registry"]["tool"].values()) == len(rows) and {r["status"] for r in rows} <= {"활성", "통합됨", "폐기"}
+    assert Registry(reg).notices == []                                                       # 저장할 때 고쳐 썼다
+
+
 def test_copy_registry_skips_lock_and_temp_files(tmp_path):
     """시험·사본용 레지스트리 복사는 잠금·임시 파일을 빼고 CSV 만 (2026-10-12 검토 수리: 강제 종료로 합성 레지스트리에 남은 잠금이 사본마다
     따라가 시험 수십 건이 임시 폴더의 잠금을 가리키며 실패했다). conftest 는 합성 레지스트리의 그 잠금을 시작 때 한 줄로 알리고 멈춘다."""
@@ -2071,7 +2237,7 @@ def test_copy_registry_skips_lock_and_temp_files(tmp_path):
 # #25b 파트 약칭 개명(parts.yaml renamed_from) · 정식 이름 변경 회귀 · '파트 신규·폐기 동시' 휴리스틱 · 동시 적재 잠금 · 같은 초 두 실행 (docs/09 7장)
 from engenius_onto import cli  # noqa: E402
 from engenius_onto.rdf_writer import SurveyWriter  # noqa: E402
-from engenius_onto.registry import LOCK_NAME, RegistryBusyError  # noqa: E402
+from engenius_onto.registry import LOCK_NAME, RegistryBusyError, RegistryFormatError  # noqa: E402
 
 STR_NEW = "SW조사_STR_20260925.xlsx"
 RENAMED_W = "파트 약칭 개명 반영"

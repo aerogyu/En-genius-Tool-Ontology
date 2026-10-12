@@ -238,12 +238,23 @@ def load_config(name: str, config_dir: Path | None = None, overlay_dir: Path | N
 # --------------------------------------------------------------------------- CSV (docs/09 #15)
 def read_csv_rows(path: Path) -> tuple[list[dict], str]:
     """검토표·레지스트리 CSV 읽기 — utf-8-sig 로 먼저, 안 되면 cp949 (엑셀 '다른 이름으로 저장' 기본값). (행 목록, 쓴 인코딩)."""
+    rows, _lines, enc = read_csv_table(path)
+    return rows, enc
+
+
+def read_csv_table(path: Path) -> tuple[list[dict], list[int], str]:
+    """read_csv_rows + 행마다 파일 줄 번호 (DictReader.line_num — csv 가 건너뛴 빈 줄도 센다; 레지스트리 알림이 손 편집한 줄을 가리킨다)."""
     path = Path(path)
     last: Exception | None = None
     for enc in ("utf-8-sig", "cp949"):
         try:
             with path.open(encoding=enc, newline="") as f:
-                return [dict(r) for r in csv.DictReader(f)], enc
+                rd = csv.DictReader(f)
+                rows, lines = [], []
+                for r in rd:
+                    rows.append(dict(r))
+                    lines.append(rd.line_num)
+                return rows, lines, enc
         except UnicodeDecodeError as e:
             last = e
     raise ValueError(f"CSV 인코딩을 알 수 없다: {path.name} — 엑셀에서 'CSV UTF-8(쉼표로 분리)' 로 저장한다 ({last})")

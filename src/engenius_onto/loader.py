@@ -27,7 +27,8 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
   검사 범위: 적재하는 모든 문자열 칸(정수 변환에 실패한 원문 포함) + 제외하는 내용 행(Tool ID 없음·Tool ID 수식 오류·빈 행 뒤) — 제외 행이 걸리면
   수정 요청은 '인명 유사' 한 줄 (Tool ID 를 붙이라고 하지 않는다, 2026-10-12 재검토 수리).
   값을 인용하는 경고·수정 요청표·검토표 표기 칸(힌트 키 포함)·load_log 속성 충돌 값은 Loader._q 를 거친다 — 인명 유사면 PERSON_MASK (docs/09 C5;
-  모든 경고 2026-10-12 검토 수리 — 행 경고의 위치 문구(where)도 Tool ID·데이터명을 _q 로 만든다).
+  모든 경고 2026-10-12 검토 수리 — 행 경고의 위치 문구(where)도 Tool ID·데이터명을 _q 로 만든다). 툴 키를 인용할 때는 Loader._qk — 키와 그 키를 낸
+  보고 이름을 함께 판정한다 (키는 공백이 빠져 '이름 직급 한글…' 꼴이 패턴에 안 걸린다, 2026-10-12 재검토 수리).
   규칙 밖 파일명은 해시 이름으로만 기록한다 (#8 — 파일명에 인명이 섞여 있을 수 있다).
 """
 
@@ -439,6 +440,7 @@ class Loader:
         self.known_tool_keys: set[str] = set()                  # 레지스트리 활성 툴 키 (load() 가 받는다)
         self.prefix_held: list[tuple[str, str]] = []            # 접두 흡수를 보류한 그룹의 키 쌍 (_absorptions → _candidates '제조사 접두')
         self._seen_keys: set[str] = set()                       # 이번 적재에서 본 툴 이름 키 (별칭 미적용 검사 — _group_tools·_resolve_partners)
+        self._key_names: dict[str, set[str]] = {}               # 툴 키 → 그 키를 낸 보고 이름들 (흡수 전 키 포함 — _qk 의 인명 판정, _group_tools)
 
     def _cfg(self, name: str, optional: bool = False) -> dict:
         """config/<name> (+ 오버레이). 덮은 파일 이름은 overlay_files 에 남긴다."""
@@ -563,6 +565,7 @@ class Loader:
         self.issues: list[dict] = []
         self.known_tool_keys = set(known_tool_keys or ())
         self._seen_keys = set()
+        self._key_names = {}
         reports: list[FileReport] = []
         used: set[str] = set()
         for idx, p in enumerate(paths, start=1):
@@ -1481,6 +1484,10 @@ class Loader:
         레지스트리의 옛 행이 통합됨으로 바뀌게 한다."""
         warnings = warnings if warnings is not None else []
         raw_keys: dict[int, str] = {}
+
+        def named(key: str, u) -> None:                           # _qk — 키를 인용할 때 그 키를 낸 보고 이름까지 본다
+            self._key_names.setdefault(key, set()).add(nfc_strip(u.v.get("reported_tool_name")))
+
         for u in usages:
             name = u.v.get("reported_tool_name")
             k = self.norm.tool_key(name, u.v.get("reported_vendor"))
@@ -1488,6 +1495,8 @@ class Loader:
                 kn = self.norm.tool_key(name)                             # 제조사를 떼지 않은 이름 키 (#2 (3))
                 self._seen_keys.update({k, kn})
                 raw_keys[id(u)] = amap.get(k) or amap.get(kn) or k
+                for key in (k, kn, raw_keys[id(u)]):
+                    named(key, u)
                 continue
             k = f"{GENERIC_KEY_PREFIX}{u.field}/{u.reg_key}"              # 범용·빈 이름 — 파일 간 충돌 행은 구분 꼬리까지 (I34·I36)
             warnings.append(f"툴 이름 범용/비어 있음: {u.file} {self._q(u.sw_id)} — 통합하지 않고 행별 툴로 둠 (툴 이름 요청)")
@@ -1498,16 +1507,21 @@ class Loader:
                             "툴 이름을 지어 주세요 — 분야마다 자체개발 툴이 달라 통합할 수 없습니다 "
                             "(예: '<업무>용 <무엇> 계산기' 처럼 다른 파트가 알아볼 이름)")
             raw_keys[id(u)] = amap.get(k, k)
+            named(k, u)
+            named(raw_keys[id(u)], u)
         absorb, reasons, self.prefix_held = self._absorptions(set(raw_keys.values()), usages, amap, warnings)
         for key, v in list(amap.items()):                        # 흡수 뒤 별칭 사슬을 다시 닫는다 — '엑셀'→excel→microsoftexcel 이 한 번에
             if v in absorb:                                      # (연계 SW명 해석·레지스트리 통합됨 표시는 amap.get 한 번만 본다)
                 amap[key] = absorb[v]
         tools: dict[str, ToolGroup] = {}
+        for u in usages:                                         # 흡수된 이름도 생존 키의 이름으로 (그룹 보고 이름 = tools[k].names 와 같게)
+            if raw_keys[id(u)] in absorb:
+                named(absorb[raw_keys[id(u)]], u)
         for u in usages:
             k = raw_keys[id(u)]
             if k in absorb:
                 survivor = absorb[k]
-                warnings.append(f"제조사 접두 흡수: {u.file} {self._q(u.sw_id)} '{self._q(k)}' → '{self._q(survivor)}' ({reasons[k]})")
+                warnings.append(f"제조사 접두 흡수: {u.file} {self._q(u.sw_id)} '{self._qk(k)}' → '{self._qk(survivor)}' ({reasons[k]})")
                 amap.setdefault(k, survivor)                     # 레지스트리의 옛 행(k)이 통합됨으로 바뀌게 (rdf_writer)
                 if k in labels and survivor not in labels:
                     labels[survivor] = labels[k]
@@ -1566,11 +1580,11 @@ class Loader:
             clashes = [p for p in pairs if p in distinct]
             if clashes:
                 for a, b in clashes:
-                    warnings.append(f"제조사 접두 흡수와 별개 판정이 충돌: {self._q(a)} / {self._q(b)} — 흡수하지 않음")
+                    warnings.append(f"제조사 접두 흡수와 별개 판정이 충돌: {self._qk(a)} / {self._qk(b)} — 흡수하지 않음")
                 continue
             active = sorted(k for k in members if k in known)
             if len(active) >= 2:
-                warnings.append(f"제조사 접두 흡수 보류: 기존 툴 둘 이상 ({', '.join(self._q(k) for k in active)}) — 검토표에서 판정")
+                warnings.append(f"제조사 접두 흡수 보류: 기존 툴 둘 이상 ({', '.join(self._qk(k) for k in active)}) — 검토표에서 판정")
                 held.extend(pairs)
                 continue
             survivor, why = (active[0], "레지스트리 ID 유지") if active else (end, "제조사 접두를 뗀 키")
@@ -1586,11 +1600,21 @@ class Loader:
         s = "" if s is None else str(s)
         return PERSON_MASK if self._looks_person(s) else s
 
+    def _qk(self, k) -> str:
+        """툴 키를 인용할 때 — 키 자체가 인명 유사이거나 그 키를 낸 보고 이름(흡수 전 이름 포함, _key_names) 가운데 하나라도 인명 유사면 PERSON_MASK
+        (2026-10-12 재검토 수리: tool_key 는 공백을 지워 '가나다 책임 해석툴' → '가나다책임해석툴' 이 되면 직급 뒤에 한글이 이어져 인명 패턴(P2·P6)에
+        걸리지 않았다 — 원문은 걸린다). 설정에만 있는 키(별칭 순환·별칭과 별개 판정 충돌)는 보고 이름이 없어 키만 본다 (_q 와 같다)."""
+        k = "" if k is None else str(k)
+        if self._looks_person(k) or any(self._looks_person(n) for n in self._key_names.get(k, ())):
+            return PERSON_MASK
+        return k
+
     def _names(self, group: ToolGroup) -> list[str]:
         """검토표·load_log 통합 후보의 보고 이름(표기 칸) — 인명 유사 이름은 PERSON_MASK (C5 '검토표 표기 칸도 가림'; apply-review 는 표기 칸을 읽지 않는다).
-        키 칸(툴A_키·툴B_키)만 apply-review 가 읽어서 그대로 둔다 — 키도 인명 패턴에 걸릴 수 있다 (tool_key 는 괄호·버전·공백만 지워
-        '가나다 책임 v2' → '가나다책임'; 괄호 안 이름이나 뒤에 한글이 이어지는 이름만 빠진다). 그런 툴 이름은 '인명 유사 패턴' 경고·수정 요청으로
-        고치고, 키 칸·load_log tool_keys·레지스트리의 원문은 C8·N1(Leo 결정 대기) 범위. 표기 칸의 '비슷한 키' 힌트는 _partner_review 가 _q 로 가린다."""
+        키 칸(툴A_키·툴B_키)만 apply-review 가 읽어서 그대로 둔다 — 키에는 이름이 남는다 (tool_key 는 괄호·버전·공백만 지워
+        '가나다 책임 v2' → '가나다책임', '가나다 책임 해석툴' → '가나다책임해석툴' — 뒤 꼴은 직급 뒤에 한글이 이어져 키만으로는 인명 패턴에 안 걸린다).
+        그런 툴 이름은 '인명 유사 패턴' 경고·수정 요청으로 고치고, 키 칸·load_log tool_keys·레지스트리의 원문은 C8·N1(Leo 결정 대기) 범위.
+        경고·표기 칸의 '비슷한 키' 힌트에 키를 인용할 때는 _qk (키와 그 키를 낸 보고 이름을 함께 판정)."""
         return [self._q(n) for n in group.names]
 
     def _resolve_partners(self, ios, usages, tools, amap, warnings: list) -> None:
@@ -1671,11 +1695,11 @@ class Loader:
             scored.sort()
             strong = [s for s in scored if s[2] or -s[0] >= th]
             a = strong[0][1] if strong else ""
-            # 힌트 키는 툴A_표기 칸에 실린다 (apply-review 는 읽지 않는다) — 인명 유사 키는 _q (2026-10-12 재검토 수리)
+            # 힌트 키는 툴A_표기 칸에 실린다 (apply-review 는 읽지 않는다) — 키나 그 툴의 보고 이름이 인명 유사면 가림 (_qk, 2026-10-12 재검토 수리)
             out.append({"a": a, "b": k, "similarity": -strong[0][0] if strong else None,
                         "reason": "연계SW 미해석", "names_a": self._names(tools[a]) if a else [],
                         "mentions": e["mentions"], "fields": e["fields"],
-                        "hints": [] if a else [(self._q(t), -r) for r, t, _c in scored if -r >= 0.5][:3]})
+                        "hints": [] if a else [(self._qk(t), -r) for r, t, _c in scored if -r >= 0.5][:3]})
         return out
 
     def _unused_alias_entries(self, tools: dict, amap: dict, warnings: list) -> None:

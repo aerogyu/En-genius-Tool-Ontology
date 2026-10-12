@@ -60,7 +60,7 @@ def cmd_load(args: argparse.Namespace) -> int:
     from pathlib import Path
 
     from engenius_onto.config import ConfigError
-    from engenius_onto.registry import RegistryBusyError
+    from engenius_onto.registry import RegistryBusyError, RegistryFormatError
     from engenius_onto.survey_load import run_load, summary_lines
 
     try:
@@ -72,6 +72,9 @@ def cmd_load(args: argparse.Namespace) -> int:
         return _config_error(e)
     except RegistryBusyError as e:                                # docs/09 7장 — 동시 적재 잠금 (traceback 없이 한 줄)
         print(f"[NG] 레지스트리 사용 중: {e}", file=sys.stderr)
+        return 2
+    except RegistryFormatError as e:                              # 키는 있는데 ID 칸이 빈 레지스트리 줄 (손 편집, 줄 번호만 — traceback 없이 한 줄)
+        print(f"[NG] 레지스트리 오류: {e}", file=sys.stderr)
         return 2
     print("\n".join(summary_lines(out)))
     ov = out.log.get("config_overlay") or {}

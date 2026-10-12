@@ -52,12 +52,28 @@ class LoadOutput:
     schema_issues: list = field(default_factory=list)
 
 
-def validate_rows(res: LoadResult, terms: SchemaTerms) -> list[dict]:
-    """생성 Pydantic 모델로 행 단위 검증 (D4 — 오류 수집에만 쓰고 적재는 막지 않는다)."""
+def mask_issue_message(msg: str, value, looks_person: Callable[[str], bool]) -> str:
+    """행 단위 스키마 검증 메시지의 인명 유사 값을 PERSON_MASK 로 (2026-10-12 재검토 수리 — N5 와 같은 종류: 생성 모델의 형식 검사기는 값을 통째로
+    인용한다 'Invalid license_expiry format: <원문>'·'Invalid extensions format: <조각>'; '만료 시기 형식 아님' 값은 원문 그대로 모델에 가서
+    load_log schema_issues[].message 로 옮겨졌다 — 옆 경고에서는 가려져 있었다). 검사한 값(목록이면 조각마다)이 메시지에 있고 인명 유사면 그 자리를,
+    그래도 메시지가 인명 유사면 통째로 가린다. 그래프(survey.ttl)의 값은 그대로 (D6)."""
+    for v in value if isinstance(value, (list, tuple, set)) else [value]:
+        s = "" if v is None else str(v)
+        if s and s in msg and looks_person(s):
+            msg = msg.replace(s, PERSON_MASK)
+    return PERSON_MASK if looks_person(msg) else msg
+
+
+def validate_rows(res: LoadResult, terms: SchemaTerms, looks_person: Callable[[str], bool] | None = None) -> list[dict]:
+    """생성 Pydantic 모델로 행 단위 검증 (D4 — 오류 수집에만 쓰고 적재는 막지 않는다). 메시지가 인용한 인명 유사 값은 가린다 (mask_issue_message —
+    looks_person 이 없으면 저장소 설정의 Normalizer.looks_person; 적재는 오버레이까지 반영한 Loader._looks_person 을 넘긴다). key 는 C8 범위."""
     from pydantic import ValidationError
 
     from engenius_onto import schema_model as m
 
+    if looks_person is None:
+        from engenius_onto.normalize import Normalizer
+        looks_person = Normalizer.from_config().looks_person
     issues = []
 
     def check(model, data: dict, rec, sheet: str):
@@ -66,7 +82,8 @@ def validate_rows(res: LoadResult, terms: SchemaTerms) -> list[dict]:
         except ValidationError as e:
             for err in e.errors():
                 issues.append({"file": rec.file, "sheet": sheet, "row": rec.row, "key": rec.key,
-                               "slot": ".".join(str(x) for x in err["loc"]), "message": err["msg"]})
+                               "slot": ".".join(str(x) for x in err["loc"]),
+                               "message": mask_issue_message(err["msg"], err.get("input"), looks_person)})
 
     for u in res.usages:
         d = dict(u.v)
@@ -222,7 +239,7 @@ def _run_load(loader: Loader, paths: list[Path], regdir: Path, out_dir: Path, no
     loads = writer.write(res, reg, run_id, now, retire=res.complete)
     _part_turnover(reg, loader, res.warnings)                 # #25b 휴리스틱 — finalize 뒤 (신규·폐기 집합)
     ttl = writer.turtle()
-    issues = validate_rows(res, terms)
+    issues = validate_rows(res, terms, loader._looks_person)
 
     ver = installed_version()
     log = {
@@ -289,14 +306,34 @@ def latest_run(root: Path, prefer: str | None = "real") -> Path | None:
 
 
 SHACL_QUOTED = re.compile(r'"((?:[^"\\]|\\.)*)"')    # Jena 결과 메시지의 인용 리터럴 ('RDF term "<값>" not in expected values' 등)
+NT_ESCAPE = re.compile(r"\\(u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)", re.S)    # N-Triples·Turtle 문자열 이스케이프 (Jena 가 RDF term 을 이렇게 보인다)
+NT_ESCAPES = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", '"': '"', "'": "'", "\\": "\\"}
+
+
+def _nt_unescape(s: str) -> str:
+    """Jena 가 보인 RDF term 의 이스케이프를 푼다 — 판정용 (Alt+Enter 줄바꿈·탭이 '\\r\\n'·'\\t' 두 글자로 와 인명 패턴의 \\s* 가 맞지 않았다,
+    2026-10-12 재검토 수리). 한글은 그대로 (unicode_escape 코덱을 쓰지 않는다). 모르는 이스케이프는 그대로 둔다."""
+    def one(m: re.Match) -> str:
+        e = m.group(1)
+        if len(e) > 1:                                         # \uXXXX · \UXXXXXXXX
+            try:
+                return chr(int(e[1:], 16))
+            except (ValueError, OverflowError):
+                return m.group(0)
+        return NT_ESCAPES.get(e, m.group(0))
+    return NT_ESCAPE.sub(one, s)
 
 
 def mask_shacl_message(msg: str, looks_person: Callable[[str], bool]) -> str:
     """SHACL 결과 메시지의 인용 리터럴 가운데 인명 유사한 것을 PERSON_MASK 로 (docs/09 N5, 2026-10-12 재검토 수리 — sh:in·pattern·datatype 위반
     메시지는 값을 인용해 load_log shacl.results 에 원문이 옮겨졌다; 같은 값이 옆 '선택지 밖 값' 경고에서는 가려져 있었다).
-    인용 밖에 남아도 인명 유사면 메시지 전체를 가린다. 그래프(survey.ttl)의 값은 그대로 (D6)."""
-    out = SHACL_QUOTED.sub(lambda m: f'"{PERSON_MASK}"' if looks_person(m.group(1)) else m.group(0), msg)
-    return PERSON_MASK if looks_person(out) else out
+    인용 밖에 남아도 인명 유사면 메시지 전체를 가린다. 판정은 이스케이프를 푼 글(_nt_unescape)과 보인 글 둘 다로 — 출력은 PERSON_MASK 아니면
+    원래 글 그대로. 그래프(survey.ttl)의 값은 그대로 (D6)."""
+    def person(s: str) -> bool:
+        return looks_person(s) or looks_person(_nt_unescape(s))
+
+    out = SHACL_QUOTED.sub(lambda m: f'"{PERSON_MASK}"' if person(m.group(1)) else m.group(0), msg)
+    return PERSON_MASK if person(out) else out
 
 
 def run_shacl(ttl: str, looks_person: Callable[[str], bool] | None = None) -> dict:
