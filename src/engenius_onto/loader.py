@@ -12,6 +12,7 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
 - 어떤 행도 조용히 버리지 않는다 — 제외는 사유와 함께 excluded_rows, 문제는 warnings (5장 6). 행 단위 문제는 issues 에도
   구조화해 남겨 파트별 수정 요청표(fix_requests)를 만든다 (M3.1).
 - 인명 열(실무 문의처)은 읽지 않는다 (CLAUDE.md 절대 규칙 5). 인명 유사 패턴은 경고만 하고 경고에 값을 옮기지 않는다 (D6, #20).
+  값을 인용하는 경고는 Loader._q 를 거친다 — 인명 유사면 PERSON_MASK (docs/09 C5, 확장자 경고부터 2026-10-12).
   규칙 밖 파일명은 해시 이름으로만 기록한다 (#8 — 파일명에 인명이 섞여 있을 수 있다).
 """
 
@@ -36,6 +37,7 @@ from engenius_onto.normalize import GENERIC_KEY_PREFIX, Normalizer, merge_keys_f
 
 USAGE_SHEET, IO_SHEET = "SW기본정보", "SW입출력"      # 스키마의 시트 이름 (실제 파일의 시트 이름은 설정으로 찾는다)
 EXCEL_SUFFIXES = {".xlsx", ".xlsm", ".xls"}
+PERSON_MASK = "[인명 유사 — 값 생략]"                  # 경고·로그에 인용할 값이 인명 유사일 때 대신 쓰는 문구 (Loader._q, docs/09 #20·C5)
 ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠﻿"), None)
 
 
@@ -672,9 +674,7 @@ class Loader:
                 warnings.append(f"방향 값 인식 못 함: {where} '{dval}' — 연결 계산에서 빠짐 (config/value_aliases.yaml 로 대응)")
                 rep.warnings += 1
             x.exts, x.inhouse, x.bad_ext = self.norm.extensions(v.get("extensions_raw"))
-            if x.bad_ext:
-                warnings.append(f"확장자 매핑 실패: {fname} {sw} '{x.name}' 토큰 {x.bad_ext} — 원문 보존")
-                rep.warnings += 1
+            self._check_extensions(rep, x, n, sw, cols_i["extensions_raw"].header, warnings)
             x.partner_names = self.norm.split_partners(v.get("partner_raw"))
             ios.append(x)
             rep.io_rows += 1
@@ -715,6 +715,28 @@ class Loader:
         if part in self.parts:
             return [nfc_strip(d) for d in (self.parts[part].get("domains") or [])]
         return [part] if part else []
+
+    def _check_extensions(self, rep: FileReport, x: IORec, row: int, sw: str, header: str, warnings: list) -> None:
+        """확장자 칸의 경고·수정 요청 (I12, docs/09 #10). 값은 원문 보존 — 매핑 못 한 토큰은 경고 '확장자 매핑 실패',
+        묶음 목록 밖 다중 점 토큰('model.stp')은 값은 쓰고 경고 '확장자 다중 점 확인'. 둘 다 수정 요청표에 '확장자 확인' 한 행.
+        칸이 인명 유사면 토큰·적힌 값을 옮기지 않는다 (데이터명도 _q 로 가린다)."""
+        raw = nfc_strip(x.v.get("extensions_raw"))
+        masked = self._looks_person(raw)
+        multi = self.norm.unknown_compound(x.exts)
+        if x.bad_ext:
+            warnings.append(f"확장자 매핑 실패: {rep.name} {sw} '{self._q(x.name)}' 토큰 {PERSON_MASK if masked else x.bad_ext} — 원문 보존")
+            rep.warnings += 1
+        if multi:
+            warnings.append(f"확장자 다중 점 확인: {rep.name} {sw} '{self._q(x.name)}' 토큰 {PERSON_MASK if masked else multi} — 그대로 사용 "
+                            "(묶음 확장자면 extensions.yaml compound_extensions 에 추가)")
+            rep.warnings += 1
+        hints = []
+        if x.bad_ext:
+            hints.append("확장자로 읽지 못한 말이 있습니다 — '.stp / .csv' 처럼 확장자만 적어 주세요 (형식 이름은 괄호 안에 .확장자: Parasolid(.x_t))")
+        if multi:
+            hints.append("파일 이름이 아니라 확장자만 적어 주세요 (예: model.stp → .stp). tar.gz 같은 묶음 확장자면 그대로 두세요")
+        if hints:
+            self._issue(rep, IO_SHEET, row, sw, header, None if masked else raw, "확장자 확인", " / ".join(hints))
 
     # ---- 툴 통합 (6.1) --------------------------------------------------------------
     def _alias_map(self, warnings: list | None = None) -> tuple[dict[str, str], dict[str, str]]:
@@ -900,7 +922,12 @@ class Loader:
         return absorb, reasons, held
 
     def _looks_person(self, s: str) -> bool:
-        return bool(self.person_re.search(s) or any(p.search(s) for p in self.person_all))
+        return self.norm.looks_person(s)
+
+    def _q(self, s) -> str:
+        """경고·로그에 인용할 값 — 인명 유사(rules.yaml person_pattern·person_patterns_all)면 PERSON_MASK, 아니면 그대로 (docs/09 #20·C5)."""
+        s = "" if s is None else str(s)
+        return PERSON_MASK if self._looks_person(s) else s
 
     def _resolve_partners(self, ios, usages, tools, amap, warnings: list) -> None:
         """연계 SW명 → 툴 (I1): 키가 같거나, 조사에 나온 제조사명(범용 제조사 제외)을 앞에서 뗀 키가 같으면 그 툴.

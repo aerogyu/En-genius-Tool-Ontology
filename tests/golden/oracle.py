@@ -39,7 +39,10 @@ GENERIC_PREFIX = "미상:"
 IO_ID_FILL_DOWN = True                                                                  # [I22] rules.yaml loader.io_id_fill_down (2026-10-09)
 
 EXT_ALIAS = {"step": "stp", "iges": "igs", "jpeg": "jpg", "tif": "tiff", "yml": "yaml",
-             "엑셀": "xlsx", "워드": "docx", "파워포인트": "pptx", "한글": "hwp", "텍스트": "txt"}
+             "엑셀": "xlsx", "워드": "docx", "파워포인트": "pptx", "한글": "hwp", "텍스트": "txt",
+             "excel": "xlsx", "word": "docx", "powerpoint": "pptx"}                       # [I12] 영문 형식 표기 (docs/09 #10)
+NON_EXT = {"또는", "or", "and", "및", "file", "파일", "ascii", "binary", "parasolid", "ap", "ap203", "ap214", "ap242"}   # [I12] 비확장자 말
+COMPOUND_EXT = {"tar.gz", "tar.bz2", "cas.h5", "dat.h5", "cas.gz", "dat.gz"}             # [I12] 묶음 확장자 (이 밖의 다중 점은 경고만)
 EMPTY_TOKENS = {"", "없음", "모름", "-", "—", "–", "n/a", "na", "해당없음", "해당 없음"}   # [I16]
 EXT_OK = re.compile(r"^[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$")
 VERSION_TOKEN = re.compile(r"^(v\d+(\.\d+)*|\d{4}r\d+|r\d+[a-z]?|sp\d+|\d+(\.\d+)+|(19|20)\d{2})$")   # [I2] 연도만 있는 토큰 포함 (docs/09 #16 A)
@@ -147,18 +150,61 @@ def split_partners(raw) -> list[str]:
     return out
 
 
+def _dot_ext(t: str) -> bool:
+    """'.확장자' 모양 토큰인지 — 점으로 시작('*.' 허용), 나머지는 확장자 패턴."""
+    t = t[1:] if t.startswith("*") else t
+    return t.startswith(".") and bool(EXT_OK.match(t[1:]))
+
+
+def _take_format_parens(s: str) -> tuple[str, bool]:
+    """[I12] 1단계 — 안쪽 괄호(안에 다른 괄호 없음)를 왼쪽부터 훑어, 안이 '.확장자' 뿐이면 그 확장자만 남기고 괄호 바로 앞 한 단어
+    (괄호와 사이 공백 허용, 구분자·괄호에서 끊김)는 형식 이름으로 버린다. (버린 단어에 '사내' 가 있었는지)"""
+    out, keep_from, pos, inhouse = [], 0, 0, False
+    while True:
+        a = s.find("(", pos)
+        b = s.find(")", a + 1) if a >= 0 else -1
+        if a < 0 or b < 0:
+            break
+        nxt = s.find("(", a + 1)
+        if 0 <= nxt < b:                                     # 안에 또 '(' — 안쪽 괄호부터 본다
+            pos = nxt
+            continue
+        toks = EXT_SEP.split(s[a + 1:b].strip())
+        if all(_dot_ext(t) for t in toks):
+            head = s[keep_from:a]
+            word = head.rstrip()
+            cut = len(word)
+            while cut > 0 and not EXT_SEP.match(word[cut - 1]) and word[cut - 1] not in "()":
+                cut -= 1                                     # 괄호 앞 한 단어의 시작
+            inhouse |= "사내" in word[cut:]
+            out.append(head[:cut] + " " + " ".join(toks) + " ")
+            keep_from = b + 1
+        pos = b + 1
+    out.append(s[keep_from:])
+    return "".join(out), inhouse
+
+
 def normalize_extensions(raw) -> tuple[list[str], bool, list[str]]:
     """(정규화 확장자, 사내 표기, 매핑 못 한 토큰) — docs/02 6.2 + [I12] [I16].
-    셀 전체가 빈 값 토큰이면 빈 목록. 괄호 주석은 떼고(안에 '사내' 가 있으면 사내 표기), 토큰 '사내' 도 사내 표기."""
+    셀 전체가 빈 값 토큰이면 빈 목록. '형식명(.확장자)' 는 괄호 안 확장자를 쓰고 형식 이름은 버린다(_take_format_parens).
+    그 밖의 괄호는 주석으로 떼고(안에 '사내' 가 있으면 사내 표기), 토큰 '사내' 도 사내 표기. 별칭 뒤 패턴 밖·숫자만·비확장자 말이면
+    매핑 못 한 토큰. (적재기의 정규식과 다른 방식 — 괄호 훑기 — 으로 쓴 독립 구현)"""
     s = _nfkc(raw).lower().strip()
     if s in EMPTY_TOKENS:
         return [], False, []
-    inhouse = False
-    for m in re.findall(r"\(([^)]*)\)", s):
-        inhouse |= "사내" in m
-    s = re.sub(r"\([^)]*\)", " ", s)
+    s, inhouse = _take_format_parens(s)
+    pieces, i = [], 0
+    while True:                                              # 2단계 — 남은 괄호는 '(' 부터 가장 가까운 ')' 까지 주석
+        a = s.find("(", i)
+        b = s.find(")", a + 1) if a >= 0 else -1
+        if a < 0 or b < 0:                                   # 닫히지 않은 '(' 는 토큰에 남아 매핑 실패
+            pieces.append(s[i:])
+            break
+        inhouse |= "사내" in s[a + 1:b]
+        pieces.append(s[i:a] + " ")
+        i = b + 1
     out, bad = [], []
-    for tok in EXT_SEP.split(s):
+    for tok in EXT_SEP.split("".join(pieces)):
         tok = tok.strip().lstrip(".*").strip()
         if tok == "사내":
             inhouse = True
@@ -166,8 +212,14 @@ def normalize_extensions(raw) -> tuple[list[str], bool, list[str]]:
         if tok in EMPTY_TOKENS:
             continue
         tok = EXT_ALIAS.get(tok, tok)
-        (out if EXT_OK.match(tok) else bad).append(tok)
+        ok = EXT_OK.match(tok) and not tok.isdigit() and tok not in NON_EXT     # 숫자만 있는 토큰은 확장자가 아니다 (Leo 2026-10-12)
+        (out if ok else bad).append(tok)
     return sorted(set(out)), inhouse, bad
+
+
+def unknown_compound(exts) -> list[str]:
+    """[I12] 점으로 이은 확장자 가운데 묶음 목록 밖의 것 — 값은 그대로 두고 경고만 (docs/09 #10 Q2)."""
+    return [e for e in exts if "." in e and e not in COMPOUND_EXT]
 
 
 def template_choices(template: Path) -> dict[str, list[str]]:
@@ -500,6 +552,11 @@ def compute(spec: dict, repo: Path) -> dict:
             per_file[fname]["warnings"] += 1
         if bad:
             warnings.append(f"확장자 매핑 실패: {fname} {io.sw_id} '{io.name}' 토큰 {bad} — 원문 보존")
+            per_file[fname]["warnings"] += 1
+        multi = unknown_compound(exts)                           # [I12] 묶음 목록 밖 다중 점 — 값은 쓰고 경고만
+        if multi:
+            warnings.append(f"확장자 다중 점 확인: {fname} {io.sw_id} '{io.name}' 토큰 {multi} — 그대로 사용 "
+                            "(묶음 확장자면 extensions.yaml compound_extensions 에 추가)")
             per_file[fname]["warnings"] += 1
         for p in split_partners(io.partner_raw):
             t = resolve(p)

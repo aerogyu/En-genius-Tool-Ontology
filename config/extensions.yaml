@@ -1,4 +1,8 @@
 # 확장자 정규화 (docs/02 6.2, 골든 I12·I16). 빈 값 토큰은 rules.yaml empty_tokens 를 같이 쓴다.
+# 사내 조정은 data/real/config/extensions.yaml 오버레이 — aliases 는 키별로 합쳐지고, 목록 키(inhouse_tokens·non_extension_tokens·
+# compound_extensions)는 통째로 바뀐다 (기본 목록을 복사해 더한다). 사내 형식명이 들어가므로 오버레이는 사내 전용.
+# 별칭 — 한글·영문 형식 표기 → 확장자. 비확장자 목록보다 먼저 적용된다 (오버레이에 parasolid: x_t 를 주면 경고 대신 x_t).
+# ppt→pptx·xls→xlsx 는 별개 확장자라 별칭으로 두지 않는다.
 aliases:
   step: stp
   iges: igs
@@ -10,9 +14,18 @@ aliases:
   파워포인트: pptx
   한글: hwp
   텍스트: txt
+  excel: xlsx
+  word: docx
+  powerpoint: pptx
 # 이 토큰(또는 괄호 안에 이 문자열)이 있으면 inhouse_format=true 로 두고 확장자 목록에서는 뺀다
 inhouse_tokens: ["사내"]
-# 토큰 구분자 — 공백 포함. 'ㆍ' 는 NFKC 후 U+119E
+# 토큰 구분자 — 'ㆍ' 는 NFKC 후 U+119E. 공백 문자(스페이스·탭·줄바꿈·\r 등)는 이 설정과 관계없이 모두 구분자다
 separators: "/,;·ㆍᆞ・ \t\n"
-# 정규화 후 이 패턴이 아니면 확장자로 보지 않고 원문 보존 + 경고 (다중 점 tar.gz 허용)
-pattern: '^[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$'
+# 정규화 후 이 패턴이 아니면 확장자로 보지 않고 원문 보존 + 경고 '확장자 매핑 실패' (다중 점 tar.gz 허용).
+# 숫자만 있는 토큰('AP 214' 의 214, '내선 1234')은 확장자가 아니다 — 앞의 (?![0-9]+$) (Leo 2026-10-12)
+pattern: '^(?![0-9]+$)[a-z0-9_+\-]+(\.[a-z0-9_+\-]+)*$'
+# 패턴에 맞아도 확장자가 아닌 말 (docs/09 #10, 2026-10-12) — 매핑 실패로 경고하고 수정 요청표에 '확장자 확인'.
+# 'parasolid' 는 x_t·x_b 둘 다라 별칭으로 두지 않는다 (사내에서 정하면 오버레이 aliases 로)
+non_extension_tokens: [또는, or, and, 및, file, 파일, ascii, binary, parasolid, ap, ap203, ap214, ap242]
+# 점으로 이은 묶음 확장자로 인정하는 것 (공개 형식만). 이 밖의 다중 점 토큰('model.stp')은 값은 그대로 쓰고 경고 '확장자 다중 점 확인'
+compound_extensions: [tar.gz, tar.bz2, cas.h5, dat.h5, cas.gz, dat.gz]

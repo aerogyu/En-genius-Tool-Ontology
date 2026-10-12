@@ -118,6 +118,9 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
    `제조사 접두 흡수`(`ANSYS Fluent` = `Fluent`) · `빈 값 표기 정수 칸`(`-`·`없음` 을 빈칸으로 봄) · `레지스트리 CSV 를 cp949 로 읽음` · `툴 별칭 순환` · `툴 별칭과 별개 판정이 충돌` ·
    `손으로 고친 merge_pairs`. 수정 요청표에도 두 종류가 는다: `툴 이름 범용/비어 있음` 과 **`입출력 없음`** — 뒤의 것은 **확인 요청**이다 (입출력이 정말 없는 툴이면 정상).
    담당자에게 보내기 전에 '확인 요청' 행을 같이 보낼지 빼고 보낼지는 Leo 가 정한다.
+   **2026-10-12 판(2차 잔여)부터 확장자 칸**: `Excel(.xlsx)`·`Parasolid (.x_t)` 처럼 괄호 안에 `.확장자` 가 있으면 그 확장자를 쓰고(형식 이름은 버림), `Excel`·`Word`·`PowerPoint` 는 xlsx·docx·pptx 로 읽는다.
+   `or`·`file`·`ascii`·`Parasolid`(단독)·`AP214`·숫자만 있는 말(`214`) 같은 확장자가 아닌 말은 `확장자 매핑 실패` 경고 · `model.stp` 처럼 파일 이름을 적은 칸은 새 경고 `확장자 다중 점 확인`(값은 그대로 씀).
+   둘 다 수정 요청표에 `확장자 확인` 행으로 오른다. 칸이 인명처럼 보이면 경고에 값 대신 `[인명 유사 — 값 생략]` 이 찍힌다.
 3. **드롭다운 대신 직접 적은 값**: 뜻이 분명한 것은 **`data\real\config\value_aliases.yaml`** 에 `열 이름: {적힌 값: 드롭다운 값}` 으로 적고 2번을 다시 한다
    (엑셀은 고치지 않는다). 계산에 쓰이는 열부터: 방향 · 전달 방법 · 조작 방식 · 자동화 인터페이스. 애매한 것만 수정 요청표로 되묻는다.
    **`data\real\config\` 는 사내 설정 오버레이** (2026-10-02 판부터, git 밖) — `load.bat real` 이 저장소 `config\` 위에 자동으로 덮어 읽는다. 파일 이름은 저장소와 같게
@@ -139,6 +142,7 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
 6. **수정본을 받으면** 새 날짜 파일명으로 넣고 2번부터 — 같은 약칭은 날짜가 가장 늦은 파일만 적재되고, ID 는 그대로 유지된다.
    **이 업데이트 뒤 첫 재적재에서 한 번만 바뀌는 것 (정상)**: 연도 토큰(`Excel 2016` = `Excel`)·토큰 치환(`C++`→`cpp`)·범용 제조사 접두 제외로 **키가 바뀐 툴은 TOOL ID 가 새로 나오고 옛 행은 폐기**된다;
    범용 이름(자체개발 등) 행이 있으면 툴 수가 **는다**(행별 `미상:` 툴); 입출력 없는 툴사용마다 수정 요청표에 '입출력 없음' 확인 행이 하나씩 붙는다. 두 번째 재적재부터는 안정된다.
+   **2026-10-12 판 적용 뒤 첫 재적재**: `Excel(.xlsx)`·`Word` 같은 표기의 정규화 확장자가 바뀐다 (입출력 IO ID 는 원문 기준이라 그대로) · `확장자 매핑 실패` 가 늘 수 있고 `확장자 다중 점 확인` 이 새로 나온다 (정상).
 
 알아 둘 것:
 - 규칙에 안 맞는 파일명(인명·`(1)`·`최종` 등)은 `Tool조사_규칙밖_<해시>.xlsx` 로만 기록되고 파트를 모른다 — 이름을 고쳐 다시 적재.
@@ -146,6 +150,10 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }
 - 설정만 고치고 코드는 손대지 않는다: `config\parts.yaml`(파트·담당 부서) · `config\rules.yaml`(시트 이름·선택지) · `config\header_map.yaml`(헤더 문구) ·
   사내 값은 `data\real\config\value_aliases.yaml`·`tool_aliases.yaml`(3·5번). `rules.yaml` 에 2026-10-02 판부터 새 키 세 개: `tool_token_map`(`C++`→`cpp` 등 토큰 치환) ·
   `generic_tool_names`(툴 이름으로 안 보는 말 — 자체개발·사내툴·매크로 등) · `candidate_min_contain_len`(포함으로 통합 후보를 올리는 최소 글자 수, 3). 사내에서 바꾸려면 `data\real\config\rules.yaml` 에 그 키만 적는다.
+- **확장자 규칙을 사내에서 조정**하려면 `data\real\config\extensions.yaml` (2026-10-12 판부터 키 두 개 추가: `non_extension_tokens` 확장자가 아닌 말 · `compound_extensions` 묶음 확장자).
+  `aliases` 는 키별로 합쳐진다 (예: `aliases: {parasolid: x_t}` 를 적으면 `Parasolid` 가 경고 대신 x_t — 별칭이 비확장자 목록보다 먼저).
+  **목록 키(`non_extension_tokens`·`compound_extensions`·`inhouse_tokens`)는 통째로 바뀐다** — 저장소 `config\extensions.yaml` 의 기본 목록을 복사해 더한다.
+  사내 형식명이 들어가므로 **사내 전용** (아래 '밖으로 가져가도 되는 설정' 에 넣지 않는다). 저장소 `config\extensions.yaml` 을 직접 고쳤다면 업데이트가 `.new` 로 남기니 오버레이로 옮긴다.
 - **밖으로 가져가도 되는 설정은 `parts`·`rules`·`header_map`·`fuseki` 네 가지만** (값 없음). `tool_aliases.yaml`·`value_aliases.yaml`(오버레이)은 실 툴명·셀 값이 들어 있어 **사내 전용**.
 - `data\real\`·`output\`·`fuseki-data\` 는 사내에만 둔다. 밖으로는 `diag.txt` 만.
 

@@ -79,6 +79,17 @@ class Normalizer:
         """셀 전체가 빈 값 토큰인지 (I16)."""
         return nfkc(s).strip().lower() in self.empty_tokens
 
+    # --- 인명 유사 (D6·I29, docs/09 #20) --------------------------------------------
+    @cached_property
+    def _person_res(self) -> list:
+        return [re.compile(self.rules["person_pattern"])] + [re.compile(p) for p in self.rules.get("person_patterns_all") or []]
+
+    def looks_person(self, s) -> bool:
+        """인명·연락처처럼 보이는지 — rules.yaml person_pattern·person_patterns_all 중 하나라도 맞으면 True.
+        경고·로그에 값을 인용해도 되는지 정할 때 쓴다 (적재기 Loader._q — 맞으면 값 대신 가림 문구)."""
+        s = "" if s is None else str(s)
+        return any(p.search(s) for p in self._person_res)
+
     # --- 툴 이름 (6.1) -------------------------------------------------------------
     @cached_property
     def _version_re(self):
@@ -148,23 +159,58 @@ class Normalizer:
 
     # --- 확장자 (6.2) --------------------------------------------------------------
     @cached_property
+    def _ext_seps(self) -> str:
+        """구분자 문자 클래스의 내용 — 설정 separators + 모든 공백 문자 (\\r·\\v 포함, 설정과 관계없이 — docs/02 6.2, docs/09 6장 parity)."""
+        return re.escape(self.ext_cfg["separators"]) + r"\s"
+
+    @cached_property
     def _ext_sep(self):
-        return re.compile("[" + re.escape(self.ext_cfg["separators"]) + "]+")
+        return re.compile("[" + self._ext_seps + "]+")
 
     @cached_property
     def _ext_ok(self):
         return re.compile(self.ext_cfg["pattern"])
 
+    @cached_property
+    def _paren_ext(self):
+        """'형식명(.확장자)' (I12, docs/09 #10) — 괄호 안이 '.확장자'(점으로 시작, '*.' 허용; 여럿이면 구분자로 이음)뿐인 괄호와
+        그 바로 앞 한 단어(괄호와 사이 공백 허용). 점 없는 괄호('STEP(AP214)')는 맞지 않는다 — 주석으로 뗀다."""
+        sep, dot = self._ext_seps, r"\*?\.[a-z0-9_+\-]+(?:\.[a-z0-9_+\-]+)*"
+        return re.compile(rf"(?P<name>[^{sep}()]*)\s*\(\s*(?P<exts>{dot}(?:[{sep}]+{dot})*)\s*\)")
+
+    @cached_property
+    def _ext_aliases(self) -> dict[str, str]:
+        return {nfkc(k).lower().strip(): str(v) for k, v in (self.ext_cfg.get("aliases") or {}).items()}
+
+    @cached_property
+    def non_ext_tokens(self) -> set[str]:
+        """확장자 패턴에 맞아도 확장자가 아닌 말 (extensions.yaml non_extension_tokens — or·file·ascii·ap214·parasolid 등)."""
+        return {nfkc(t).lower().strip() for t in self.ext_cfg.get("non_extension_tokens") or []}
+
+    @cached_property
+    def compound_exts(self) -> set[str]:
+        """점으로 이은 묶음 확장자로 인정하는 것 (extensions.yaml compound_extensions — tar.gz·cas.h5 등, 앞 점 무시)."""
+        return {nfkc(t).lower().strip().lstrip(".") for t in self.ext_cfg.get("compound_extensions") or []}
+
     def extensions(self, raw) -> tuple[list[str], bool, list[str]]:
         """(정규화 확장자 목록, 사내 표기 여부, 매핑 못 한 토큰) — I12·I16.
-        셀 전체가 빈 값 토큰이면 빈 목록. 괄호 주석은 떼고(안에 사내 토큰이 있으면 사내 표기), 토큰 '사내' 도 사내 표기."""
+        셀 전체가 빈 값 토큰이면 빈 목록. '형식명(.확장자)' 는 괄호 안 확장자를 쓰고 형식명은 버린다(버린 형식명에 사내 토큰이 있으면 사내 표기).
+        그 밖의 괄호 주석은 떼고(안에 사내 토큰이 있으면 사내 표기), 토큰 '사내' 도 사내 표기. 별칭을 먼저 적용하고, 확장자 패턴
+        (숫자만 있는 토큰은 아님 — extensions.yaml pattern)에 안 맞거나 non_extension_tokens 면 매핑 못 한 토큰."""
         s = nfkc(raw).lower().strip()
         if s in self.empty_tokens:
             return [], False, []
         inhouse_tokens = [str(t).lower() for t in self.ext_cfg.get("inhouse_tokens", [])]
-        inhouse = any(t in m for m in re.findall(r"\(([^)]*)\)", s) for t in inhouse_tokens)
+        inhouse = False
+
+        def take(m) -> str:
+            nonlocal inhouse
+            inhouse = inhouse or any(t in m.group("name") for t in inhouse_tokens)
+            return " " + m.group("exts") + " "
+
+        s = self._paren_ext.sub(take, s)
+        inhouse = inhouse or any(t in m for m in re.findall(r"\(([^)]*)\)", s) for t in inhouse_tokens)
         s = re.sub(r"\([^)]*\)", " ", s)
-        aliases = {str(k).lower(): str(v) for k, v in self.ext_cfg.get("aliases", {}).items()}
         out, bad = [], []
         for tok in self._ext_sep.split(s):
             tok = tok.strip().lstrip(".*").strip()
@@ -173,6 +219,10 @@ class Normalizer:
                 continue
             if tok in self.empty_tokens:
                 continue
-            tok = aliases.get(tok, tok)
-            (out if self._ext_ok.match(tok) else bad).append(tok)
+            tok = self._ext_aliases.get(tok, tok)          # 별칭이 비확장자 목록보다 먼저 (오버레이 parasolid: x_t 가 이긴다)
+            (out if self._ext_ok.match(tok) and tok not in self.non_ext_tokens else bad).append(tok)
         return sorted(set(out)), inhouse, bad
+
+    def unknown_compound(self, exts) -> list[str]:
+        """점으로 이은 확장자 가운데 compound_extensions 밖의 것 ('model.stp') — 값은 그대로 쓰고 경고만 (docs/09 #10 Q2)."""
+        return [e for e in exts if "." in e and e not in self.compound_exts]
