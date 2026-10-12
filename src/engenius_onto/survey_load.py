@@ -14,13 +14,15 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import re
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from engenius_onto.config import (CONFIG_DIR, REAL_CONFIG_DIR, REPO_ROOT, check_aliases_shape, config_where, default_overlay_dir,
                                   installed_version, read_csv_rows, read_yaml)
-from engenius_onto.loader import LoadResult, Loader
+from engenius_onto.loader import PERSON_MASK, LoadResult, Loader
 from engenius_onto.normalize import GENERIC_KEY_PREFIX, link_root as _root, merge_keys_from_pairs, nfc_strip, read_merge_pairs
 from engenius_onto.rdf_writer import SchemaTerms, SurveyWriter
 from engenius_onto.registry import ACTIVE, Registry, registry_lock
@@ -94,8 +96,8 @@ def _csv_safe(v) -> str:
 def write_review(path: Path, res: LoadResult) -> None:
     """툴 통합 검토표 (6.1-5). 통합 후보 행(I23·제조사 접두 보류) 뒤에 연계 행(사유 '연계SW 미해석', docs/09 #17 — Loader._partner_review).
     연계 행: 툴A_키 = 기존 툴 키 제안(비슷한 툴이 뚜렷할 때만, 아니면 빈칸 + 툴A_표기에 비슷한 키 힌트), 툴B_키 = 해석 못 한 연계 키,
-    툴B_표기 = 언급 수·파트 (원문 partner_raw 는 쓰지 않는다). 표기 칸은 _csv_safe (엑셀 수식 방지). 보고 이름(names_a·names_b)은 적재기가
-    인명 유사면 PERSON_MASK 로 가려 넘긴다 (Loader._names, C5)."""
+    툴B_표기 = 언급 수·파트 (원문 partner_raw 는 쓰지 않는다). 표기 칸은 _csv_safe (엑셀 수식 방지). 보고 이름(names_a·names_b)과 연계 행의
+    '비슷한 키' 힌트는 적재기가 인명 유사면 PERSON_MASK 로 가려 넘긴다 (Loader._names·_partner_review, C5 — 키 칸만 원문)."""
     with path.open("w", encoding="utf-8-sig", newline="") as f:          # 엑셀에서 바로 열리도록 BOM
         w = csv.writer(f, lineterminator="\n")
         w.writerow(REVIEW_COLUMNS)
@@ -256,7 +258,7 @@ def _run_load(loader: Loader, paths: list[Path], regdir: Path, out_dir: Path, no
                      "transitions": reg.transitions()},         # 신규·되살림 건수 (C2)
     }
     if shacl:
-        log["shacl"] = run_shacl(ttl)
+        log["shacl"] = run_shacl(ttl, loader._looks_person)
 
     if save_registry:
         reg.save()                                            # #23 — 산출물보다 먼저, 원자적으로
@@ -286,9 +288,21 @@ def latest_run(root: Path, prefer: str | None = "real") -> Path | None:
     return (chosen or runs)[-1] if runs else None
 
 
-def run_shacl(ttl: str) -> dict:
+SHACL_QUOTED = re.compile(r'"((?:[^"\\]|\\.)*)"')    # Jena 결과 메시지의 인용 리터럴 ('RDF term "<값>" not in expected values' 등)
+
+
+def mask_shacl_message(msg: str, looks_person: Callable[[str], bool]) -> str:
+    """SHACL 결과 메시지의 인용 리터럴 가운데 인명 유사한 것을 PERSON_MASK 로 (docs/09 N5, 2026-10-12 재검토 수리 — sh:in·pattern·datatype 위반
+    메시지는 값을 인용해 load_log shacl.results 에 원문이 옮겨졌다; 같은 값이 옆 '선택지 밖 값' 경고에서는 가려져 있었다).
+    인용 밖에 남아도 인명 유사면 메시지 전체를 가린다. 그래프(survey.ttl)의 값은 그대로 (D6)."""
+    out = SHACL_QUOTED.sub(lambda m: f'"{PERSON_MASK}"' if looks_person(m.group(1)) else m.group(0), msg)
+    return PERSON_MASK if looks_person(out) else out
+
+
+def run_shacl(ttl: str, looks_person: Callable[[str], bool] | None = None) -> dict:
     """Jena SHACL (Fuseki jar) 이 있으면 survey 그래프를 검증한다 — 위반은 경고 보고서 (D4). 없으면 건너뜀.
-    SHACL 도구가 실패해도 적재는 계속한다 (docs/09 #22)."""
+    SHACL 도구가 실패해도 적재는 계속한다 (docs/09 #22). 결과 메시지의 인명 유사 리터럴은 가린다 (mask_shacl_message — looks_person 이
+    없으면 저장소 설정의 Normalizer.looks_person; 적재는 오버레이까지 반영한 Loader._looks_person 을 넘긴다)."""
     from engenius_onto import schema_gen
     from engenius_onto.shacl_check import find_tools, validate
 
@@ -299,8 +313,11 @@ def run_shacl(ttl: str) -> dict:
         r = validate(schema_gen.GEN_DIR / "engenius_tool.shacl.ttl", ttl, *tools)
     except Exception as e:  # noqa: BLE001 — 도구 오류는 보고만
         return {"ran": False, "reason": f"SHACL 도구 실패 — {type(e).__name__}: {str(e)[:200]}"}
+    if looks_person is None:
+        from engenius_onto.normalize import Normalizer
+        looks_person = Normalizer.from_config().looks_person
     return {"ran": True, "conforms": r.conforms, "violations": len(r.results),
-            "results": [{"focus": f, "path": p, "message": msg} for f, p, msg in r.results]}
+            "results": [{"focus": f, "path": p, "message": mask_shacl_message(msg, looks_person)} for f, p, msg in r.results]}
 
 
 FIX_COLUMNS = ["시트", "행", "Tool ID", "열", "적힌 값", "문제", "고치는 법"]

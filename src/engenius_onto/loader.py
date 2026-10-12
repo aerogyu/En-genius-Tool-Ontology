@@ -15,7 +15,7 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
 - 예시 행은 위치가 아니라 적재 열 전체가 템플릿 예시와 같은지로 판별 (I15) — config/template_examples.yaml (+ 오버레이).
   예시의 정보 열 80% 이상이 같거나 비고가 예시 문구인 '예시와 거의 같은 행' 은 경고 후 응답으로 적재하고, 같은 Tool ID 의 진짜 행이 뒤에
   있으면 진짜 행을 쓴다 (I15 개정, docs/09 #3). 시트에 예시 유사 행만 있고 정확한 예시가 0 이면 설정 점검 경고.
-- 같은 파트 파일이 여럿이면 (날짜, 사본 번호 '(n)', 새 약칭 파일명인가, 파일명) 최신 1개만 적재하고, 그 뒤 같은 내용(sha256) 파일은 한 번만 —
+- 같은 파트 파일이 여럿이면 (날짜, 새 약칭 파일명인가, 사본 꼬리를 뗀 파일명, 사본 번호 '(n)') 최신 1개만 적재하고, 그 뒤 같은 내용(sha256) 파일은 한 번만 —
   대체된 옛 회신과 내용이 같은 사본도 적재하지 않는다 (I31·I33).
 - 파일 간 같은 (파트, Tool ID) 는 둘 다 적재하고 경고 — 전용 파일이 아닌 쪽 레지스트리 키에 구분 꼬리 '@<약칭|file-sha10>' (I36, docs/09 #1).
 - 툴 통합 (6.1): 별칭·통합 판정(tool_aliases.yaml + 오버레이)은 제조사를 뗀 키, 없으면 떼지 않은 이름 키로 찾는다 (docs/09 #2 (3)). 판정 항목 가운데
@@ -24,8 +24,10 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
 - 어떤 행도 조용히 버리지 않는다 — 제외는 사유와 함께 excluded_rows, 문제는 warnings (5장 6). 행 단위 문제는 issues 에도
   구조화해 남겨 파트별 수정 요청표(fix_requests)를 만든다 (M3.1).
 - 인명 열(실무 문의처)은 읽지 않는다 (CLAUDE.md 절대 규칙 5). 인명 유사 패턴은 경고만 하고 경고에 값을 옮기지 않는다 (D6, #20).
-  값을 인용하는 경고·수정 요청표·검토표 표기 칸은 Loader._q 를 거친다 — 인명 유사면 PERSON_MASK (docs/09 C5; 모든 경고 2026-10-12 검토 수리 —
-  행 경고의 위치 문구(where)도 Tool ID·데이터명을 _q 로 만든다).
+  검사 범위: 적재하는 모든 문자열 칸(정수 변환에 실패한 원문 포함) + 제외하는 내용 행(Tool ID 없음·Tool ID 수식 오류·빈 행 뒤) — 제외 행이 걸리면
+  수정 요청은 '인명 유사' 한 줄 (Tool ID 를 붙이라고 하지 않는다, 2026-10-12 재검토 수리).
+  값을 인용하는 경고·수정 요청표·검토표 표기 칸(힌트 키 포함)·load_log 속성 충돌 값은 Loader._q 를 거친다 — 인명 유사면 PERSON_MASK (docs/09 C5;
+  모든 경고 2026-10-12 검토 수리 — 행 경고의 위치 문구(where)도 Tool ID·데이터명을 _q 로 만든다).
   규칙 밖 파일명은 해시 이름으로만 기록한다 (#8 — 파일명에 인명이 섞여 있을 수 있다).
 """
 
@@ -55,6 +57,12 @@ from engenius_onto.normalize import GENERIC_KEY_PREFIX, Normalizer, merge_keys_f
 USAGE_SHEET, IO_SHEET = "SW기본정보", "SW입출력"      # 스키마의 시트 이름 (실제 파일의 시트 이름은 설정으로 찾는다)
 EXCEL_SUFFIXES = {".xlsx", ".xlsm", ".xls"}
 PERSON_MASK = "[인명 유사 — 값 생략]"                  # 경고·로그에 인용할 값이 인명 유사일 때 대신 쓰는 문구 (Loader._q, docs/09 #20·C5)
+# 제외하는 내용 행(Tool ID 없음 등)이 인명 유사일 때 수정 요청표 안내 (Loader._excluded_person) — 'Tool ID 를 적어 주세요' 대신.
+# 실제 Tool 행일 수도 있어 행 삭제만 시키지 않는다 (이름·연락처를 먼저 지우게 해 다음 적재에서 인명이 그래프에 들어가지 않게)
+PERSON_ROW_HINT = ("사람 이름·연락처로 보이는 행 — 표 아래 연락처·작성자 메모면 지워 주세요 (Tool ID 를 붙이지 마세요). "
+                   "실제 Tool 행이면 이름·연락처만 지우고 Tool ID 를 적어 주세요")
+PERSON_TAIL_HINT = ("사람 이름·연락처로 보이는 행 — 표 아래 연락처·작성자 메모면 지워 주세요 (표로 옮기지 마세요). "
+                    "실제 Tool 행이면 이름·연락처만 지우고 빈 행을 지워 위로 붙여 주세요")
 ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠﻿"), None)
 # 엑셀 수식 결과 오류 (I37) — 셀 형식 'e' 는 모두, 문자열이면 이 표기와 같을 때 (openpyxl ERROR_CODES + 새 엑셀 오류)
 EXCEL_ERRORS = ("#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#SPILL!", "#CALC!", "#FIELD!", "#BLOCKED!",
@@ -564,10 +572,13 @@ class Loader:
             old = self.parse_name(p.name)[0] if code is not None else None      # 옛 약칭 파일명이면 (#25b)
             reports.append(FileReport(label, sha, code, date, path=p, copy=copy, index=idx,
                                       renamed_from=old if old != code else None))
-        # 재발송 (I33): 같은 파트는 (날짜, 사본 번호, 새 약칭 파일명인가, 파일명) 최신만 — 같은 날짜면 브라우저 사본 '(n)' 의 번호가 큰 쪽
-        # (나중에 받은 파일), 날짜·번호까지 같으면 새 약칭 파일명(renamed_from 의 옛 약칭이 아닌 쪽 — 개명 뒤에 받은 파일)이 이긴다
+        # 재발송 (I33): 같은 파트는 (날짜, 새 약칭 파일명인가, 사본 꼬리를 뗀 파일명, 사본 번호) 최신만 — 같은 날짜면 새 약칭 파일명
+        # (renamed_from 의 옛 약칭이 아닌 쪽 — 개명 뒤에 받은 파일)이 이기고, 그다음 브라우저 사본 '(n)' 번호가 큰 쪽(나중에 받은 파일).
+        # 사본 번호는 꼬리를 뗀 이름이 같은 파일끼리만 순서를 말해 준다 — 옛 약칭 첨부를 두 번 받아 붙은 '(1)' 이 새 약칭 파일을 이기면 안 된다
+        # (2026-10-12 재검토 수리: (날짜, 사본 번호, …) 였을 때 옛 약칭 '(1)' 사본이 고친 새 약칭 회신을 '재발송으로 대체' 로 버렸다)
         def newer(r: FileReport) -> tuple:
-            return r.date, r.copy, r.renamed_from is None, r.name
+            base = re.sub(r"\s*\(\d+\)(?=\.[^.]+$)", "", r.name) if r.copy else r.name
+            return r.date, r.renamed_from is None, base, r.copy, r.name
 
         latest: dict[str, FileReport] = {}
         for r in reports:
@@ -772,7 +783,7 @@ class Loader:
                 continue
             blanks = 0
             if ended:                                                          # #6 빈 행 뒤 내용은 적재 안 함, 기록
-                tail.append(n)
+                tail.append((n, v))
                 continue
             rows.append((n, v))
             if err_here:
@@ -794,11 +805,13 @@ class Loader:
                 rep.warnings += 1
         if tail:
             warnings.append(f"빈 행 {self.lcfg['blank_rows_end']}개 뒤 내용 행: {fname} {sheet} {len(tail)}행 — 적재하지 않음 "
-                            f"(첫 행 {tail[0]})")
+                            f"(첫 행 {tail[0][0]})")
             rep.warnings += 1
-            for n in tail:
+            for n, tv in tail:
                 excluded.append({"file": fname, "sheet": sheet, "row": n, "reason": "빈 행 뒤 내용 행 (시트 끝으로 봄, #6)"})
                 rep.excluded += 1
+                if self._excluded_person(rep, sheet, n, tv, "빈 행 뒤", warnings, PERSON_TAIL_HINT):    # 표 아래 연락처 꼬리말 — 위로 붙이라고만 하지 않는다
+                    continue
                 self._issue(rep, sheet, n, None, None, None, "빈 행 뒤 내용",
                             f"빈 행 {self.lcfg['blank_rows_end']}개 이상 뒤에 있어 읽지 않았다 — 빈 행을 지우고 위로 붙여 주세요")
         return rows, present
@@ -890,14 +903,25 @@ class Loader:
             rep.warnings += 1
 
     def _read_choices(self, wb) -> dict[str, list[str]]:
-        """{정규화 목록 이름: 값}. 목록 이름 행은 2행 (1행 제목)."""
+        """{정규화 목록 이름: 값}. 목록 이름 행은 2행 (1행 제목) — 열마다 2행부터 빈칸이 아닌 값을 위에서 아래로, 첫 값이 목록 이름.
+        있는 칸만 훑는다 (ws._cells) — max_row × max_column 직사각형을 ws.cell 로 돌면 서식만 있는 먼 칸 하나에 칸 객체 수백만 개·수 초가
+        든다 (2026-10-12 재검토 수리, docs/09 C7 — 선택지 시트가 빠져 있었다). _cells 가 없으면(다른 openpyxl 판) 예전처럼 직사각형."""
         name = resolve_sheet(wb.sheetnames, self.lcfg["choices_sheet"])
         if name is None:
             return {}
         ws = wb[name]
+        cells = getattr(ws, "_cells", None)
+        if isinstance(cells, dict):
+            by_col: dict[int, list[tuple[int, str]]] = defaultdict(list)
+            for (r, c), x in cells.items():
+                if r >= 2 and not _blank(x.value):
+                    by_col[c].append((r, nfc_strip(x.value)))
+            cols = [[v for _r, v in sorted(by_col[c])] for c in sorted(by_col)]
+        else:
+            cols = [[nfc_strip(ws.cell(r, c).value) for r in range(2, ws.max_row + 1) if not _blank(ws.cell(r, c).value)]
+                    for c in range(1, ws.max_column + 1)]
         out = {}
-        for c in range(1, ws.max_column + 1):
-            vals = [nfc_strip(ws.cell(r, c).value) for r in range(2, ws.max_row + 1) if not _blank(ws.cell(r, c).value)]
+        for vals in cols:
             if vals:
                 out[norm_header(vals[0])] = vals[1:]
         return out
@@ -1021,9 +1045,33 @@ class Loader:
                 n += 1
         return n
 
+    def _person_hit(self, slot: str, val) -> bool:
+        """인명 유사 패턴 (D6·I29) — 자유 텍스트 슬롯(free_text_slots)은 person_pattern 도, 모든 문자열 칸은 person_patterns_all.
+        경고·수정 요청은 부르는 쪽이 (_check · _excluded_person). 값 인용 가림(_q)은 두 목록을 모든 칸에 쓴다 (더 넓다)."""
+        return isinstance(val, str) and not _blank(val) and (
+            (slot in self.free_text and bool(self.person_re.search(val))) or any(p.search(val) for p in self.person_all))
+
+    def _excluded_person(self, rep: FileReport, sheet: str, n: int, raw: dict, why: str, warnings: list,
+                         hint: str = PERSON_ROW_HINT) -> bool:
+        """제외하는 내용 행의 인명 검사 (I22·I29, docs/09 #20 수리 계획 2 — Tool ID 없음·Tool ID 수식 오류·빈 행 뒤). 걸린 칸마다 경고
+        '인명 유사 패턴: <파일> <시트> <n>행 (<why>) '<열>'' (값·Tool ID 를 옮기지 않는다 — 행 번호로 찾는다) + 그 행의 수정 요청 '인명 유사'
+        한 줄 → True. 부르는 쪽은 True 면 그 행의 원래 요청('Tool ID 없음' 등)을 내지 않는다 — 표 아래 연락처 꼬리말에 'Tool ID 를 적어 주세요'
+        라고 시키면 다음 적재에서 인명이 그래프·레지스트리에 들어간다 (2026-10-12 재검토 수리). raw = 원문 셀 (변환 전 — 정수 열 문자열 포함)."""
+        hits = [c.header for c in self.spec.columns[sheet] if self._person_hit(c.slot, raw.get(c.slot))]
+        if not hits:
+            return False
+        for h in hits:
+            warnings.append(f"인명 유사 패턴: {rep.name} {sheet} {n}행 ({why}) '{h}'")
+            rep.warnings += 1
+        self._issue(rep, sheet, n, "", " · ".join(h.rstrip(" *") for h in hits), None, "인명 유사", hint)
+        return True
+
     def _check(self, sheet: str, v: dict, present: set, choices: dict, where: str, warnings: list, rep: FileReport,
-               row: int, tool_id, missing_lists: set, err_slots=()) -> None:
-        """err_slots: 수식 오류로 빈칸이 된 슬롯 (I37) — 필수값 누락 경고는 내되 수정 요청은 '수식 오류 셀' 한 행만 (중복 방지)."""
+               row: int, tool_id, missing_lists: set, err_slots=(), raw_text: dict | None = None) -> None:
+        """err_slots: 수식 오류로 빈칸이 된 슬롯 (I37) — 필수값 누락 경고는 내되 수정 요청은 '수식 오류 셀' 한 행만 (중복 방지).
+        raw_text: 정수 변환에 실패해 값이 빈칸이 된 슬롯의 원문 (사용 인원수·보유 수량) — 인명 검사는 그 원문을 본다 (I29 '적재하는 모든
+        문자열 열' — 원문은 그래프 <슬롯>_raw 로 적재된다, 2026-10-12 재검토 수리)."""
+        raw_text = raw_text or {}
         for col in self.spec.columns[sheet]:
             if col.slot not in present:
                 continue
@@ -1048,8 +1096,7 @@ class Loader:
                     rep.warnings += 1
                     self._issue(rep, sheet, row, tool_id, col.header, val, "선택지 밖 값",
                                 "드롭다운에서 고르세요. 목록에 없으면 '기타'를 고르고 비고에 적어 주세요")
-            if isinstance(val, str) and not _blank(val) and (
-                    (col.slot in self.free_text and self.person_re.search(val)) or any(p.search(val) for p in self.person_all)):
+            if self._person_hit(col.slot, val if isinstance(val, str) else raw_text.get(col.slot)):
                 warnings.append(f"인명 유사 패턴: {where} '{col.header}'")      # where 의 Tool ID·데이터명은 이미 _q (그 칸이 걸려도 값이 안 옮겨진다)
                 rep.warnings += 1
                 self._issue(rep, sheet, row, tool_id, col.header, None, "인명 유사",
@@ -1099,8 +1146,10 @@ class Loader:
         # 엑셀 층 신호의 행 단위 처리 (I37) — 예시 행(정확 일치)을 거른 뒤의 응답 행만
         hidden_seen: dict[str, list[int]] = {USAGE_SHEET: [], IO_SHEET: []}
 
-        def excel_rows(sheet: str, n: int, tool_id, id_slot: str) -> bool:
-            """숨긴 행 기록 + 수식 오류 칸의 수정 요청 행. Tool ID 칸이 오류면 행을 제외하고 True (입출력은 이어받기 대상도 아님)."""
+        def excel_rows(sheet: str, n: int, raw: dict, id_slot: str) -> bool:
+            """숨긴 행 기록 + 수식 오류 칸의 수정 요청 행. Tool ID 칸이 오류면 행을 제외하고 True (입출력은 이어받기 대상도 아님) —
+            그 행이 인명 유사면 수정 요청은 '인명 유사' 한 줄 (_excluded_person)."""
+            tool_id = raw.get(id_slot)
             if n in self._hidden.get(sheet, ()):
                 hidden_seen[sheet].append(n)
                 self._issue(rep, sheet, n, tool_id, None, None, "숨긴 행",
@@ -1109,8 +1158,9 @@ class Loader:
             cols = cols_u if sheet == USAGE_SHEET else cols_i
             if id_slot in errs:
                 exclude(sheet, n, "Tool ID 수식 오류 (I37)")
-                self._issue(rep, sheet, n, "", cols[id_slot].header, errs[id_slot], "수식 오류 셀",
-                            "Tool ID 칸이 수식 오류(#N/A 등)입니다 — Tool ID 를 값으로 적어 주세요")
+                if not self._excluded_person(rep, sheet, n, raw, "Tool ID 수식 오류", warnings):
+                    self._issue(rep, sheet, n, "", cols[id_slot].header, errs[id_slot], "수식 오류 셀",
+                                "Tool ID 칸이 수식 오류(#N/A 등)입니다 — Tool ID 를 값으로 적어 주세요")
                 return True
             for slot, code in errs.items():
                 self._issue(rep, sheet, n, tool_id, cols[slot].header, code, "수식 오류 셀",
@@ -1142,14 +1192,15 @@ class Loader:
                 n_exact[USAGE_SHEET] += 1
                 continue
             near = near_check(USAGE_SHEET, n, raw, upresent, raw.get("source_key"))
-            if excel_rows(USAGE_SHEET, n, raw.get("source_key"), "source_key"):
+            if excel_rows(USAGE_SHEET, n, raw, "source_key"):
                 continue
             if _blank(raw.get("source_key")):
                 name = nfc_strip(raw.get("reported_tool_name"))
                 warnings.append(f"SW ID 없는 내용 행: {fname} {USAGE_SHEET} '{self._q(name)}' — 건너뜀")
                 rep.warnings += 1
                 exclude(USAGE_SHEET, n, "SW ID 없음 (I22)")
-                self._issue(rep, USAGE_SHEET, n, "", "Tool ID", None, "Tool ID 없음", "Tool ID(부서약칭-번호)를 적어 주세요")
+                if not self._excluded_person(rep, USAGE_SHEET, n, raw, "Tool ID 없음", warnings):    # 연락처 꼬리말에 ID 를 붙이라 하지 않는다
+                    self._issue(rep, USAGE_SHEET, n, "", "Tool ID", None, "Tool ID 없음", "Tool ID(부서약칭-번호)를 적어 주세요")
                 continue
             # 경고 위치 문구 — 값(Tool ID)은 _q 로 (표 아래 꼬리말·서명이 Tool ID 칸에 들어갈 수 있다, C5·C8). 이 행의 모든 경고가 쓴다
             where = f"{fname} {USAGE_SHEET} {self._q(cell_key(raw.get('source_key')))}"
@@ -1160,7 +1211,7 @@ class Loader:
                     rawvals[slot] = r
             aliased += self._apply_value_aliases(v, rep)
             self._check(USAGE_SHEET, v, upresent, choices, where, warnings, rep, n, v.get("source_key"), missing_lists,
-                        self._err_cells.get((USAGE_SHEET, n), {}))
+                        self._err_cells.get((USAGE_SHEET, n), {}), raw_text=rawvals)
             u = UsageRec(fname, rep.field, n, v, rawvals, part=self._part_of(rep, v.get("source_key"), warnings, n),
                          near_example=near)
             k = id_key(u.sw_id)
@@ -1207,7 +1258,7 @@ class Loader:
                 prev_n = prev_id = None
                 continue
             near = near_check(IO_SHEET, n, raw, ipresent, raw.get("owner_source_key"))   # 응답이므로 이어받기를 끊지 않는다 (I22)
-            if excel_rows(IO_SHEET, n, raw.get("owner_source_key"), "owner_source_key"):
+            if excel_rows(IO_SHEET, n, raw, "owner_source_key"):
                 prev_n = prev_id = None                              # Tool ID 오류 행은 이어받지도 넘겨주지도 않는다 (I22 보호, I37)
                 continue
             if _blank(raw.get("owner_source_key")) and fill_down and prev_id is not None and prev_n == n - 1:
@@ -1221,8 +1272,9 @@ class Loader:
                 warnings.append(f"SW ID 없는 내용 행: {fname} {IO_SHEET} '{self._q(nfc_strip(raw.get('data_name')))}' — 건너뜀")
                 rep.warnings += 1
                 exclude(IO_SHEET, n, "SW ID 없음 (I22)")
-                self._issue(rep, IO_SHEET, n, "", "Tool ID", None, "Tool ID 없음",
-                            "이 입출력이 어느 Tool 것인지 Tool ID 를 적어 주세요")
+                if not self._excluded_person(rep, IO_SHEET, n, raw, "Tool ID 없음", warnings):
+                    self._issue(rep, IO_SHEET, n, "", "Tool ID", None, "Tool ID 없음",
+                                "이 입출력이 어느 Tool 것인지 Tool ID 를 적어 주세요")
                 continue
             prev_n, prev_id = n, raw.get("owner_source_key")
             where = f"{fname} {IO_SHEET} {self._q(cell_key(raw.get('owner_source_key')))} '{self._q(cell_key(raw.get('data_name')))}'"
@@ -1375,8 +1427,9 @@ class Loader:
                 nxt = amap[path[-1]]
                 if nxt in path:                                  # 순환 — 손으로 고친 파일에서만 생길 수 있다
                     cyc = sorted(path[path.index(nxt):])
-                    if warnings is not None:
-                        warnings.append(f"툴 별칭 순환: {' ↔ '.join(cyc)} — 가장 작은 키 '{cyc[0]}' 를 대표로 (config/tool_aliases.yaml 확인)")
+                    if warnings is not None:                     # 키는 _q — 툴 이름 키에 '이름+직급' 이 남을 수 있다 (2026-10-12 재검토 수리)
+                        warnings.append(f"툴 별칭 순환: {' ↔ '.join(self._q(k) for k in cyc)} — 가장 작은 키 '{self._q(cyc[0])}' 를 대표로 "
+                                        "(config/tool_aliases.yaml 확인)")
                     return cyc[0]
                 path.append(nxt)
             return path[-1]
@@ -1386,7 +1439,7 @@ class Loader:
         distinct = {tuple(sorted(p)) for p in (self.aliases_cfg.get("distinct") or [])}
         for k, v in closed.items():
             if tuple(sorted((k, v))) in distinct and warnings is not None:
-                warnings.append(f"툴 별칭과 별개 판정이 충돌: {k} / {v} — 통합이 적용됨 (config/tool_aliases.yaml distinct 확인)")
+                warnings.append(f"툴 별칭과 별개 판정이 충돌: {self._q(k)} / {self._q(v)} — 통합이 적용됨 (config/tool_aliases.yaml distinct 확인)")
         # 그룹 대표 이름 — 대표 키에 라벨이 없으면 그룹 키 가운데 이력에서 가장 최근에 A 키로 적힌 것 → 키 정렬 순
         groups: dict[str, set[str]] = defaultdict(set)
         for k, v in closed.items():
@@ -1513,11 +1566,11 @@ class Loader:
             clashes = [p for p in pairs if p in distinct]
             if clashes:
                 for a, b in clashes:
-                    warnings.append(f"제조사 접두 흡수와 별개 판정이 충돌: {a} / {b} — 흡수하지 않음")
+                    warnings.append(f"제조사 접두 흡수와 별개 판정이 충돌: {self._q(a)} / {self._q(b)} — 흡수하지 않음")
                 continue
             active = sorted(k for k in members if k in known)
             if len(active) >= 2:
-                warnings.append(f"제조사 접두 흡수 보류: 기존 툴 둘 이상 ({', '.join(active)}) — 검토표에서 판정")
+                warnings.append(f"제조사 접두 흡수 보류: 기존 툴 둘 이상 ({', '.join(self._q(k) for k in active)}) — 검토표에서 판정")
                 held.extend(pairs)
                 continue
             survivor, why = (active[0], "레지스트리 ID 유지") if active else (end, "제조사 접두를 뗀 키")
@@ -1535,7 +1588,9 @@ class Loader:
 
     def _names(self, group: ToolGroup) -> list[str]:
         """검토표·load_log 통합 후보의 보고 이름(표기 칸) — 인명 유사 이름은 PERSON_MASK (C5 '검토표 표기 칸도 가림'; apply-review 는 표기 칸을 읽지 않는다).
-        키 칸은 apply-review 가 쓰므로 그대로 (키는 공백·괄호가 빠져 인명 패턴에 거의 걸리지 않는다)."""
+        키 칸(툴A_키·툴B_키)만 apply-review 가 읽어서 그대로 둔다 — 키도 인명 패턴에 걸릴 수 있다 (tool_key 는 괄호·버전·공백만 지워
+        '가나다 책임 v2' → '가나다책임'; 괄호 안 이름이나 뒤에 한글이 이어지는 이름만 빠진다). 그런 툴 이름은 '인명 유사 패턴' 경고·수정 요청으로
+        고치고, 키 칸·load_log tool_keys·레지스트리의 원문은 C8·N1(Leo 결정 대기) 범위. 표기 칸의 '비슷한 키' 힌트는 _partner_review 가 _q 로 가린다."""
         return [self._q(n) for n in group.names]
 
     def _resolve_partners(self, ios, usages, tools, amap, warnings: list) -> None:
@@ -1616,10 +1671,11 @@ class Loader:
             scored.sort()
             strong = [s for s in scored if s[2] or -s[0] >= th]
             a = strong[0][1] if strong else ""
+            # 힌트 키는 툴A_표기 칸에 실린다 (apply-review 는 읽지 않는다) — 인명 유사 키는 _q (2026-10-12 재검토 수리)
             out.append({"a": a, "b": k, "similarity": -strong[0][0] if strong else None,
                         "reason": "연계SW 미해석", "names_a": self._names(tools[a]) if a else [],
                         "mentions": e["mentions"], "fields": e["fields"],
-                        "hints": [] if a else [(t, -r) for r, t, _c in scored if -r >= 0.5][:3]})
+                        "hints": [] if a else [(self._q(t), -r) for r, t, _c in scored if -r >= 0.5][:3]})
         return out
 
     def _unused_alias_entries(self, tools: dict, amap: dict, warnings: list) -> None:
@@ -1663,14 +1719,20 @@ class Loader:
                 warnings.append(f"별칭 미적용: {where} {s} {item} — 이번 적재의 툴·연계 Tool명 어디에도 없음 "
                                 "(툴 이름 키 규칙이 바뀌었거나 그 툴이 이번 회신에 없다; 지우기 전에 확인)")
 
-    @staticmethod
-    def _conflicts(tools) -> dict:
+    def _conflicts(self, tools) -> dict:
+        """같은 툴의 제조사·구분 값이 갈리면 {툴 키: {vendor|kind: {majority, values: {값: 건수}}}} (load_log tool_attribute_conflicts).
+        다수결은 원문으로 정한 뒤 값만 _q 로 가린다 — 인명 유사 값은 PERSON_MASK 한 칸에 건수를 더한다 (2026-10-12 재검토 수리:
+        '제조사 / 개발주체' 칸의 'Microsoft(… 책임 구매)' 가 load_log 에 원문으로 남았다; 그래프에는 보존 — D6)."""
         out = {}
         for k, g in tools.items():
             for attr, slot in (("vendor", "reported_vendor"), ("kind", "reported_kind")):
                 c = Counter(nfc_strip(u.v.get(slot)) for u in g.usages)
                 if len(c) > 1:
-                    out.setdefault(k, {})[attr] = {"majority": g.majority(slot), "values": dict(sorted(c.items()))}
+                    shown: Counter = Counter()
+                    for val, cnt in c.items():
+                        shown[self._q(val)] += cnt
+                    maj = g.majority(slot)
+                    out.setdefault(k, {})[attr] = {"majority": None if maj is None else self._q(maj), "values": dict(sorted(shown.items()))}
         return out
 
     # ---- 입출력 키 (D2) ---------------------------------------------------------------

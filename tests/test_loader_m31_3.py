@@ -13,6 +13,8 @@
   '파트 신규·폐기 동시' 휴리스틱 · 동시 적재 잠금 · 같은 초 두 실행 (docs/09 7장)
 - 2차 잔여 검토 수리 (2026-10-12) — 각 절에: A 값 인용 경고 전부 가림·'.확장자(.확장자)' · B 대체된 옛 회신의 사본 · D 빈 문자열 캐시 수식·먼 서식 칸·옛 rules.yaml ·
   E 승인 인명 패턴 보충·검토표 표기 칸 가림·열 모자란 레지스트리 행·잠금 없는 레지스트리 복사 · F 같은 날짜 옛·새 약칭 파일·범용 이름 툴 키 개명
+- 재검토 수리 (2026-10-12) — A 제외 행(Tool ID 없음·수식 오류·빈 행 뒤)·정수 열 원문 인명 검사(↔ oracle)·툴 키 인용 경고·속성 충돌 값·SHACL 메시지 가림 ·
+  D 선택지 시트 먼 서식 칸 · E 연계 행 힌트 키 가림·레지스트리 빈 상태 · F 옛 약칭 '(n)' 사본 vs 새 약칭 파일·사본 번호는 같은 이름끼리만
 합성 파일 사본만 쓴다 (공개 상용 툴 이름·가상 이름). 인명 시험 값은 가상 자리표시('가나다 책임')만.
 """
 
@@ -35,7 +37,7 @@ from rdflib import RDF, Graph
 
 from engenius_onto import synth
 from engenius_onto.config import CONFIG_DIR, ConfigError, merge_config, read_csv_rows
-from engenius_onto.loader import IO_SHEET, PERSON_MASK, USAGE_SHEET, FileReport, Loader, UsageRec
+from engenius_onto.loader import IO_SHEET, PERSON_MASK, PERSON_ROW_HINT, PERSON_TAIL_HINT, USAGE_SHEET, FileReport, Loader, UsageRec
 from engenius_onto.normalize import Normalizer
 from engenius_onto.rdf_writer import SchemaTerms
 from engenius_onto.registry import copy_registry
@@ -312,6 +314,154 @@ def test_value_quoting_warnings_redact_person_like(tmp_path, capsys):
     assert any(i["tool_id"] == PERSON_MASK for i in log["issues"])                           # 수정 요청표 Tool ID 칸도 가림 (행 번호로 찾는다)
     ttl = (run / "survey.ttl").read_text(encoding="utf-8")
     assert "가나다 책임 메모" in ttl and "구조 가나다 책임" in ttl                                # 값은 보존 (D6)
+
+
+def _no_tokens(*texts: str) -> bool:
+    return not [t for t in PERSON_TOKENS if any(t in x for x in texts)]
+
+
+def test_excluded_rows_person_scan_replaces_tool_id_request(tmp_path):
+    """docs/09 #20 수리 계획 2 (I22·I29, 2026-10-12 재검토 수리) — 제외하는 내용 행(Tool ID 없음·Tool ID 수식 오류·빈 행 10개 뒤)도 인명 검사:
+    걸린 칸마다 경고(행 번호로 — 값·ID 없음), 수정 요청은 그 행의 원래 요청('Tool ID 없음' 등) 대신 '인명 유사' 한 줄. 전에는 표 아래 연락처 꼬리말에
+    'Tool ID 를 적어 주세요' 만 나가, 안내대로 ID 를 붙이면 다음 적재에서 인명이 그래프·레지스트리 라벨(영구)에 들어갔다. 사람 이름 없는 행은 그대로."""
+    d = _copy(tmp_path)
+    p = d / STR
+    _set_row(p, USAGE_SHEET, 12, {"SW명(정식)": "문의: 라마바 책임(내선 0000)"})               # 표 아래 한 칸 띄운 꼬리말 (Tool ID 없음)
+    _set_row(p, USAGE_SHEET, 13, {"SW명(정식)": "가상-번호없는툴"})                             # 대조 — 사람 이름 없는 Tool ID 없음 행
+    _set_row(p, USAGE_SHEET, 30, {"비고": "작성: 다라마 책임"})                                  # 빈 행 16개 뒤 (시트 끝 뒤, #6)
+    _set_row(p, IO_SHEET, 22, {"데이터/산출물 명칭": "작성: 가나다 책임"})                        # 21행이 빈 행 — 이어받지 않는다
+    _set_row(p, IO_SHEET, 24, {"SW ID": "#N/A", "데이터/산출물 명칭": "나다라 선임에게 전달"})     # Tool ID 수식 오류 (I37)
+    res = _load(d, tmp_path).result
+    rows = {(USAGE_SHEET, 12), (USAGE_SHEET, 13), (USAGE_SHEET, 30), (IO_SHEET, 22), (IO_SHEET, 24)}
+    got = sorted((i["sheet"], i["row"], i["kind"], i["column"]) for i in res.issues if (i["sheet"], i["row"]) in rows)
+    assert got == sorted([(USAGE_SHEET, 12, "인명 유사", "SW명(정식)"), (USAGE_SHEET, 13, "Tool ID 없음", "Tool ID"),
+                          (USAGE_SHEET, 30, "인명 유사", "비고"), (IO_SHEET, 22, "인명 유사", "데이터/산출물 명칭"),
+                          (IO_SHEET, 24, "인명 유사", "데이터/산출물 명칭")])
+    person = {(i["sheet"], i["row"]): (i["tool_id"], i["value"], i["hint"]) for i in res.issues
+              if (i["sheet"], i["row"]) in rows and i["kind"] == "인명 유사"}
+    assert person == {(USAGE_SHEET, 12): ("", "", PERSON_ROW_HINT), (IO_SHEET, 22): ("", "", PERSON_ROW_HINT),
+                      (IO_SHEET, 24): ("", "", PERSON_ROW_HINT), (USAGE_SHEET, 30): ("", "", PERSON_TAIL_HINT)}
+    assert "Tool ID 를 붙이지 마세요" in PERSON_ROW_HINT and "표로 옮기지 마세요" in PERSON_TAIL_HINT
+    assert sorted(w for w in res.warnings if w.startswith("인명 유사 패턴:") and "행 (" in w) == sorted([
+        f"인명 유사 패턴: {STR} {USAGE_SHEET} 12행 (Tool ID 없음) 'SW명(정식) *'",
+        f"인명 유사 패턴: {STR} {USAGE_SHEET} 30행 (빈 행 뒤) '비고'",
+        f"인명 유사 패턴: {STR} {IO_SHEET} 22행 (Tool ID 없음) '데이터/산출물 명칭 *'",
+        f"인명 유사 패턴: {STR} {IO_SHEET} 24행 (Tool ID 수식 오류) '데이터/산출물 명칭 *'"])
+    ex = {(r["sheet"], r["row"]): r["reason"] for r in res.excluded_rows}
+    assert ex[(USAGE_SHEET, 12)] == ex[(IO_SHEET, 22)] == "SW ID 없음 (I22)" and ex[(IO_SHEET, 24)] == "Tool ID 수식 오류 (I37)"
+    assert ex[(USAGE_SHEET, 30)].startswith("빈 행 뒤 내용 행")
+    assert not [u for u in res.usages if u.row in (12, 13, 30)] and not [x for x in res.ios if x.row in (22, 24)]
+    assert _no_tokens("\n".join(res.warnings), json.dumps(res.issues, ensure_ascii=False))
+
+
+def test_int_column_and_excluded_row_person_scan_matches_oracle(tmp_path):
+    """I29 '적재하는 모든 문자열 열' — 정수 열(사용 인원수·보유 수량)의 변환 못 한 원문도 인명 검사 (원문은 <슬롯>_raw 로 그래프에 적재된다;
+    전에는 '정수 변환 실패' 경고만 내고 인명 경고·수정 요청이 없어 oracle 과 어긋났다 — 2026-10-12 재검토 수리). 건너뛰는 Tool ID 없는 행도 (I22).
+    명세 → 합성 엑셀 → 적재기 경고와 oracle 경고가 같다."""
+    spec = _spec([{"sw_id": "A-1", "name": "가상-툴A", "vendor": "v", "users": "가나다 책임 외 3"},
+                  {"sw_id": "A-2", "name": "가상-툴B", "vendor": "v", "qty": "라마바 선임 관리 5"},
+                  {"sw_id": None, "name": "문의: 라마바 책임(내선 0000)", "vendor": "v"}],
+                 [{"sw_id": "A-1", "dir": "out", "name": "d", "cat": "해석-결과", "ext": "dat"},
+                  {"blank": True},
+                  {"sw_id": None, "dir": "in", "name": "작성: 가나다 책임", "cat": "해석-결과", "ext": "dat"}])
+    r = oracle.compute(spec, REPO)
+    d = tmp_path / "s"
+    d.mkdir()
+    f = "SW조사_성능_20260101.xlsx"
+    (d / f).write_bytes(synth.build_workbook_bytes(spec, spec["files"][0]))
+    ld = Loader()
+    res = ld.load(ld.discover(d))
+    person = lambda ws: sorted(w for w in ws if w.startswith("인명 유사 패턴"))  # noqa: E731
+    assert person(res.warnings) == person(r["warnings"]) == sorted([
+        f"인명 유사 패턴: {f} SW기본정보 A-1 '사용 인원수'", f"인명 유사 패턴: {f} SW기본정보 A-2 '보유 수량'",
+        f"인명 유사 패턴: {f} SW기본정보 7행 (Tool ID 없음) 'SW명(정식) *'",
+        f"인명 유사 패턴: {f} SW입출력 9행 (Tool ID 없음) '데이터/산출물 명칭 *'"])
+    assert sorted((i["sheet"], i["row"], i["column"]) for i in res.issues if i["kind"] == "인명 유사") == [
+        (USAGE_SHEET, 5, "사용 인원수"), (USAGE_SHEET, 6, "보유 수량"), (USAGE_SHEET, 7, "SW명(정식)"), (IO_SHEET, 9, "데이터/산출물 명칭")]
+    a1 = next(u for u in res.usages if u.sw_id == "A-1")
+    assert a1.v["user_count"] is None and a1.raw == {"user_count": "가나다 책임 외 3"}           # 원문은 보존 (D6) — 경고에만 안 옮긴다
+    assert _no_tokens("\n".join(res.warnings), json.dumps(res.issues, ensure_ascii=False))
+    assert sum(1 for w in r["warnings"] if w.startswith("SW ID 없는 내용 행")) == 2             # oracle 도 기본정보 Tool ID 없는 행을 건너뛴다
+
+
+def test_tool_key_warnings_mask_person_like(tmp_path):
+    """C5 '값을 인용하는 경고 전부' — 툴 키를 인용하는 경고 넷(제조사 접두 흡수 보류·제조사 접두 흡수와 별개 판정 충돌·툴 별칭 순환·툴 별칭과 별개 판정
+    충돌)도 _q (2026-10-12 재검토 수리: tool_key 는 괄호·버전·공백만 지워 '가나다 책임 v2' → '가나다책임' 이 인명 패턴에 그대로 걸린다)."""
+    d = _copy(tmp_path / "held")
+    _set_names(d / STR, {"STR-04": "Altair 가나다 책임", "STR-05": "가나다 책임 v2"})
+    ld = Loader()
+    res = ld.load(ld.discover(d), known_tool_keys={"altair가나다책임", "가나다책임"})       # 둘 다 기존 활성 툴 — 흡수 보류
+    assert {"altair가나다책임", "가나다책임"} <= set(res.tools)
+    held = _w(res, "제조사 접두 흡수 보류")
+    assert held == [f"제조사 접두 흡수 보류: 기존 툴 둘 이상 ({PERSON_MASK}, {PERSON_MASK}) — 검토표에서 판정"]
+    d2 = _copy(tmp_path / "clash")
+    _set_row(d2 / STR, USAGE_SHEET, 7, {"SW명(정식)": "가나다 책임"})                         # STR-03 첫 행
+    _set_names(d2 / STR, {"STR-04": "Altair 가나다 책임", "STR-05": "ANSYS 가나다 책임"})
+    (tmp_path / "o1").mkdir()
+    (tmp_path / "o2").mkdir()
+    over = _overlay(tmp_path / "o1", tool_aliases={"distinct": [["altair가나다책임", "ansys가나다책임"]]})
+    ld2 = Loader(overlay_dir=over)
+    clash = _w(ld2.load(ld2.discover(d2)), "제조사 접두 흡수와 별개 판정이 충돌")
+    assert clash == [f"제조사 접두 흡수와 별개 판정이 충돌: {PERSON_MASK} / {PERSON_MASK} — 흡수하지 않음"]
+    over2 = _overlay(tmp_path / "o2", tool_aliases={"merge_keys": {"가나다책임": "라마바책임", "라마바책임": "가나다책임", "나다라책임": "다라마책임"},
+                                                    "distinct": [["나다라책임", "다라마책임"]]})
+    w: list[str] = []
+    Loader(overlay_dir=over2)._alias_map(w)
+    cyc = [x for x in w if x.startswith("툴 별칭 순환")]
+    assert cyc and set(cyc) == {f"툴 별칭 순환: {PERSON_MASK} ↔ {PERSON_MASK} — 가장 작은 키 '{PERSON_MASK}' 를 대표로 (config/tool_aliases.yaml 확인)"}
+    assert [x for x in w if x.startswith("툴 별칭과 별개 판정이 충돌")] == [
+        f"툴 별칭과 별개 판정이 충돌: {PERSON_MASK} / {PERSON_MASK} — 통합이 적용됨 (config/tool_aliases.yaml distinct 확인)"]
+    assert _no_tokens("\n".join(held + clash + w))
+
+
+def test_attribute_conflicts_mask_person_like(tmp_path):
+    """load_log tool_attribute_conflicts — 같은 툴의 제조사·구분 값이 갈릴 때 값 목록이 원문이었다 (vendor_key 가 괄호를 지워 'Microsoft(… 책임 구매)' 도
+    같은 툴로 묶인다). 인명 유사 값은 PERSON_MASK 한 칸에 건수를 더하고, 다수결은 원문으로 정한 뒤 가린다 (2026-10-12 재검토 수리). 그래프에는 보존 (D6)."""
+    survey = tmp_path / "survey"
+    shutil.copytree(SURVEY_DIR, survey)
+    _set_row(survey / STR, USAGE_SHEET, 10, {"제조사 / 개발주체": "Microsoft(나다라 책임 구매)", "구분": "상용(다라마 책임 관리)"})   # STR-05 Excel
+    reg = copy_registry(REGISTRY_DIR, tmp_path / "registry")
+    out = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "out", shacl=False, save_registry=False)
+    key = next(u.tool_key for u in out.result.usages if u.sw_id == "STR-05")
+    conf = out.log["tool_attribute_conflicts"][key]
+    assert conf["vendor"]["majority"] == "Microsoft" and conf["vendor"]["values"][PERSON_MASK] == 1
+    assert conf["kind"]["values"][PERSON_MASK] == 1 and sum(conf["vendor"]["values"].values()) == len(out.result.tools[key].usages)
+    log_text = (out.out_dir / "load_log.json").read_text(encoding="utf-8")
+    assert _no_tokens(log_text) and "Microsoft(나다라 책임 구매)" in out.turtle
+
+
+def test_shacl_message_mask_unit():
+    """docs/09 N5 — SHACL 결과 메시지의 인용 리터럴 가운데 인명 유사한 것만 가린다 (선택지 값 목록·형식 위반 값은 그대로). 인용 밖에 남으면 통째로."""
+    from engenius_onto.survey_load import mask_shacl_message
+
+    looks = Normalizer.from_config().looks_person
+    assert not looks(PERSON_MASK)
+    m = 'InConstraint["입력(소비)", "출력(생산)"] : RDF term "나다라 선임에게" not in expected values'
+    assert mask_shacl_message(m, looks) == f'InConstraint["입력(소비)", "출력(생산)"] : RDF term "{PERSON_MASK}" not in expected values'
+    keep = 'Pattern[^[0-9]{4}-[0-9]{2}$]: Does not match: "2027.03"'
+    assert mask_shacl_message(keep, looks) == keep
+    assert mask_shacl_message("Node 가나다 책임 bare", looks) == PERSON_MASK
+
+
+@pytest.mark.shacl
+def test_shacl_results_mask_person_like(tmp_path):
+    """load_log shacl.results[].message 가 Jena sh:resultMessage 로 인명 유사 값을 그대로 옮겼다 (사내 load.bat 은 SHACL 이 켜진다 — env.bat 이
+    FUSEKI_HOME·JAVA_HOME 을 둔다). 같은 값이 옆 '선택지 밖 값' 경고에서는 가려져 있었다 (2026-10-12 재검토 수리, docs/09 N5)."""
+    from engenius_onto.shacl_check import find_tools
+
+    if not find_tools():
+        pytest.skip("FUSEKI_HOME/JAVA 없음")
+    d = _copy(tmp_path)
+    _set_row(d / STR, IO_SHEET, 9, {"방향": "나다라 선임에게"})
+    _set_row(d / STR, IO_SHEET, 10, {"전달 방법": "가나다 책임 메일"})
+    _set_row(d / STR, USAGE_SHEET, 6, {"구분": "가나다(책임)"})
+    out = run_load(input_dir=d, registry_dir=tmp_path / "registry", out_root=tmp_path / "out", shacl=True)
+    sh = out.log["shacl"]
+    assert sh["ran"] and not sh["conforms"] and sh["violations"] >= 3
+    masked = [r for r in sh["results"] if PERSON_MASK in r["message"]]
+    assert len(masked) >= 3 and all(r["focus"] and r["path"] for r in masked)
+    assert _no_tokens(json.dumps(sh, ensure_ascii=False), (out.out_dir / "load_log.json").read_text(encoding="utf-8"))
+    assert "나다라 선임에게" in out.turtle                                                       # 그래프 값은 보존 (D6)
 
 
 # --------------------------------------------------------------------------- B. 파일 층 (docs/09 #1 잔여 · #8 C4)
@@ -1232,9 +1382,24 @@ def test_formula_empty_string_cache_not_warned(tmp_path, cell, warned):
     assert len(res.usages) == 5
 
 
+def _choices_rectangle(ws) -> dict[str, list[str]]:
+    """선택지 시트를 직사각형(ws.cell)으로 읽는 옛 방식 — 있는 칸만 읽는 _read_choices 와 결과가 같아야 한다 (비교용)."""
+    from engenius_onto.form_spec import norm_header as nh
+    from engenius_onto.normalize import nfc_strip
+
+    out = {}
+    for c in range(1, ws.max_column + 1):
+        col = [ws.cell(r, c).value for r in range(2, ws.max_row + 1)]
+        vals = [nfc_strip(v) for v in col if v is not None and not (isinstance(v, str) and not v.strip())]
+        if vals:
+            out[nh(vals[0])] = vals[1:]
+    return out
+
+
 def test_far_styled_cells_do_not_blow_up(tmp_path):
-    """서식만 있는 먼 칸(엑셀 Ctrl+End 가 튀는 칸) — 양식 밖 시트 검사·시트 행 읽기가 max_row × max_column 직사각형을 만들지 않는다
-    (2026-10-12 검토 수리, docs/09 C7: '개정이력' 시트 (100000행, 30열) 칸 하나에 8~18초·730MB 였다). 있는 칸만 훑어 결과는 같다."""
+    """서식만 있는 먼 칸(엑셀 Ctrl+End 가 튀는 칸) — 양식 밖 시트 검사·시트 행 읽기·선택지 읽기가 max_row × max_column 직사각형을 만들지 않는다
+    (2026-10-12 검토 수리, docs/09 C7: '개정이력' 시트 (100000행, 30열) 칸 하나에 8~18초·730MB 였다; 선택지 시트(_read_choices)는 재검토 수리).
+    있는 칸만 훑어 결과는 같다."""
     from openpyxl.styles import Border, Side
 
     d = _copy(tmp_path)
@@ -1245,21 +1410,27 @@ def test_far_styled_cells_do_not_blow_up(tmp_path):
     extra.cell(100000, 30).border = thin
     wb[IO_SHEET].cell(100000, 30).border = thin
     wb[USAGE_SHEET].cell(100000, 30).border = thin
+    wb["선택지"].cell(100000, 30).border = thin
     wb.save(d / STR)
     base = _load(_copy(tmp_path / "base"), tmp_path / "base").result
     ld = Loader()
+    wb0 = openpyxl.load_workbook(SURVEY_DIR / STR, data_only=True)
+    want_choices = _choices_rectangle(wb0["선택지"])
+    assert ld._read_choices(wb0) == want_choices and len(want_choices) > 10
+    wb0.close()
     wb = openpyxl.load_workbook(d / STR, data_only=True)
     sizes = {ws.title: len(ws._cells) for ws in wb.worksheets}
     rep = FileReport(STR, "0" * 64, "구조", "20260924", path=d / STR)
     w: list[str] = []
     ld._used_sheets = {USAGE_SHEET, IO_SHEET}
     ld._formula_cells = {}
+    assert ld._read_choices(wb) == want_choices
     ld._extra_sheets(wb, rep, w)
     assert w == [f"양식 밖 시트: {STR} '개정이력' — 읽지 않음 (아는 시트면 rules.yaml loader.other_sheets 에 추가)"]
     ld._read_sheet(wb, IO_SHEET, rep, [], [])
     ld._read_sheet(wb, USAGE_SHEET, rep, [], [])
     grown = {ws.title: len(ws._cells) - sizes[ws.title] for ws in wb.worksheets}
-    assert grown["개정이력"] == 0 and grown[IO_SHEET] < 2000 and grown[USAGE_SHEET] < 2000, grown
+    assert grown["개정이력"] == 0 and grown["선택지"] == 0 and grown[IO_SHEET] < 2000 and grown[USAGE_SHEET] < 2000, grown
     wb.close()
     t0 = time.perf_counter()
     res = _load(d, tmp_path).result
@@ -1509,6 +1680,20 @@ def test_review_name_cells_mask_person_like(tmp_path):
     assert len(cand) == 1 and PERSON_MASK in (cand[0]["툴A_표기"], cand[0]["툴B_표기"])
     assert "가나다" not in (out.out_dir / "tool_review.csv").read_text(encoding="utf-8-sig")
     assert not [c for c in out.log["tool_merge_candidates"] if "가나다" in json.dumps(c, ensure_ascii=False)]
+
+
+def test_review_partner_hint_keys_mask_person_like(tmp_path):
+    """연계 행 툴A_표기의 '비슷한 키' 힌트도 가린다 (apply-review 는 표기 칸을 읽지 않는다 — 2026-10-12 재검토 수리). '키는 공백·괄호가 빠져 인명
+    패턴에 거의 안 걸린다' 는 틀렸다 — tool_key 는 괄호·버전·공백만 지워 '가나다 책임 v2' 가 '가나다책임' 으로 남고 P2·P6 패턴에 걸린다."""
+    d = _copy(tmp_path)
+    _set_names(d / STR, {"STR-01": "가나다 책임 v2"})
+    _set_io_cells(d / STR, {("STR-02", "익형 형상"): {H_PARTNER: "가나다툴"}})
+    out = _load(d, tmp_path)
+    assert "가나다책임" in out.result.tools and Loader()._looks_person("가나다책임")
+    rows = [r for r in _review_rows(out) if r["사유"] == PARTNER and r["툴B_키"] == "가나다툴"]
+    assert len(rows) == 1 and rows[0]["툴A_키"] == ""
+    assert rows[0]["툴A_표기"] == f"(기존 툴이면 툴A_키에 그 툴 키를 적는다 — 비슷한 키: {PERSON_MASK} 0.67)"
+    assert "가나다책임" not in (out.out_dir / "tool_review.csv").read_text(encoding="utf-8-sig")
 
 
 # ---- E2. 검토표 CSV·수정 요청표의 엑셀 수식 방지 (docs/09 #25d)
@@ -1828,17 +2013,43 @@ def test_committed_registry_has_no_excel_damage():
     assert Registry(REGISTRY_DIR).notices == []
 
 
+BLANK_STATUS_TAIL = " — 활성으로 봄 (이번 적재에 없으면 폐기로 바뀐다; 손 편집으로 열이 빠졌는지 확인 — 저장할 때 상태를 채워 쓴다)"
+
+
 def test_registry_row_with_missing_columns_loads(tmp_path):
     """메모장 손 편집으로 꼬리 쉼표가 빠진 행('USE-000999,FLD-001,SAS-99') — csv 가 빠진 칸을 None 으로 채워 엑셀 손상 검사가 traceback 으로
-    적재를 멈췄다 (2026-10-12 검토 수리, 430b398 회귀). 빈칸으로 읽고 적재는 rc 0, 저장할 때 열을 채워 쓴다."""
+    적재를 멈췄다 (2026-10-12 검토 수리, 430b398 회귀). 빈칸으로 읽고 적재는 rc 0, 저장할 때 열을 채워 쓴다. 빈 상태는 활성으로 보고 알림 —
+    이번 적재에 없는 행이라 폐기로 저장된다 (2026-10-12 재검토 수리: 전에는 상태 '' 로 남아 되살림·폐기 판정 어디에도 걸리지 않았다)."""
     reg = copy_registry(REGISTRY_DIR, tmp_path / "registry")
     with (reg / "usages.csv").open("a", encoding="utf-8", newline="") as f:
         f.write("USE-000999,FLD-001,SAS-99\n")
     rg = Registry(reg)
-    assert rg.notices == [] and rg.id_of("usage", ("FLD-001", "SAS-99")) == "USE-000999"
+    assert rg.notices == [f"레지스트리 상태 칸 빈 행: usages.csv 1행 (USE-000999){BLANK_STATUS_TAIL}"]
+    assert rg.id_of("usage", ("FLD-001", "SAS-99")) == "USE-000999"
     rc = cli.main(["load", "--input", str(_copy(tmp_path)), "--registry", str(reg), "--out", str(tmp_path / "out"), "--no-shacl"])
     assert rc == 0
-    assert "USE-000999,FLD-001,SAS-99,,," in (reg / "usages.csv").read_text(encoding="utf-8-sig").splitlines()
+    assert "USE-000999,FLD-001,SAS-99,,폐기," in (reg / "usages.csv").read_text(encoding="utf-8-sig").splitlines()
+    assert Registry(reg).notices == []
+
+
+def test_registry_blank_status_tool_not_a_ghost(tmp_path):
+    """tools.csv 행의 상태 칸이 빠지면('TOOL-000001,catia,CATIA V5') — 활성으로 보고 알림, 이번 적재에 없으면 폐기 (그래프에 eg:status 폐기).
+    전에는 상태 '' 로 남아 폐기되지 않고, 그래프에 상태 없는 툴(= ifabsent 활성)로 써져 MCP·3D 지도에 활성 유령으로 나왔다 (2026-10-12 재검토 수리)."""
+    reg = copy_registry(REGISTRY_DIR, tmp_path / "registry")
+    path = reg / "tools.csv"
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    assert lines[1] == "TOOL-000001,catia,CATIA V5,활성,"
+    path.write_text("\n".join([lines[0], "TOOL-000001,catia,CATIA V5", *lines[2:]]) + "\n", encoding="utf-8-sig")
+    out = run_load(input_dir=_copy(tmp_path), registry_dir=reg, out_root=tmp_path / "out", shacl=False)   # 구조 파일만 — CATIA 없음
+    assert f"레지스트리 상태 칸 빈 행: tools.csv 1행 (TOOL-000001){BLANK_STATUS_TAIL}" in out.result.warnings
+    row = next(r for r in read_csv_rows(path)[0] if r["id"] == "TOOL-000001")
+    assert row["status"] == "폐기"
+    counts = out.log["registry"]["tool"]
+    assert sum(counts.values()) == len(read_csv_rows(path)[0])                              # 세 상태 어디에도 안 세이는 행이 없다
+    g = Graph().parse(data=out.turtle, format="turtle")
+    t = SchemaTerms.load()
+    tool = next(s for s in g.subjects(RDF.type, t.classes["Tool"]) if str(s).endswith("TOOL-000001"))
+    assert [str(o) for o in g.objects(tool, t.props["status"])] == ["폐기"]
 
 
 def test_copy_registry_skips_lock_and_temp_files(tmp_path):
@@ -1988,11 +2199,15 @@ def test_part_code_rename_supersedes_old_file(tmp_path):
     ("Tool조사_구조_20261012.xlsx", "Tool조사_STR_20261012.xlsx", "구조"),    # v1.1 정식 접두
     ("Tool조사_구조_20261012.xlsx", "SW조사_STR_20261012.xlsx", "구조"),      # 접두가 달라도 ('Tool' > 'SW')
     ("Tool조사_TMP1_20261012.xlsx", "Tool조사_STR_20261012.xlsx", "TMP1"),    # ASCII 끼리 ('TMP1' > 'STR')
-], ids=["sw-hangul", "tool-hangul", "mixed-prefix", "ascii"])
+    # 사본 번호는 꼬리를 뗀 이름이 같은 사본끼리만 — 옛 약칭 첨부를 두 번 받은 '(1)' 이 새 약칭 파일을 이기지 않는다 (2026-10-12 재검토 수리)
+    ("SW조사_구조_20261012 (1).xlsx", "SW조사_STR_20261012.xlsx", "구조"),
+    ("SW조사_구조_20261012.xlsx", "SW조사_STR_20261012 (1).xlsx", "구조"),
+    ("SW조사_구조_20261012 (2).xlsx", "SW조사_STR_20261012 (1).xlsx", "구조"),
+], ids=["sw-hangul", "tool-hangul", "mixed-prefix", "ascii", "old-copy", "new-copy", "both-copies"])
 def test_part_code_rename_same_date_new_name_wins(tmp_path, old_name, new_name, renamed_from):
-    """I33: 옛·새 약칭 파일의 날짜·사본 번호가 같으면 새 약칭 파일이 최신 — renamed_from 은 옛 약칭이 먼저 쓰였다는 뜻이라 같은 날 새 이름으로
+    """I33: 옛·새 약칭 파일의 날짜가 같으면 사본 번호와 무관하게 새 약칭 파일이 최신 — renamed_from 은 옛 약칭이 먼저 쓰였다는 뜻이라 같은 날 새 이름으로
     다시 보낸 파일이 나중 것이다 (2026-10-12 검토 수리: 파일명 사전순으로 갈려 고친 새 파일이 '재발송으로 대체' 로 버려지고, 남은 옛 파일에
-    '다음 회신부터 새 약칭 파일명으로' 경고가 붙었다)."""
+    '다음 회신부터 새 약칭 파일명으로' 경고가 붙었다; 재검토 수리: 비교 키가 (날짜, 사본 번호, …) 라 옛 약칭 '(1)' 사본이 같은 증상을 냈다)."""
     cfg = _parts_cfg(tmp_path, "tie", {"STR": {**STR_PART, "renamed_from": [renamed_from]}},
                      drop_synthetic=(renamed_from,) if renamed_from == "구조" else ())
     survey = _survey(tmp_path, "s", {old_name: STR, new_name: STR})
@@ -2002,6 +2217,18 @@ def test_part_code_rename_same_date_new_name_wins(tmp_path, old_name, new_name, 
     assert _wt(out, "재발송으로 대체") == [f"재발송으로 대체: {old_name} → {new_name} (적재 안 함)"]
     assert not _wt(out, OLD_NAME_W)
     assert "가상-고친툴" in out.turtle and {u.field for u in out.result.usages} == {"STR"}
+
+
+def test_copy_number_orders_only_same_name_copies(tmp_path):
+    """I33: 사본 번호는 꼬리를 뗀 이름이 같은 파일끼리만 순서를 정한다 — 같은 날짜 v1.0 'SW조사_…(2)' 와 v1.1 'Tool조사_…' 는 사본 번호가 아니라
+    이름(꼬리 뗀)으로 갈리고(사본 규칙 전과 같다), 같은 이름의 사본끼리는 번호가 큰 쪽 (2026-10-12 재검토 수리)."""
+    survey = tmp_path / "survey"
+    _place(survey, STR, "SW조사_구조_20260924 (2).xlsx")
+    _set_names(_place(survey, STR, "Tool조사_구조_20260924.xlsx"), {"STR-01": "가상-v11툴"})
+    _set_names(_place(survey, STR, "Tool조사_구조_20260924 (1).xlsx"), {"STR-01": "가상-v11사본툴"})
+    out = _load(survey, tmp_path)
+    assert [f.name for f in out.result.loaded_files] == ["Tool조사_구조_20260924 (1).xlsx"]
+    assert "가상-v11사본툴" in out.turtle and "가상-v11툴" not in out.turtle
 
 
 def test_part_code_rename_keeps_generic_tool_ids(tmp_path):

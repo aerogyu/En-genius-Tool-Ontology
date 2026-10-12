@@ -10,6 +10,8 @@
 - 통합됨 행은 '본 것' 으로 치지 않는다 — 이번 적재의 미사용 행으로 돌아가 survey 그래프에 통합됨 상태·merged_into 로 계속 쓰인다 (#12).
 - 레지스트리는 데이터 옆에 둔다: data/synthetic/registry/, 사내는 data/real/registry/. 합성용을 실데이터에 쓰지 않는다.
 - CSV 는 utf-8-sig 로 쓰고, 읽을 때는 utf-8-sig → cp949 순으로 시도한다 (#15 — 엑셀로 저장한 사본 대비). 저장은 늘 utf-8-sig.
+  열이 모자란 행(메모장 손 편집)은 빈칸으로 읽고, 상태 칸이 비면 활성으로 본다 + 알림 '레지스트리 상태 칸 빈 행' (ID 만 — 빈 상태는
+  되살림·폐기 판정 어디에도 걸리지 않아 그래프에 상태 없는 활성 유령으로 남았다, 2026-10-12 재검토 수리).
 - 엑셀 손상 검사 (#15 (4), Leo 결정 2026-10-12): 레지스트리 CSV 를 엑셀로 열어 저장하면 Tool ID 칸이 바뀐다 ('3-1'→'03월 01일', '01'→'1').
   툴사용 행의 라벨은 '<파트 이름> <Tool ID>[ (<구분>)]' 이라(rdf_writer) 라벨 끝이 키와 같아야 한다 — 다르고 그 차이가 엑셀 변환으로 정확히
   설명되면(excel_explains) 키를 라벨 끝 값으로 되살리고 알림 '레지스트리 엑셀 손상 복원', 설명되지 않으면 알림 '레지스트리 엑셀 손상 의심' 만
@@ -115,6 +117,11 @@ def excel_explains(original: str, current: str) -> bool:
     if current in {f"{mo:02d}월 {d:02d}일", f"{mo}월 {d}일", f"{d}-{mon}", f"{d:02d}-{mon}"}:
         return True
     return bool(re.fullmatch(rf"\d{{4}}-{mo:02d}-{d:02d}(?:\s0?0:00(?::00)?)?|0?{mo}/0?{d}/\d{{2,4}}|\d{{4}}/0?{mo}/0?{d}", current))
+
+
+def _ids(rows: list[str]) -> str:
+    """알림에 인용할 ID 목록 — 앞 5개 + ' 외 n' (ID 만 — 값 없음)."""
+    return ", ".join(rows[:5]) + (f" 외 {len(rows) - 5}" if len(rows) > 5 else "")
 
 
 def _label_ok(label: str, key: str) -> bool:
@@ -229,11 +236,18 @@ class Registry:
                 t.rows, enc = read_csv_rows(p)
                 if enc != "utf-8-sig":
                     self.notices.append(f"레지스트리 CSV 를 {enc} 로 읽음: {p.name} — 저장할 때 utf-8-sig 로 되돌린다 (#15)")
+                blank_status = []
                 for r in t.rows:
                     r.setdefault("merged_into", "")
                     for k, v in list(r.items()):          # 열이 모자란 행(메모장 손 편집에서 꼬리 쉼표가 빠짐) — csv 가 None 으로 채운다
                         if v is None:
                             r[k] = ""
+                    if not (r.get("status") or "").strip():   # 상태 칸이 빈 행 — 활성으로 본다 (빈 상태로 두면 assign·폐기 판정 어디에도
+                        r["status"] = ACTIVE                  # 걸리지 않아 영영 그 상태로 남고, 그래프에는 상태 없는 툴 = 활성 유령이 된다)
+                        blank_status.append(r.get("id") or "?")
+                if blank_status:
+                    self.notices.append(f"레지스트리 상태 칸 빈 행: {p.name} {len(blank_status)}행 ({_ids(blank_status)}) — 활성으로 봄 "
+                                        "(이번 적재에 없으면 폐기로 바뀐다; 손 편집으로 열이 빠졌는지 확인 — 저장할 때 상태를 채워 쓴다)")
         self._check_excel_damage()
 
     def _check_excel_damage(self) -> None:
@@ -242,9 +256,7 @@ class Registry:
         툴사용: 라벨 끝이 키와 맞지 않으면(_label_ok) 라벨의 공백 뒤 꼬리 가운데 엑셀 변환으로 지금 키가 정확히 설명되는 것(excel_explains)이
         하나뿐이고 같은 (분야 ID, 그 값) 행이 따로 없을 때만 키를 그 값으로 되살린다 — 손상된 채 적재하면 그 툴사용·입출력이 새 ID 를 받고 옛 ID 가
         폐기되기 때문 (저장은 적재 끝의 save). 분야·툴·분류: 키가 엑셀 날짜 모양(DATE_SHAPE)이면 의심 알림만."""
-        def ids(rows: list[str]) -> str:
-            return ", ".join(rows[:5]) + (f" 외 {len(rows) - 5}" if len(rows) > 5 else "")
-
+        ids = _ids
         t = self.tables["usage"]
         keys = {(r.get("field_id", ""), r.get("source_key", "")) for r in t.rows}
         restored, suspect = [], []

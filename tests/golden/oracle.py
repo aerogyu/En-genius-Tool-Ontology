@@ -91,6 +91,7 @@ IO_KEYS = {
     "path": ("저장 위치/경로", None, False), "grade": ("보안등급", "보안등급", False), "note": ("비고", None, False),
 }
 INT_SLOTS = {"users", "qty"}
+USAGE_START_ROW, IO_START_ROW = 5, 7    # 응답 첫 행 — 양식 예시는 SW기본정보 4행·SW입출력 4~6행 (명세 io_start_row 로 덮어쓰기). 경고의 'n행' 용
 FREE_TEXT = {"detail", "task", "auto_detail", "wish", "pain", "roadmap", "note"}   # [D6] 인명 패턴 검사 대상
 DIRECTION = {"in": "입력(소비)", "out": "출력(생산)"}
 IGNORED_HEADERS = {"SW명(자동)", "실무 문의처(선택)"}                               # 의도적 제외 열 (경고 아님)
@@ -493,6 +494,21 @@ def cell_to_text(key: str, value, where: str, warnings: list, counts: Counter | 
     return value
 
 
+def person_like(k: str, val) -> bool:
+    """[D6·I29] 자유 텍스트 열은 직급+'(내선', 모든 문자열 열은 승인 목록 — 정수 열(users·qty)의 변환 못 한 문자열도 문자열 열이다."""
+    return isinstance(val, str) and bool(val.strip()) and bool(
+        (k in FREE_TEXT and PERSON_PATTERN.search(val)) or any(p.search(val) for p in PERSON_PATTERNS_ALL))
+
+
+def check_excluded_person(keys: dict, v: dict, where: str, warnings: list) -> None:
+    """[I22·I29] SW ID 가 없어 건너뛰는 내용 행도 인명 검사 — 걸린 칸마다 '인명 유사 패턴: <파일> <시트> <n>행 (Tool ID 없음) '<열>''
+    (값·ID 없이 행 번호로; 2026-10-12 재검토 — 수정 요청은 'Tool ID 없음' 대신 '인명 유사', 참조 계산은 경고만 본다)."""
+    for k, (header, _lst, _required) in keys.items():
+        val = DIRECTION.get(v.get(k), v.get(k)) if k == "dir" else v.get(k)
+        if person_like(k, val):
+            warnings.append(f"인명 유사 패턴: {where} '{header}'")
+
+
 def check_row(keys: dict, v: dict, choices: dict, where: str, warnings: list, sheet: str, counts: Counter | None = None) -> None:
     for k, (header, lst, required) in keys.items():
         val = v.get(k)
@@ -507,8 +523,7 @@ def check_row(keys: dict, v: dict, choices: dict, where: str, warnings: list, sh
                     counts["na_choice"] += 1
             else:
                 warnings.append(f"선택지 밖 값: {where} '{header}' = '{val}'")
-        if isinstance(val, str) and val.strip() and (
-                (k in FREE_TEXT and PERSON_PATTERN.search(val)) or any(p.search(val) for p in PERSON_PATTERNS_ALL)):
+        if person_like(k, val):
             warnings.append(f"인명 유사 패턴: {where} '{header}'")
 
 
@@ -541,7 +556,8 @@ def compute(spec: dict, repo: Path) -> dict:
     by_file_key: dict[tuple[str, str], Usage] = {}
     raw_ios = []
 
-    # 재발송 [I33]: 파일명의 분야가 같은 파일 중 (날짜, 파일명) 이 가장 늦은 것만 적재한다
+    # 재발송 [I33]: 파일명의 분야가 같은 파일 중 (날짜, 파일명) 이 가장 늦은 것만 적재한다 — 명세에는 사본 '(n)'·옛 약칭(renamed_from) 파일이 없어
+    # 그 두 조각(새 약칭 파일명인가 → 사본 꼬리를 뗀 이름 → 사본 번호)은 넣지 않는다 (적재기 시험: tests/test_loader_m31_3.py B·F절)
     def fname_of(f):
         return spec["file_name"].format(field=f["field"], date=f.get("file_date", spec["file_date"]))
 
@@ -585,11 +601,18 @@ def compute(spec: dict, repo: Path) -> dict:
         # [I15 개정] 예시와 거의 같은 행(경고·중복 교체·설정 점검)은 명세에 없다 — 합성 응답의 최고 유사도가 기본정보 19/30·입출력 4/7 이라
         # 경고 0. 판별식은 example_similarity·example_near 로 따로 구현해 적재기와 단위 테스트로 대조한다 (tests/test_loader_m31_3.py C절).
         stats["excluded"] += 1 + (1 if f.get("io_start_row") == 5 else 3)
-        for u in f["usages"]:
+        for n, u in enumerate(f["usages"], start=USAGE_START_ROW):      # n = 엑셀 행 번호 (빈 행·예시 사본도 한 행씩)
+            if u.get("blank"):
+                continue
             if u.get("example_copy"):
                 stats["excluded"] += 1
                 continue
             v = {**du, "field_cell": ff, **u}
+            if v.get("sw_id") in (None, ""):                             # [I22] 기본정보는 이어받지 않는다 — 건너뛰고 경고 + 인명 검사 [I29]
+                warnings.append(f"SW ID 없는 내용 행: {fname} SW기본정보 '{v.get('name') or ''}' — 건너뜀")
+                check_excluded_person(USAGE_KEYS, v, f"{fname} SW기본정보 {n}행 (Tool ID 없음)", warnings)
+                stats["excluded"] += 1
+                continue
             where = f"{fname} SW기본정보 {v.get('sw_id')}"
             for k in list(v):
                 if k in USAGE_KEYS:
@@ -612,15 +635,16 @@ def compute(spec: dict, repo: Path) -> dict:
             stats["usage_rows"] += 1
 
         prev_id = None                                                 # [I22] 바로 위 행(빈 행 없이 붙은)의 SW ID
-        for r in f["ios"]:
+        for n, r in enumerate(f["ios"], start=f.get("io_start_row", IO_START_ROW)):
             if r.get("blank") or r.get("example_copy"):
                 prev_id = None
                 continue
             if r.get("sw_id") in (None, "") and IO_ID_FILL_DOWN and prev_id is not None:
                 r = {**r, "sw_id": prev_id}
                 warnings.append(f"Tool ID 이어받음: {fname} SW입출력 '{r.get('name')}' → '{prev_id}' (바로 위 행)")
-            if r.get("sw_id") in (None, ""):                           # [I22]
+            if r.get("sw_id") in (None, ""):                           # [I22] + 인명 검사 [I29]
                 warnings.append(f"SW ID 없는 내용 행: {fname} SW입출력 '{r.get('name')}' — 건너뜀")
+                check_excluded_person(IO_KEYS, {**di, **r}, f"{fname} SW입출력 {n}행 (Tool ID 없음)", warnings)
                 stats["excluded"] += 1
                 prev_id = None
                 continue
