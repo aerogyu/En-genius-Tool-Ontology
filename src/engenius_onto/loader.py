@@ -8,7 +8,8 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
 - 파트(Field) = 파일명의 약칭 (docs/10 5장). 묶음 파일(MD = MDT+MDC)은 행의 Tool ID 앞부분으로 나눈다 (config/parts.yaml).
   행의 '담당 부서' 는 분류 속성 reported_domain — 파트 설정과 다르면 경고만.
 - 예시 행은 위치가 아니라 적재 열 전체가 템플릿 예시와 같은지로 판별 (I15) — config/template_examples.yaml.
-- 같은 파트 파일이 여럿이면 (날짜, 파일명) 최신 1개만 적재 (I33).
+- 같은 파트 파일이 여럿이면 (날짜, 사본 번호 '(n)', 파일명) 최신 1개만 적재하고, 그 뒤 같은 내용(sha256) 파일은 한 번만 (I31·I33).
+- 파일 간 같은 (파트, Tool ID) 는 둘 다 적재하고 경고 — 전용 파일이 아닌 쪽 레지스트리 키에 구분 꼬리 '@<약칭|file-sha10>' (I36, docs/09 #1).
 - 어떤 행도 조용히 버리지 않는다 — 제외는 사유와 함께 excluded_rows, 문제는 warnings (5장 6). 행 단위 문제는 issues 에도
   구조화해 남겨 파트별 수정 요청표(fix_requests)를 만든다 (M3.1).
 - 인명 열(실무 문의처)은 읽지 않는다 (CLAUDE.md 절대 규칙 5). 인명 유사 패턴은 경고만 하고 경고에 값을 옮기지 않는다 (D6, #20).
@@ -58,6 +59,7 @@ class UsageRec:
     part: str | None = None          # 파트 약칭 = Field 키 (v0.3: 파일명에서, 묶음 파일은 Tool ID 앞부분에서)
     tool_key: str = ""
     node_id: str = ""                # 레지스트리 USE ID (rdf_writer 가 채움)
+    reg_tag: str = ""                # 파일 간 같은 (파트, Tool ID) 의 구분 꼬리 — 파일 약칭 또는 'file-<sha256 앞 10자>' (I36, 충돌 때만)
 
     @property
     def sw_id(self) -> str:
@@ -68,8 +70,13 @@ class UsageRec:
         return self.part or ""
 
     @property
+    def reg_key(self) -> str:
+        """레지스트리 USE 키의 Tool ID 부분 — 충돌로 구분 꼬리가 붙은 행만 '<Tool ID>@<구분>' (I36). 파일명은 쓰지 않는다 (C4)."""
+        return self.sw_id + (f"@{self.reg_tag}" if self.reg_tag else "")
+
+    @property
     def key(self) -> str:
-        return f"{self.field}/{self.sw_id}"
+        return f"{self.field}/{self.reg_key}"
 
 
 @dataclass
@@ -104,7 +111,7 @@ class IORec:
 
     @property
     def base_key(self) -> str:
-        owner = self.owner.key if self.owner else f"{self.file_field}/{self.sw_id}(고아)"
+        owner = self.owner.key if self.owner else f"{self.file_field or '(파트 미상)'}/{self.sw_id}(고아)"
         return f"{owner}/{self.direction_short}/{self.name}"
 
     @property
@@ -156,8 +163,12 @@ class FileReport:
     io_rows: int = 0
     excluded: int = 0
     warnings: int = 0
+    copy: int = 0                    # 파일명 사본 번호 '(n)' — 없으면 0 (I31·I33)
+    index: int = 0                   # 입력 폴더 정렬 순번 (1부터) — 해시 이름 파일을 사람이 찾게 (#8)
+    duplicate_of: str | None = None  # 같은 내용(sha256) 파일이라 적재하지 않음 — 남긴 파일의 기록 이름 (I33)
 
     def stats(self) -> dict:
+        """골든 per_file 과 dict 전체를 비교한다 — 키를 더하지 않는다 (copy·index·duplicate_of 는 load_log files[] 에만)."""
         return {"usage_rows": self.usage_rows, "io_rows": self.io_rows, "excluded": self.excluded,
                 "warnings": self.warnings, "superseded": self.superseded_by is not None}
 
@@ -178,7 +189,7 @@ class LoadResult:
 
     @property
     def loaded_files(self) -> list[FileReport]:
-        return [f for f in self.files if f.superseded_by is None and f.unreadable is None]
+        return [f for f in self.files if f.superseded_by is None and f.unreadable is None and f.duplicate_of is None]
 
     @property
     def complete(self) -> bool:
@@ -304,16 +315,28 @@ class Loader:
         return sorted(p for p in Path(data_dir).iterdir()
                       if p.is_file() and p.suffix.lower() in EXCEL_SUFFIXES and not p.name.startswith("~$"))
 
-    def parse_name(self, name: str) -> tuple[str | None, str | None]:
+    def parse_name(self, name: str) -> tuple[str | None, str | None, int]:
+        """(약칭, 날짜, 사본 번호). 사본 꼬리 '(n)' 이 없거나 정규식에 copy 그룹이 없으면(옛 오버레이) 사본 번호 0 (I31)."""
         m = re.match(self.lcfg["file_name_regex"], unicodedata.normalize("NFC", name))
-        return (m.group("field"), m.group("date")) if m else (None, None)
+        if not m:
+            return None, None, 0
+        return m.group("field"), m.group("date"), int(m.groupdict().get("copy") or 0)
 
-    def file_label(self, name: str, sha: str) -> tuple[str, str | None, str | None]:
-        """(기록용 이름, 약칭, 날짜). 규칙 밖이거나 모르는 약칭이면 해시 이름 — 인명이 섞였을 수 있는 원래 이름은 남기지 않는다 (#8)."""
-        code, date = self.parse_name(name)
-        if code is not None and code in self.known_codes and Path(name).suffix == ".xlsx":
-            return unicodedata.normalize("NFC", name), code, date
-        return f"Tool조사_규칙밖_{sha[:10]}{Path(name).suffix.lower()}", None, None
+    def file_label(self, name: str, sha: str, used: set[str] | None = None) -> tuple[str, str | None, str | None, int]:
+        """(기록용 이름, 약칭, 날짜, 사본 번호). 규칙 밖이거나 모르는 약칭이면 해시 이름 — 인명이 섞였을 수 있는 원래 이름은 남기지 않는다 (#8).
+        used: 이번 실행에서 이미 쓴 기록 이름 — 해시 이름이 겹치면(같은 내용 사본) '-2'·'-3' 을 붙인다 (I31; 날짜 8자리 조건 때문에
+        유일화한 이름도 파일명 규칙에 맞지 않는다). 규칙 안 이름이 겹치는 것(NFC 로 같아지는 두 이름)도 해시 이름으로 돌린다."""
+        used = used if used is not None else set()
+        code, date, copy = self.parse_name(name)
+        label = unicodedata.normalize("NFC", name)
+        if code is not None and code in self.known_codes and Path(name).suffix == ".xlsx" and label not in used:
+            return label, code, date, copy
+        stem, suffix, n = f"Tool조사_규칙밖_{sha[:10]}", Path(name).suffix.lower(), 1
+        label = stem + suffix
+        while label in used:
+            n += 1
+            label = f"{stem}-{n}{suffix}"
+        return label, None, None, 0
 
     def load(self, paths: list[Path], known_tool_keys: set[str] | None = None) -> LoadResult:
         """known_tool_keys: 레지스트리의 활성 툴 키 집합 (run_load 가 넘긴다) — 제조사 접두 흡수의 생존 키 선택에 쓴다
@@ -321,17 +344,19 @@ class Loader:
         warnings: list[str] = []
         self.issues: list[dict] = []
         self.known_tool_keys = set(known_tool_keys or ())
-        reports = []
-        for p in paths:
+        reports: list[FileReport] = []
+        used: set[str] = set()
+        for idx, p in enumerate(paths, start=1):
             sha = hashlib.sha256(p.read_bytes()).hexdigest()
-            label, code, date = self.file_label(p.name, sha)
-            reports.append(FileReport(label, sha, code, date, path=p))
-        # 재발송 (I33): 같은 파트는 (날짜, 파일명) 최신만
+            label, code, date, copy = self.file_label(p.name, sha, used)
+            used.add(label)
+            reports.append(FileReport(label, sha, code, date, path=p, copy=copy, index=idx))
+        # 재발송 (I33): 같은 파트는 (날짜, 사본 번호, 파일명) 최신만 — 같은 날짜면 브라우저 사본 '(n)' 의 번호가 큰 쪽(나중에 받은 파일)
         latest: dict[str, FileReport] = {}
         for r in reports:
             if r.field is None:
                 continue
-            if r.field not in latest or (r.date, r.name) > (latest[r.field].date, latest[r.field].name):
+            if r.field not in latest or (r.date, r.copy, r.name) > (latest[r.field].date, latest[r.field].copy, latest[r.field].name):
                 latest[r.field] = r
         for r in reports:
             if r.field is None:
@@ -340,28 +365,101 @@ class Loader:
                 r.warnings += 1
             elif latest[r.field] is not r:
                 r.superseded_by = latest[r.field].name
-                warnings.append(f"재발송으로 대체: {r.name} → {r.superseded_by} (적재 안 함)")
+                same = " (내용 같음)" if r.sha256 == latest[r.field].sha256 else ""
+                warnings.append(f"재발송으로 대체: {r.name} → {r.superseded_by} (적재 안 함){same}")
                 r.warnings += 1
+        self._same_content(reports, warnings)
 
         usages: list[UsageRec] = []
         ios: list[IORec] = []
         excluded: list[dict] = []
         for rep in reports:
-            if rep.superseded_by:
+            if rep.superseded_by or rep.duplicate_of:
                 continue
             u, i = self._load_file(rep, warnings, excluded)
             usages += u
             ios += i
 
+        by_name = {r.name: r for r in reports}
+        self._cross_file(usages, by_name, warnings)
         alias_map, alias_labels = self._alias_map(warnings)
-        tools = self._group_tools(usages, alias_map, alias_labels, {r.name: r for r in reports}, warnings)
+        tools = self._group_tools(usages, alias_map, alias_labels, by_name, warnings)
         self._resolve_partners(ios, usages, tools, alias_map, warnings)
-        self._disambiguate(ios, {r.name: r for r in reports}, warnings)
+        self._disambiguate(ios, by_name, warnings)
         candidates = self._candidates(tools)
         conflicts = self._conflicts(tools)
         labels = {u.field: self.part_label(u.field) for u in usages if u.field}
         return LoadResult(reports, usages, ios, tools, warnings, excluded, candidates, conflicts, alias_map,
                           self.issues, labels)
+
+    def _same_content(self, reports: list[FileReport], warnings: list) -> None:
+        """I33 뒤에: 대체되지 않은 파일 가운데 내용(sha256)이 같은 파일은 한 번만 적재한다 — 규칙 안 파일 우선, 다음 입력 순서.
+        나머지는 duplicate_of + 경고 '같은 내용 파일' (제외 건수에 넣지 않는다 — I33 과 같은 원칙). 같은 날짜 '(n)' 사본처럼 규칙 안
+        같은 약칭이면 이미 I33 이 '(내용 같음)' 으로 처리했다. 두 규칙 안 파일의 약칭이 다르면 어느 파트 파일인지 확인을 덧붙인다."""
+        groups: dict[str, list[FileReport]] = defaultdict(list)
+        for r in reports:
+            if r.superseded_by is None:
+                groups[r.sha256].append(r)
+        for group in groups.values():
+            if len(group) < 2:
+                continue
+            keep = min(group, key=lambda r: (r.field is None, r.index))
+            for r in group:
+                if r is keep:
+                    continue
+                r.duplicate_of = keep.name
+                note = " — 약칭이 다르다, 어느 파트 파일인지 확인" if r.field is not None and keep.field is not None else ""
+                warnings.append(f"같은 내용 파일: {r.name} = {keep.name} (한 번만 적재){note}")
+                r.warnings += 1
+
+    def _cross_file(self, usages: list[UsageRec], by_name: dict[str, FileReport], warnings: list) -> None:
+        """파일 간 같은 (파트, Tool ID) (I36, docs/09 #1 (a)) — 묶음 파일 + 분할 전용 파일, 규칙 밖 파일끼리 등. 둘 다 적재하고 경고한다.
+
+        같은 (파트, id_key(Tool ID)) 가 두 파일 이상에 나오면: 전용 파일(파일 약칭 = 행의 파트) 행이 정확히 하나면 그 행만 원래 키를 쓰고,
+        원문 Tool ID 가 실제로 겹치는(레지스트리 키가 같아지는) 나머지 행에 구분 꼬리 reg_tag 를 붙인다 — 규칙 안 파일은 그 파일 약칭
+        (parts.yaml 에 있는 값), 규칙 밖 파일은 'file-<sha256 앞 10자>'. 원래 파일명은 꼬리에도 해시 입력에도 쓰지 않는다 (C4).
+        표기만 다른 것('MDA-01'/'MDA-1')은 키가 이미 달라 경고만. 경고는 (파트, 파일 쌍)마다 한 줄 (Tool ID 는 _q 로 인용).
+        더해서 규칙 밖 파일의 Tool ID 가 규칙 안 파일과 겹치면 경고 (이름이 틀린 재발송·사본 의심 — 둘 다 적재)."""
+        groups: dict[tuple[str, str], list[UsageRec]] = defaultdict(list)
+        for u in usages:
+            groups[(u.field, id_key(u.sw_id))].append(u)
+        pairs: dict[tuple[str, str, str], dict] = {}
+        for (part, _k), us in sorted(groups.items(), key=lambda kv: kv[0]):
+            files = sorted({u.file for u in us})
+            if len(files) < 2:
+                continue
+            homes = [u for u in us if part and by_name[u.file].field == part]
+            home = homes[0] if len(homes) == 1 else None
+            raw = Counter(u.sw_id for u in us)
+            for u in us:
+                if u is not home and raw[u.sw_id] >= 2:
+                    rep = by_name[u.file]
+                    u.reg_tag = rep.field if rep.field is not None else f"file-{rep.sha256[:10]}"
+            for fa, fb in combinations(files, 2):
+                e = pairs.setdefault((part, fa, fb), {"ids": [], "tags": set()})
+                e["ids"].append("=".join(sorted({u.sw_id for u in us if u.file in (fa, fb)})))
+                e["tags"] |= {(u.file, u.reg_tag) for u in us if u.file in (fa, fb) and u.reg_tag}
+        for (part, fa, fb), e in sorted(pairs.items()):
+            ids = e["ids"]
+            msg = (f"파일 간 같은 (파트, Tool ID): {part or '(파트 미상)'} — {fa} ↔ {fb} {len(ids)}건 "
+                   f"(예: {', '.join(self._q(x) for x in ids[:3])}) — 둘 다 적재")
+            if e["tags"]:
+                msg += ", 구분 키 " + ", ".join(f"{f} 쪽 '@{t}'" for f, t in sorted(e["tags"]))
+            else:
+                msg += " (Tool ID 표기가 달라 키는 이미 다름)"
+            warnings.append(msg)
+            by_name[fa].warnings += 1
+            by_name[fb].warnings += 1
+        ids_by_file: dict[str, set[str]] = defaultdict(set)
+        for u in usages:
+            ids_by_file[u.file].add(id_key(u.sw_id))
+        for off in sorted(f for f in ids_by_file if by_name[f].field is None):
+            for other in sorted(f for f in ids_by_file if by_name[f].field is not None):
+                n = len(ids_by_file[off] & ids_by_file[other])
+                if n:
+                    warnings.append(f"규칙 밖 파일의 Tool ID 가 다른 파일과 겹침: {off} ↔ {other} {n}개 — "
+                                    "재발송·사본이면 파일명을 규칙대로 고치세요 (둘 다 적재)")
+                    by_name[off].warnings += 1
 
     def _issue(self, rep: FileReport, sheet: str, row: int | None, tool_id, header: str | None, value, kind: str,
                hint: str) -> None:
@@ -832,7 +930,7 @@ class Loader:
         for u in usages:
             k = self.norm.tool_key(u.v.get("reported_tool_name"), u.v.get("reported_vendor"))
             if self.norm.is_generic_key(k):
-                k = f"{GENERIC_KEY_PREFIX}{u.field}/{u.sw_id}"
+                k = f"{GENERIC_KEY_PREFIX}{u.field}/{u.reg_key}"          # 파일 간 충돌 행은 구분 꼬리까지 (I34·I36)
                 warnings.append(f"툴 이름 범용/비어 있음: {u.file} {u.sw_id} — 통합하지 않고 행별 툴로 둠 (툴 이름 요청)")
                 rep = (reports or {}).get(u.file)
                 if rep is not None:

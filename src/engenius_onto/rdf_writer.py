@@ -133,8 +133,8 @@ class SurveyWriter:
             if x.category and x.category not in cat:
                 cat[x.category] = reg.assign("category", x.category, x.category)
         use = {}
-        for u in res.usages:
-            use[id(u)] = reg.assign("usage", (fld.get(u.field, ""), u.sw_id), f"{u.field} {u.sw_id}")
+        for u in res.usages:   # 파일 간 같은 (파트, Tool ID) 는 구분 꼬리까지 키로 (I36) — 꼬리 없는 행은 키 그대로라 USE ID 불변
+            use[id(u)] = reg.assign("usage", (fld.get(u.field, ""), u.reg_key), f"{u.field} {u.sw_id}" + (f" ({u.reg_tag})" if u.reg_tag else ""))
         unused = reg.finalize(retire)
 
         for code, fid in fld.items():
@@ -170,7 +170,8 @@ class SurveyWriter:
 
     def _usage(self, u: UsageRec, uid: str, fld: dict, tool: dict, loads: dict) -> None:
         v = u.v
-        s = self.typed(uid, "ToolUsage", f"{nfc_strip(v.get('reported_tool_name'))} ({u.field} {u.sw_id})")
+        tag = f" @{u.reg_tag}" if u.reg_tag else ""
+        s = self.typed(uid, "ToolUsage", f"{nfc_strip(v.get('reported_tool_name'))} ({u.field} {u.sw_id}{tag})")
         u.node_id = uid
         self.add(s, "usage_tool", self.node(tool[u.tool_key]))
         if u.field in fld:

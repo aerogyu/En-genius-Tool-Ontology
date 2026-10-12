@@ -139,6 +139,56 @@ def _id_norm(s) -> str:
     return re.sub(r"-0+(\d)", r"-\1", k)
 
 
+def cross_file_tags(usages: list, files: dict, warnings: list, per_file: dict | None = None) -> None:
+    """[I36] 파일 간 같은 (파트, SW ID) — 둘 다 적재하고 경고, 전용 파일이 아닌 쪽에 구분 꼬리 (적재기 Loader._cross_file 과 따로 구현).
+
+    files: 파일명 → (파일 약칭 | None(규칙 밖), sha256). 같은 (파트, _id_norm(SW ID)) 가 두 파일 이상이면 충돌.
+    전용 파일 = 파일 약칭이 그 행의 파트인 파일 — 그런 행이 정확히 하나면 그 행은 꼬리 없이, 원문 SW ID 가 겹치는 다른 행은
+    '@<파일 약칭>' (규칙 밖이면 '@file-<sha256 앞 10자>'). 표기만 다르면 꼬리 없이 경고만. 경고는 (파트, 파일 쌍)마다 한 줄.
+    규칙 밖 파일의 SW ID 가 규칙 안 파일과 겹치면 그 쌍마다 경고 (참조 계산의 명세 파일은 모두 규칙 안이라 골든에는 나오지 않는다).
+    참조 계산은 인명 가림(_q)을 따라 하지 않는다 — 명세에 인명 유사 SW ID 가 없다."""
+    per_file = per_file if per_file is not None else defaultdict(lambda: {"warnings": 0})
+    buckets: dict = defaultdict(list)
+    for u in usages:
+        buckets[(u.field, _id_norm(u.sw_id))].append(u)
+    notes: dict = {}
+    for part, norm_id in sorted(buckets):
+        group = buckets[(part, norm_id)]
+        fnames = sorted({u.file for u in group})
+        if len(fnames) == 1:
+            continue
+        home = [u for u in group if part != "" and files[u.file][0] == part]
+        keeper = home[0] if len(home) == 1 else None
+        for u in group:
+            if u is keeper or sum(1 for x in group if x.sw_id == u.sw_id) < 2:
+                continue
+            code, sha = files[u.file]
+            u.reg_tag = code if code is not None else "file-" + sha[:10]
+        for i, fa in enumerate(fnames):
+            for fb in fnames[i + 1:]:
+                ids, tags = notes.setdefault((part, fa, fb), ([], set()))
+                ids.append("=".join(sorted({x.sw_id for x in group if x.file in (fa, fb)})))
+                tags.update((x.file, x.reg_tag) for x in group if x.file in (fa, fb) and x.reg_tag)
+    for part, fa, fb in sorted(notes):
+        ids, tags = notes[(part, fa, fb)]
+        text = (f"파일 간 같은 (파트, Tool ID): {part or '(파트 미상)'} — {fa} ↔ {fb} {len(ids)}건 "
+                f"(예: {', '.join(ids[:3])}) — 둘 다 적재")
+        text += (", 구분 키 " + ", ".join(f"{f} 쪽 '@{t}'" for f, t in sorted(tags))) if tags else " (Tool ID 표기가 달라 키는 이미 다름)"
+        warnings.append(text)
+        per_file[fa]["warnings"] += 1
+        per_file[fb]["warnings"] += 1
+    ids_of: dict = defaultdict(set)
+    for u in usages:
+        ids_of[u.file].add(_id_norm(u.sw_id))
+    for off in sorted(f for f in ids_of if files[f][0] is None):
+        for other in sorted(f for f in ids_of if files[f][0] is not None):
+            common = ids_of[off] & ids_of[other]
+            if common:
+                warnings.append(f"규칙 밖 파일의 Tool ID 가 다른 파일과 겹침: {off} ↔ {other} {len(common)}개 — "
+                                "재발송·사본이면 파일명을 규칙대로 고치세요 (둘 다 적재)")
+                per_file[off]["warnings"] += 1
+
+
 def split_partners(raw) -> list[str]:
     """[I17] NFKC 후 , ; / · ㆍ ・ 줄바꿈으로 나눈다. [I16] 빈 값 토큰·정규화 키가 빈 조각은 버린다. [I34] 범용 이름 조각도 버린다."""
     out = []
@@ -262,10 +312,15 @@ class Usage:
     users: object
     prio: str
     tool: str = ""
+    reg_tag: str = ""                # [I36] 파일 간 같은 (파트, SW ID) 의 구분 꼬리 (충돌 때만)
+
+    @property
+    def reg_key(self) -> str:
+        return f"{self.sw_id}@{self.reg_tag}" if self.reg_tag else self.sw_id
 
     @property
     def key(self) -> str:
-        return f"{self.field}/{self.sw_id}"
+        return f"{self.field}/{self.reg_key}"
 
     @property
     def automatable(self) -> bool:
@@ -298,7 +353,7 @@ class IO:
 
     @property
     def base_key(self) -> str:
-        owner = self.owner.key if self.owner else f"{self.file_field}/{self.sw_id}(고아)"
+        owner = self.owner.key if self.owner else f"{self.file_field or '(파트 미상)'}/{self.sw_id}(고아)"
         return f"{owner}/{self.direction}/{self.name}"
 
     @property
@@ -478,6 +533,9 @@ def compute(spec: dict, repo: Path) -> dict:
         stats["warnings"] = len(warnings) - w0
         per_file[fname] = stats
 
+    # [I36] 파일 간 같은 (파트, SW ID) — 명세 파일은 모두 규칙 안이고 적재 파일끼리 분야가 달라(I33) 골든에는 나오지 않는다
+    cross_file_tags(usages, {fname_of(f): (f["field"], "") for f in spec["files"]}, warnings, per_file)
+
     # 툴 — 정규화 키로 통합. [I34] 빈·범용 이름은 행별 키. [I1] 다른 행의 제조사 접두(범용 제조사 제외)를 떼면 기존 키와 같은 것은
     # 그 툴로 흡수 (Q3(a)) — 키 집합 위에서 쌍을 정하고 합집합으로 묶어 **그룹 단위**로 모든 행에 적용 (셋 이상이 얽혀도 쌍을 버리지
     # 않는다). 참조 계산은 레지스트리를 모르므로 생존 키는 늘 접두를 뗀 쪽 = 사슬의 끝 (명세에는 별칭이 없어 가장 짧은 키와 같다;
@@ -490,7 +548,7 @@ def compute(spec: dict, repo: Path) -> dict:
     for u in usages:
         u.tool = tool_key(u.name, u.vendor)
         if is_generic_key(u.tool):
-            u.tool = f"{GENERIC_PREFIX}{u.field}/{u.sw_id}"
+            u.tool = f"{GENERIC_PREFIX}{u.field}/{u.reg_key}"       # [I36] 파일 간 충돌 행은 구분 꼬리까지
     existing = {u.tool for u in usages}
     parent: dict[str, str] = {}
 

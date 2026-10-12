@@ -137,9 +137,9 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
         "rule_version": loader.rules.get("rule_version"),
         "input": data if input_dir is None else "custom",
         "config_overlay": _overlay_record(overlay_dir, loader.overlay_files),      # C15 — 폴더 경로·파일 이름만 (값 없음)
-        "files": [{"name": f.name, "sha256": f.sha256, "field": f.field, "date": f.date,
-                   "load_id": loads.get(f.name), "superseded_by": f.superseded_by, "unreadable": f.unreadable,
-                   **f.stats()} for f in res.files],
+        "files": [{"name": f.name, "index": f.index, "sha256": f.sha256, "field": f.field, "date": f.date, "copy": f.copy,
+                   "load_id": loads.get(f.name), "superseded_by": f.superseded_by, "duplicate_of": f.duplicate_of,
+                   "unreadable": f.unreadable, **f.stats()} for f in res.files],   # index = 입력 폴더 정렬 순번 (해시 이름 파일 찾기, #8)
         "counts": {"usages": len(res.usages), "io_specs": len(res.ios),
                    "orphan_io_specs": sum(1 for x in res.ios if x.owner is None), "tools": len(res.tools),
                    "fields": len({u.field for u in res.usages if u.field}),
@@ -311,8 +311,9 @@ def diag_text(run_dir: Path) -> str:
     lines = [f"[diag] 실행 {log['run_id']} · 설치 판 {ver} · 스키마 v{log['schema_version']} · 규칙 {log['rule_version']} · "
              f"완전 적재 {'예' if log.get('complete', True) else '아니오 (읽지 못한 파일 있음)'}",
              "설정 오버레이 사용: " + (f"예 ({', '.join(ov.get('files') or [])})" if ov.get("used") else "아니오"),
-             f"파일 {len(log['files'])} (적재 {sum(1 for f in log['files'] if not f['superseded'] and not f.get('unreadable'))}"
+             f"파일 {len(log['files'])} (적재 {sum(1 for f in log['files'] if _file_loaded(f))}"
              f" · 재발송 대체 {sum(1 for f in log['files'] if f['superseded'])}"
+             f" · 같은 내용 {sum(1 for f in log['files'] if f.get('duplicate_of'))}"
              f" · 읽지 못함 {sum(1 for f in log['files'] if f.get('unreadable'))})",
              f"툴사용 {c['usages']} · 입출력 {c['io_specs']} (고아 {c['orphan_io_specs']}) · 툴 {c['tools']} · 파트 {c['fields']} · "
              f"제외 행 {c['excluded_rows']} · 경고 {c['warnings']}", "", "경고 종류별 건수:"]
@@ -349,6 +350,11 @@ def diag_text(run_dir: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _file_loaded(f: dict) -> bool:
+    """load_log files[] 한 항목이 실제로 적재됐는가 — 재발송 대체·같은 내용·읽지 못함이 아님 (옛 로그에는 duplicate_of 가 없다)."""
+    return not f["superseded"] and not f.get("unreadable") and not f.get("duplicate_of")
+
+
 def _rel(p: Path) -> str:
     try:
         return str(Path(p).resolve().relative_to(REPO_ROOT)).replace("\\", "/")
@@ -371,7 +377,7 @@ def _overlay_record(overlay_dir: Path | None, files: list[str]) -> dict:
 def summary_lines(out: LoadOutput) -> list[str]:
     c, lg = out.log["counts"], out.log
     lines = [f"[적재] 실행 {out.run_id} → {_rel(out.out_dir)}",
-             f"  파일 {len(lg['files'])} (적재 {sum(1 for f in lg['files'] if not f['superseded'])}) · "
+             f"  파일 {len(lg['files'])} (적재 {sum(1 for f in lg['files'] if _file_loaded(f))}) · "
              f"툴사용 {c['usages']} · 입출력 {c['io_specs']} (고아 {c['orphan_io_specs']}) · 툴 {c['tools']} · "
              f"분야 {c['fields']} · 분류 {c['categories']}",
              f"  제외 행 {c['excluded_rows']} · 경고 {c['warnings']} · 행 단위 스키마 검증 {len(out.schema_issues)}건 · "

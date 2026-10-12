@@ -328,13 +328,17 @@ EXPECTED_ISSUES = {  # (골든 키, 슬롯) — 적재 경고와 같은 문제�
 
 def test_file_name_rule_accepts_both_prefixes():
     """I31: 정식 규칙 Tool조사_<부서>_<YYYYMMDD>.xlsx (양식 v1.1 B27) 와 옛 SW조사_ 접두어(v1.0 B26) 를 모두 읽고,
-    그 밖(구분자 추가·날짜 형식·소문자 접두어)은 분야 미상 (None, None)."""
+    그 밖(구분자 추가·날짜 형식·소문자 접두어)은 분야 미상 (None, None, 0). 브라우저 사본 꼬리 '(n)'(앞 공백 허용)은 사본 번호 (I31, 2026-10-12)."""
     ld = Loader()
-    assert ld.parse_name("Tool조사_2차유로(SAS)_20260928.xlsx") == ("2차유로(SAS)", "20260928")
-    assert ld.parse_name("SW조사_압축기_20260924.xlsx") == ("압축기", "20260924")
+    assert ld.parse_name("Tool조사_2차유로(SAS)_20260928.xlsx") == ("2차유로(SAS)", "20260928", 0)
+    assert ld.parse_name("SW조사_압축기_20260924.xlsx") == ("압축기", "20260924", 0)
+    assert ld.parse_name("Tool조사_2차유로(SAS)_20260928 (1).xlsx") == ("2차유로(SAS)", "20260928", 1)
+    assert ld.parse_name("Tool조사_압축기_20260928(12).xlsx") == ("압축기", "20260928", 12)
     for bad in ["Tool조사_압축기_홍OO_20260928.xlsx", "Tool조사_압축기.xlsx",
-                "Tool조사_압축기_2026-09-28.xlsx", "tool조사_압축기_20260928.xlsx", "Tool조사_압축기_20260928.xlsm"]:
-        assert ld.parse_name(bad) == (None, None), bad
+                "Tool조사_압축기_2026-09-28.xlsx", "tool조사_압축기_20260928.xlsx", "Tool조사_압축기_20260928.xlsm",
+                "Tool조사_압축기_20260928(최종).xlsx", "Tool조사_압축기_20260928 - 복사본.xlsx",
+                "Tool조사_압축기_20260928(1)(2).xlsx", "Tool조사_압축기_20260928_(1).xlsx"]:
+        assert ld.parse_name(bad) == (None, None, 0), bad
 
 
 def test_pydantic_row_issues(out):
