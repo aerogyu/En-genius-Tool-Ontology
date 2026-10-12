@@ -27,11 +27,14 @@ DATA_SETS = {  # --data 이름 → (조사 파일 폴더, 레지스트리 폴더
     "real": (REPO_ROOT / "data" / "real" / "survey", REPO_ROOT / "data" / "real" / "registry"),
 }
 REVIEW_COLUMNS = ["툴A_키", "툴A_표기", "툴B_키", "툴B_표기", "유사도", "사유", "판정(통합/별개)", "대표 이름(통합 시)"]
+PARTNER_REASON = "연계SW 미해석"      # 검토표 연계 행의 사유 (docs/09 #17) — 툴A = 기존 툴 키(제안 또는 빈칸), 툴B = 해석 못 한 연계 Tool명 키
+FORMULA_LEAD = "=+-@\t\r"           # CSV 칸이 이 글자로 시작하면 엑셀이 수식으로 읽는다 (docs/09 #25d, OWASP CSV injection)
 ALIASES_HEAD = (  # 오버레이 tool_aliases.yaml 을 처음 만들 때의 머리말 (사내 전용 파일 — 실 툴명이 든다, 밖으로 가져가지 않는다)
     "# 사내 툴 통합 판정 (apply-review 누적, docs/09 C15 오버레이) — config/tool_aliases.yaml 위에 덮인다. git 제외·반출 금지.\n"
     "# aliases: 대표 이름: [변형 표기]  ·  distinct: [[키 A, 키 B]]  ·  merge_pairs: [[키 A, 키 B]] (판정 이력, A 생존)\n"
     "# merge_keys: {키 B: 대표 키} (merge_pairs 에서 저장 때마다 다시 계산 — 손으로 고치려면 merge_pairs 를; 적재기도 merge_pairs 를 우선 읽는다)\n"
-    "# labels: {키: 대표 이름} (판정 당시의 대표 키에 둔다 — 그룹 이름은 적재기가 고른다)\n")
+    "# labels: {키: 대표 이름} (판정 당시의 대표 키에 둔다 — 그룹 이름은 적재기가 고른다)\n"
+    "# partner_missing: [연계 키] (검토표 '연계SW 미해석' 행을 툴A_키 빈칸 + 별개로 판정 = 기존 툴 아님 — 검토표에 다시 올리지 않고 조사 누락 후보로 남긴다)\n")
 
 
 @dataclass
@@ -78,13 +81,33 @@ def validate_rows(res: LoadResult, terms: SchemaTerms) -> list[dict]:
     return issues
 
 
+def _csv_safe(v) -> str:
+    """CSV 칸이 엑셀에서 수식으로 읽히지 않게 — = + - @ 탭·CR 로 시작하면 앞에 ' (docs/09 #25d; 엑셀 16 에서 그대로 저장돼 돌아오는 것 실측).
+    apply-review 는 대표 이름 앞의 이 ' 를 뗀다 (_review_cell)."""
+    v = "" if v is None else str(v)
+    return "'" + v if v and v[0] in FORMULA_LEAD else v
+
+
 def write_review(path: Path, res: LoadResult) -> None:
+    """툴 통합 검토표 (6.1-5). 통합 후보 행(I23·제조사 접두 보류) 뒤에 연계 행(사유 '연계SW 미해석', docs/09 #17 — Loader._partner_review).
+    연계 행: 툴A_키 = 기존 툴 키 제안(비슷한 툴이 뚜렷할 때만, 아니면 빈칸 + 툴A_표기에 비슷한 키 힌트), 툴B_키 = 해석 못 한 연계 키,
+    툴B_표기 = 언급 수·파트 (원문 partner_raw 는 쓰지 않는다). 표기 칸은 _csv_safe (엑셀 수식 방지)."""
     with path.open("w", encoding="utf-8-sig", newline="") as f:          # 엑셀에서 바로 열리도록 BOM
         w = csv.writer(f, lineterminator="\n")
         w.writerow(REVIEW_COLUMNS)
         for c in res.merge_candidates:
-            w.writerow([c["a"], " / ".join(c["names_a"]), c["b"], " / ".join(c["names_b"]),
+            w.writerow([_csv_safe(c["a"]), _csv_safe(" / ".join(c["names_a"])), _csv_safe(c["b"]), _csv_safe(" / ".join(c["names_b"])),
                         f"{c['similarity']:.3f}", c["reason"], "", ""])
+        for c in getattr(res, "partner_candidates", None) or []:
+            if c["a"]:
+                shown_a = " / ".join(c["names_a"])
+            elif c["hints"]:
+                shown_a = "(기존 툴이면 툴A_키에 그 툴 키를 적는다 — 비슷한 키: " + " · ".join(f"{t} {r:.2f}" for t, r in c["hints"]) + ")"
+            else:
+                shown_a = "(기존 툴이면 툴A_키에 그 툴 키를 적는다 — 아니면 비워 두고 별개)"
+            shown_b = f"(연계 Tool명 · 언급 {c['mentions']}회 · 파트 {'·'.join(c['fields']) or '미상'})"
+            w.writerow([_csv_safe(c["a"]), _csv_safe(shown_a), _csv_safe(c["b"]), _csv_safe(shown_b),
+                        f"{c['similarity']:.3f}" if c["similarity"] is not None else "", PARTNER_REASON, "", ""])
 
 
 def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_dir: Path | None = None,
@@ -121,12 +144,6 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
     ttl = writer.turtle()
     issues = validate_rows(res, terms)
 
-    unresolved: dict[str, dict] = {}
-    for x in res.ios:
-        for k in x.partner_unresolved:
-            e = unresolved.setdefault(k, {"mentions": 0, "fields": set()})
-            e["mentions"] += 1
-            e["fields"].add(x.owner.field if x.owner else x.file_field)
     ver = installed_version()
     log = {
         "run_id": run_id,
@@ -154,8 +171,8 @@ def run_load(data: str = "synthetic", input_dir: Path | None = None, registry_di
         "schema_issues": issues,
         "tool_merge_candidates": res.merge_candidates,
         "tool_attribute_conflicts": res.attribute_conflicts,
-        "unresolved_partners": {k: {"mentions": v["mentions"], "fields": sorted(f for f in v["fields"] if f)}
-                                for k, v in sorted(unresolved.items())},
+        "unresolved_partners": res.unresolved_partners(),
+        "tool_keys": sorted(res.tools),                          # 이번 실행의 툴 키 — apply-review 가 연계 행의 툴A_키를 검사한다 (#17, 사내 전용 파일)
         "registry": {"dir": _rel(regdir), **{k: {s: sum(1 for r in reg.rows(k) if r["status"] == s)
                                                   for s in ("활성", "통합됨", "폐기")} for k in reg.tables},
                      "transitions": reg.transitions()},         # 신규·되살림 건수 (C2)
@@ -232,7 +249,7 @@ def write_fix_requests(folder: Path, res: LoadResult) -> list[Path]:
         for c in ws[2]:
             c.font, c.fill = Font(bold=True), PatternFill("solid", fgColor="DDE6F0")
         for i in sorted(items, key=lambda x: (x["sheet"], x["row"] or 0)):
-            ws.append([SHEET_SHOWN.get(i["sheet"], i["sheet"]), i["row"], i["tool_id"], i["column"],
+            ws.append([SHEET_SHOWN.get(i["sheet"], i["sheet"]), i["row"], _safe_cell(i["tool_id"]), i["column"],
                        _safe_cell(i["value"]), i["kind"], i["hint"]])
         for col, width in zip("ABCDEFG", (14, 6, 12, 22, 28, 22, 60)):
             ws.column_dimensions[col].width = width
@@ -402,14 +419,39 @@ def review_target_dir(csv_path: Path) -> Path:
 
 @dataclass
 class ReviewResult:
-    merged: int = 0        # 통합 판정 수
-    kept: int = 0          # 별개 판정 수
+    merged: int = 0        # 통합 판정 수 (연계 행 통합 포함)
+    kept: int = 0          # 별개 판정 수 (툴A_키가 있는 연계 행 별개 포함)
     undone: int = 0        # 별개 판정으로 되돌린 기존 통합 수
     path: Path | None = None
     encoding: str = "utf-8-sig"
+    partner_merged: int = 0     # 그중 연계 행 통합 — 연계 Tool명을 기존 툴에 대응 (#17)
+    partner_missing: int = 0    # 연계 행 '툴A_키 빈칸 + 별개' — 기존 툴 아님(조사 누락 확인) → partner_missing
+    notes: list[str] = field(default_factory=list)   # CLI 가 '[주의]' 로 보여 줄 것 (값 없음)
 
     def __iter__(self):    # (통합, 별개, 해제) — 옛 호출부 호환
         return iter((self.merged, self.kept, self.undone))
+
+
+def _review_cell(row: dict, col: str, n: int, key: bool = False) -> str:
+    """검토표 칸 하나 (docs/09 #25d). 키 칸은 앞 ' 하나를 떼고, 대표 이름은 ' 뒤가 수식 글자(= + - @ 탭)일 때만 뗀다 (write_review 의 _csv_safe 되돌림).
+    엑셀 오류 값(#NAME?·#REF! 등 — 엑셀이 칸을 수식으로 바꿔 저장한 흔적)이면 ValueError — 설정 파일은 바꾸지 않는다."""
+    from engenius_onto.loader import EXCEL_ERRORS
+
+    v = nfc_strip(row.get(col))
+    if v.startswith("'") and (key or v[1:2] in tuple(FORMULA_LEAD)):
+        v = v[1:].strip()
+    if v.upper() in EXCEL_ERRORS:
+        raise ValueError(f"검토표 {n}행: '{col}' 이 엑셀 오류 값 {v} — 엑셀이 수식으로 바꾼 흔적. 원래 값을 다시 적는다 (설정 파일은 바꾸지 않음)")
+    return v
+
+
+def _run_tool_keys(csv_path: Path) -> set[str] | None:
+    """검토표가 나온 실행의 툴 키 (load_log.json tool_keys) — 없으면(옮긴 검토표·옛 실행) None (#17 연계 행 툴A_키 검사)."""
+    try:
+        keys = json.loads((Path(csv_path).parent / "load_log.json").read_text(encoding="utf-8")).get("tool_keys")
+    except (OSError, ValueError):
+        return None
+    return {nfc_strip(k) for k in keys} if isinstance(keys, list) else None
 
 
 def _key_links(cfg: dict, norm) -> dict[str, str]:
@@ -440,6 +482,12 @@ def apply_review(csv_path: Path, config_dir: Path | None = None, target_dir: Pat
       직접 쌍이 없는데 대표가 같으면 오류(간접 사슬 — 사람이 파일을 고친다), 아니면 distinct 만 더한다.
     - overlay=True (CLI --with-public-aliases): 저장소 config/ 의 공개 별칭(aliases)도 사슬 검사에 넣는다 (data/real/config 오버레이에
       쓸 때 — 거기서 이어진 쌍은 오버레이로 못 되돌린다). 독립 설정 사본(--config-dir)에는 기본으로 섞지 않는다.
+    - 연계 행 (사유 '연계SW 미해석', docs/09 #17): 통합 = 툴A_키(기존 툴 키 — 검토표 옆 load_log.json 의 tool_keys 에 있어야, 없으면 검사 생략 +
+      notes '[주의]')·툴B_키(연계 키)를 위와 같은 merge_pairs [A, B] 로 (A 생존 — 연계 키는 레지스트리 행이 없다). 툴A_키가 비면 오류.
+      별개 + 툴A_키 있음 = 위와 같은 distinct (그 제안만 다시 안 나온다), 별개 + 툴A_키 빈칸 = 기존 툴 아님 → partner_missing (검토표에 다시
+      안 올리고 CQ09 조사 누락 후보에는 남는다).
+    - 칸 검사 (docs/09 #25d·절대 규칙 5): 키 칸 앞 ' 는 떼고, 대표 이름 앞 ' 는 뒤가 수식 글자일 때만 뗀다. 엑셀 오류 값(#NAME? 등)·사람 이름처럼
+      보이는 대표 이름은 ValueError (값은 오류 문구에 넣지 않는다 — 오류 값 표기만). 모든 오류는 파일을 쓰기 전에 나므로 설정은 그대로다.
     - CSV 는 utf-8-sig → cp949 순으로 읽는다. 쓰는 곳: target_dir (없으면 config_dir, 없으면 review_target_dir()).
     """
     import yaml
@@ -459,6 +507,7 @@ def apply_review(csv_path: Path, config_dir: Path | None = None, target_dir: Pat
     distinct = [list(p) for p in cfg["distinct"]]
     pairs = read_merge_pairs({k: cfg[k] for k in ("merge_pairs", "merge_keys") if k in cfg["_present"]})   # 키가 없을 때만 승격
     labels = {nfc_strip(k): nfc_strip(v) for k, v in cfg["labels"].items()}
+    missing = [k for k in dict.fromkeys(nfc_strip(x) for x in cfg["partner_missing"]) if k]
     # 정규화 규칙은 적재기와 같은 것으로 — 독립 설정 사본이면 그 rules.yaml, 오버레이(data/real/config 또는 --with-public-aliases)에
     # 쓸 때는 저장소 config/ 위에 그 폴더의 rules.yaml 을 덮는다 (오버레이의 tool_token_map 등이 사슬 검사 키에 반영되게)
     own_dir = Path(config_dir) if config_dir else (None if overlay else target)   # CLI --config-dir <독립 사본> 도 그 사본의 규칙으로
@@ -473,17 +522,43 @@ def apply_review(csv_path: Path, config_dir: Path | None = None, target_dir: Pat
 
     rows, enc = read_csv_rows(csv_path)
     res = ReviewResult(path=cfg_path, encoding=enc)
-    for row in rows:
+    run_keys = _run_tool_keys(csv_path)
+    for n, row in enumerate(rows, start=2):                  # n = 엑셀에서 보이는 행 번호 (1행 = 머리글)
         verdict = nfc_strip(row.get("판정(통합/별개)"))
-        a, b = nfc_strip(row.get("툴A_키")), nfc_strip(row.get("툴B_키"))
         if not verdict:
             continue
+        a, b = _review_cell(row, "툴A_키", n, key=True), _review_cell(row, "툴B_키", n, key=True)
+        if verdict not in ("통합", "별개"):
+            raise ValueError(f"판정 값은 '통합' 또는 '별개' 여야 한다: {verdict!r} ({a} / {b})")
+        label = _review_cell(row, "대표 이름(통합 시)", n)
+        if label and norm.looks_person(label):
+            raise ValueError(f"검토표 {n}행: 대표 이름이 사람 이름처럼 보인다 — 툴 이름만 적는다 (설정 파일은 바꾸지 않음)")
+        partner = nfc_strip(row.get("사유")) == PARTNER_REASON
+        if partner and b and not a:
+            if verdict == "별개":                               # 기존 툴 아님 = 조사 누락 확인 (#17)
+                if b not in missing:
+                    missing.append(b)
+                res.partner_missing += 1
+                continue
+            if verdict == "통합":
+                raise ValueError(f"검토표 {n}행: 연계SW 미해석 행의 통합은 툴A_키에 기존 툴 키를 적는다 — 툴B_키 {b}")
+        if partner and a and verdict == "통합":
+            if run_keys is None:
+                note = "[주의] 연계SW 미해석 행의 툴A_키를 확인하지 못함 — 검토표 옆에 load_log.json(tool_keys)이 없다. 툴 키가 맞는지 다시 적재로 확인"
+                if note not in res.notes:
+                    res.notes.append(note)
+            elif a not in run_keys:
+                raise ValueError(f"검토표 {n}행: 툴A_키 {a} 는 이 실행의 툴 키가 아니다 — 같은 검토표의 통합 후보 행이나 레지스트리 tools.csv 의 "
+                                 "'활성' key 를 적는다 (설정 파일은 바꾸지 않음)")
         if not a or not b:
-            raise ValueError(f"툴A_키·툴B_키가 비어 있다 (판정 {verdict!r}) — 검토표 열을 지우지 않는다")
+            raise ValueError(f"검토표 {n}행: 툴A_키·툴B_키가 비어 있다 (판정 {verdict!r}) — 검토표 열을 지우지 않는다")
         if verdict == "통합":
             links = links_now()
             ra, rb = _root(links, a), _root(links, b)
-            label = nfc_strip(row.get("대표 이름(통합 시)"))
+            if partner:
+                res.partner_merged += 1
+                if b in missing:
+                    missing.remove(b)                         # 최신 판정이 이긴다
             pair = sorted([a, b])
             if pair in distinct:
                 distinct.remove(pair)                         # 최신 판정이 이긴다
@@ -520,7 +595,7 @@ def apply_review(csv_path: Path, config_dir: Path | None = None, target_dir: Pat
             raise ValueError(f"판정 값은 '통합' 또는 '별개' 여야 한다: {verdict!r} ({a} / {b})")
     merge_keys = merge_keys_from_pairs(pairs)                # 라벨은 적힌 키에 그대로 둔다 (별개로 되돌릴 때 각 키가 자기 이름을 되찾게)
     head = "".join(line + "\n" for line in text.splitlines() if line.startswith("#"))
-    body = yaml.safe_dump({"aliases": aliases, "distinct": distinct, "merge_pairs": pairs, "merge_keys": merge_keys, "labels": labels},
-                          allow_unicode=True, sort_keys=True, width=1000)
+    body = yaml.safe_dump({"aliases": aliases, "distinct": distinct, "merge_pairs": pairs, "merge_keys": merge_keys, "labels": labels,
+                           "partner_missing": sorted(missing)}, allow_unicode=True, sort_keys=True, width=1000)
     cfg_path.write_text(head + body, encoding="utf-8", newline="\n")
     return res

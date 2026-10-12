@@ -256,7 +256,9 @@ def test_review_merge_and_distinct(tmp_path, out):
     reg = _copy_registry(tmp_path)
     review = out.out_dir / "tool_review.csv"
     rows = list(csv.DictReader(review.open(encoding="utf-8-sig")))
-    assert [(r["툴A_키"], r["툴B_키"]) for r in rows] == [tuple(p) for p in AGG["merge_candidates"]]
+    tool_rows = [r for r in rows if r["사유"] != "연계SW 미해석"]           # 연계 행은 뒤에 (docs/09 #17 — test_loader_m31_3 E절)
+    assert [(r["툴A_키"], r["툴B_키"]) for r in tool_rows] == [tuple(p) for p in AGG["merge_candidates"]]
+    assert {r["툴B_키"] for r in rows if r["사유"] == "연계SW 미해석"} == set(AGG["missing_tools"])
     rows[0]["판정(통합/별개)"], rows[0]["대표 이름(통합 시)"] = "통합", "MATLAB"
     decided = tmp_path / "review.csv"
     with decided.open("w", encoding="utf-8-sig", newline="") as f:

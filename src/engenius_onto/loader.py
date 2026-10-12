@@ -16,6 +16,9 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
   있으면 진짜 행을 쓴다 (I15 개정, docs/09 #3). 시트에 예시 유사 행만 있고 정확한 예시가 0 이면 설정 점검 경고.
 - 같은 파트 파일이 여럿이면 (날짜, 사본 번호 '(n)', 파일명) 최신 1개만 적재하고, 그 뒤 같은 내용(sha256) 파일은 한 번만 (I31·I33).
 - 파일 간 같은 (파트, Tool ID) 는 둘 다 적재하고 경고 — 전용 파일이 아닌 쪽 레지스트리 키에 구분 꼬리 '@<약칭|file-sha10>' (I36, docs/09 #1).
+- 툴 통합 (6.1): 별칭·통합 판정(tool_aliases.yaml + 오버레이)은 제조사를 뗀 키, 없으면 떼지 않은 이름 키로 찾는다 (docs/09 #2 (3)). 판정 항목 가운데
+  이번 적재의 툴·연계 Tool명 어디에도 키가 없는 것은 경고 '별칭 미적용' (#2 (4) — 저장소의 공개 별칭 사전은 제외). 해석 못 한 연계 Tool명은
+  CQ09 후보 + 검토표 '연계SW 미해석' 행 (partner_candidates, #17 — 툴A = 기존 툴 키 제안, 툴B = 연계 키).
 - 어떤 행도 조용히 버리지 않는다 — 제외는 사유와 함께 excluded_rows, 문제는 warnings (5장 6). 행 단위 문제는 issues 에도
   구조화해 남겨 파트별 수정 요청표(fix_requests)를 만든다 (M3.1).
 - 인명 열(실무 문의처)은 읽지 않는다 (CLAUDE.md 절대 규칙 5). 인명 유사 패턴은 경고만 하고 경고에 값을 옮기지 않는다 (D6, #20).
@@ -38,7 +41,7 @@ from pathlib import Path
 import openpyxl
 import yaml
 
-from engenius_onto.config import CONFIG_DIR, ConfigError, load_config, load_yaml, read_yaml
+from engenius_onto.config import CONFIG_DIR, ConfigError, config_where, load_config, load_yaml, read_yaml
 from engenius_onto.form_spec import Column, FormSpec, load_form_spec, norm_header
 from engenius_onto.normalize import GENERIC_KEY_PREFIX, Normalizer, merge_keys_from_pairs, nfc_strip, nfkc, read_merge_pairs
 
@@ -225,6 +228,11 @@ class LoadResult:
     alias_map: dict[str, str]
     issues: list[dict] = field(default_factory=list)       # 행 단위 문제 (수정 요청표·diag 용)
     part_labels: dict[str, str] = field(default_factory=dict)
+    partner_candidates: list[dict] = field(default_factory=list)   # 검토표 '연계SW 미해석' 행 (Loader._partner_review, docs/09 #17)
+
+    def unresolved_partners(self) -> dict[str, dict]:
+        """CQ09 조사 누락 후보 — 해석 못 한 연계 Tool명 키별 {mentions, fields} (I10, load_log unresolved_partners)."""
+        return unresolved_partner_summary(self.ios)
 
     @property
     def loaded_files(self) -> list[FileReport]:
@@ -237,6 +245,18 @@ class LoadResult:
 
     def per_file(self) -> dict:
         return {f.name: f.stats() for f in self.files}
+
+
+def unresolved_partner_summary(ios) -> dict[str, dict]:
+    """해석 못 한 연계 Tool명 키별 언급 수·언급 파트 (CQ09 조사 누락 후보 — I10). 파트 = 소유 툴사용의 파트, 고아면 파일 약칭.
+    x.partner_unresolved 는 인명 유사 조각을 이미 뺀 목록이다 (#20-2, C9) — load_log 와 검토표 연계 행(#17)이 이 한 집계를 쓴다."""
+    out: dict[str, dict] = {}
+    for x in ios:
+        for k in x.partner_unresolved:
+            e = out.setdefault(k, {"mentions": 0, "fields": set()})
+            e["mentions"] += 1
+            e["fields"].add(x.owner.field if x.owner else x.file_field)
+    return {k: {"mentions": v["mentions"], "fields": sorted(f for f in v["fields"] if f)} for k, v in sorted(out.items())}
 
 
 # --------------------------------------------------------------------------- 셀 값
@@ -321,6 +341,7 @@ class Loader:
         self.issues: list[dict] = []
         self.known_tool_keys: set[str] = set()                  # 레지스트리 활성 툴 키 (load() 가 받는다)
         self.prefix_held: list[tuple[str, str]] = []            # 접두 흡수를 보류한 그룹의 키 쌍 (_absorptions → _candidates '제조사 접두')
+        self._seen_keys: set[str] = set()                       # 이번 적재에서 본 툴 이름 키 (별칭 미적용 검사 — _group_tools·_resolve_partners)
 
     def _cfg(self, name: str, optional: bool = False) -> dict:
         """config/<name> (+ 오버레이). 덮은 파일 이름은 overlay_files 에 남긴다."""
@@ -408,6 +429,7 @@ class Loader:
         warnings: list[str] = []
         self.issues: list[dict] = []
         self.known_tool_keys = set(known_tool_keys or ())
+        self._seen_keys = set()
         reports: list[FileReport] = []
         used: set[str] = set()
         for idx, p in enumerate(paths, start=1):
@@ -451,10 +473,12 @@ class Loader:
         self._resolve_partners(ios, usages, tools, alias_map, warnings)
         self._disambiguate(ios, by_name, warnings)
         candidates = self._candidates(tools)
+        partner_rows = self._partner_review(unresolved_partner_summary(ios), tools, alias_map)
+        self._unused_alias_entries(tools, alias_map, warnings)
         conflicts = self._conflicts(tools)
         labels = {u.field: self.part_label(u.field) for u in usages if u.field}
         return LoadResult(reports, usages, ios, tools, warnings, excluded, candidates, conflicts, alias_map,
-                          self.issues, labels)
+                          self.issues, labels, partner_candidates=partner_rows)
 
     def _same_content(self, reports: list[FileReport], warnings: list) -> None:
         """I33 뒤에: 대체되지 않은 파일 가운데 내용(sha256)이 같은 파일은 한 번만 적재한다 — 규칙 안 파일 우선, 다음 입력 순서.
@@ -1231,22 +1255,30 @@ class Loader:
     def _group_tools(self, usages, amap, labels, reports: dict | None = None, warnings: list | None = None) -> dict[str, ToolGroup]:
         """툴사용 → 툴 키 (6.1). 순서: 범용·빈 이름은 행별 '미상:' 키 (I34) → 별칭·통합(amap) → 제조사 접두 흡수 (I1, Q3(a)).
 
+        별칭·통합은 제조사를 뗀 키로 먼저 찾고, 없으면 제조사를 떼지 않은 이름 키로도 찾는다 (docs/09 #2 (3) — 손으로 적은 이름 별칭
+        'Fluent: [ANSYS Fluent Meshing]' 의 변형 키는 제조사를 떼지 않고 만들어진다; 연계 Tool명 해석과 같은 조건). 두 키 모두 '본 키' 로
+        남겨 '별칭 미적용' 검사(_unused_alias_entries)가 쓴다.
         접두 흡수는 2단계 — 먼저 모든 툴사용의 키를 정하고, 그 키 집합 위에서 흡수 쌍(k, rest)을 구한 뒤 모든 툴사용에 적용한다
         (행 순서에 따라 결과가 달라지지 않게). 생존 키는 _absorptions() 가 고른다. 흡수된 키는 alias_map 에도 넣어
         레지스트리의 옛 행이 통합됨으로 바뀌게 한다."""
         warnings = warnings if warnings is not None else []
         raw_keys: dict[int, str] = {}
         for u in usages:
-            k = self.norm.tool_key(u.v.get("reported_tool_name"), u.v.get("reported_vendor"))
-            if self.norm.is_generic_key(k):
-                k = f"{GENERIC_KEY_PREFIX}{u.field}/{u.reg_key}"          # 파일 간 충돌 행은 구분 꼬리까지 (I34·I36)
-                warnings.append(f"툴 이름 범용/비어 있음: {u.file} {u.sw_id} — 통합하지 않고 행별 툴로 둠 (툴 이름 요청)")
-                rep = (reports or {}).get(u.file)
-                if rep is not None:
-                    rep.warnings += 1
-                    self._issue(rep, USAGE_SHEET, u.row, u.sw_id, "Tool명(정식)", u.v.get("reported_tool_name"), "툴 이름 범용/비어 있음",
-                                "툴 이름을 지어 주세요 — 분야마다 자체개발 툴이 달라 통합할 수 없습니다 "
-                                "(예: '<업무>용 <무엇> 계산기' 처럼 다른 파트가 알아볼 이름)")
+            name = u.v.get("reported_tool_name")
+            k = self.norm.tool_key(name, u.v.get("reported_vendor"))
+            if not self.norm.is_generic_key(k):
+                kn = self.norm.tool_key(name)                             # 제조사를 떼지 않은 이름 키 (#2 (3))
+                self._seen_keys.update({k, kn})
+                raw_keys[id(u)] = amap.get(k) or amap.get(kn) or k
+                continue
+            k = f"{GENERIC_KEY_PREFIX}{u.field}/{u.reg_key}"              # 범용·빈 이름 — 파일 간 충돌 행은 구분 꼬리까지 (I34·I36)
+            warnings.append(f"툴 이름 범용/비어 있음: {u.file} {u.sw_id} — 통합하지 않고 행별 툴로 둠 (툴 이름 요청)")
+            rep = (reports or {}).get(u.file)
+            if rep is not None:
+                rep.warnings += 1
+                self._issue(rep, USAGE_SHEET, u.row, u.sw_id, "Tool명(정식)", u.v.get("reported_tool_name"), "툴 이름 범용/비어 있음",
+                            "툴 이름을 지어 주세요 — 분야마다 자체개발 툴이 달라 통합할 수 없습니다 "
+                            "(예: '<업무>용 <무엇> 계산기' 처럼 다른 파트가 알아볼 이름)")
             raw_keys[id(u)] = amap.get(k, k)
         absorb, reasons, self.prefix_held = self._absorptions(set(raw_keys.values()), usages, amap, warnings)
         for key, v in list(amap.items()):                        # 흡수 뒤 별칭 사슬을 다시 닫는다 — '엑셀'→excel→microsoftexcel 이 한 번에
@@ -1342,13 +1374,15 @@ class Loader:
         vendors = self.norm.survey_vendors(u.v.get("reported_vendor") for u in usages)
 
         def resolve(name: str) -> str | None:
-            k = self.norm.tool_key(name)
-            k = amap.get(k, k)
+            k0 = self.norm.tool_key(name)
+            self._seen_keys.add(k0)                              # 별칭 미적용 검사용 '본 키' — 조각 키와 제조사를 뗀 나머지 (#2 (4))
+            k = amap.get(k0, k0)
             if k in tools:
                 return k
             for vk in vendors:
                 rest = k[len(vk):]
                 if k.startswith(vk) and rest:
+                    self._seen_keys.add(rest)
                     rest = amap.get(rest, rest)
                     if rest in tools:
                         return rest
@@ -1360,7 +1394,7 @@ class Loader:
                 if t:
                     x.partner_tools.add(t)
                 elif self._looks_person(p):
-                    warnings.append(f"연계 Tool명이 인명처럼 보임: {x.file} {x.sw_id} '{x.name}' — 조사 누락 후보에서 뺌")
+                    warnings.append(f"연계 Tool명이 인명처럼 보임: {x.file} {self._q(x.sw_id)} '{self._q(x.name)}' — 조사 누락 후보에서 뺌")
                 else:
                     x.partner_unresolved.append(self.norm.tool_key(p))
 
@@ -1384,6 +1418,80 @@ class Loader:
                                 "reason": "제조사 접두" if prefix else "포함" if contains else "유사도",
                                 "names_a": tools[a].names, "names_b": tools[b].names})
         return out
+
+    def _partner_review(self, summary: dict[str, dict], tools: dict, amap: dict) -> list[dict]:
+        """검토표 '연계SW 미해석' 행 (docs/09 #17, I10·I35) — 해석 못 한 연계 Tool명 키(summary = unresolved_partner_summary)마다 한 행.
+
+        툴A = 기존 툴 키 제안: 포함 관계(짧은 키 candidate_min_contain_len 이상)이거나 유사도(양방향 difflib 최댓값) ≥ fuzzy_threshold 인
+        툴 키 가운데 유사도가 가장 높은 것 ('미상:' 키·별개 판정 쌍 제외). 없으면 빈칸 + 비슷한 키 3개(유사도 0.5 이상)를 힌트로 —
+        '가상외부해석툴 → 가상열해석 0.67' 같은 엉뚱한 제안을 툴A 칸에 넣지 않는다. 툴B = 연계 키 (merge_pairs 'A 생존' 과 맞게 순서를 둔다 —
+        통합하면 기존 툴의 TOOL ID 가 유지된다). 원문(partner_raw)은 쓰지 않고 키·언급 수·파트만 (인명 유사 조각은 summary 에 이미 없다).
+        다시 올리지 않는 키: tool_aliases.yaml partner_missing (기존 툴 아님 판정 — CQ09 후보에는 남는다), 이미 별칭·통합이 있는 키
+        (판정한 대상 툴이 이번 적재에 없을 때)."""
+        missing = {nfc_strip(k) for k in self.aliases_cfg.get("partner_missing") or []}
+        distinct = {tuple(sorted(p)) for p in (self.aliases_cfg.get("distinct") or [])}
+        th = float(self.rules["fuzzy_threshold"])
+        keys = sorted(k for k in tools if not k.startswith(GENERIC_KEY_PREFIX))
+        out = []
+        for k, e in summary.items():
+            if k in missing or k in amap:
+                continue
+            scored = []
+            for t in keys:
+                if tuple(sorted((k, t))) in distinct:
+                    continue
+                r = max(difflib.SequenceMatcher(None, k, t).ratio(), difflib.SequenceMatcher(None, t, k).ratio())
+                contains = (k in t or t in k) and min(len(k), len(t)) >= self.min_contain
+                scored.append((-round(r, 3), t, contains))
+            scored.sort()
+            strong = [s for s in scored if s[2] or -s[0] >= th]
+            a = strong[0][1] if strong else ""
+            out.append({"a": a, "b": k, "similarity": -strong[0][0] if strong else None,
+                        "reason": "연계SW 미해석", "names_a": tools[a].names if a else [],
+                        "mentions": e["mentions"], "fields": e["fields"],
+                        "hints": [] if a else [(t, -r) for r, t, _c in scored if -r >= 0.5][:3]})
+        return out
+
+    def _unused_alias_entries(self, tools: dict, amap: dict, warnings: list) -> None:
+        """'별칭 미적용' 경고 (docs/09 #2 (4)) — 툴 통합 판정 항목 가운데 키가 이번 적재의 툴·연계 Tool명 어디에도 없는 것.
+
+        '본 키' = 툴사용 이름 키(제조사 뗀 것·안 뗀 것) ∪ 연계 Tool명 조각 키(제조사를 뗀 나머지 포함) ∪ 툴 그룹 키. 설정 파일(저장소 config/ 와 오버레이)마다
+        원문을 따로 읽어 어느 파일의 항목인지 적는다. 검사: merge_pairs(없으면 merge_keys 를 쌍으로) — 두 키 모두 안 보이고 그 대표도 안 보일 때
+        (대표만 보이면 사슬은 적용된 것), distinct — 두 키 모두, labels·partner_missing — 그 키, aliases — **오버레이 파일만** 변형 표기마다.
+        저장소 config/ 의 공개 별칭 사전(aliases)은 쓰지 않는 표기가 있는 게 정상이라 검사하지 않는다. 값은 _q 로 인용 (인명 유사면 가림)."""
+        observed = self._seen_keys | set(tools)
+
+        def seen(k) -> bool:
+            k = nfc_strip(k)
+            return k in observed or amap.get(k, k) in observed
+
+        for d, public in ((self.config_dir, True), (self.overlay_dir, False)):
+            path = Path(d) / "tool_aliases.yaml" if d else None
+            if path is None or not path.is_file():
+                continue
+            raw = read_yaml(path)
+            items: list[tuple[str, str]] = []
+            if "merge_pairs" in raw:
+                sect, pairs = "merge_pairs", read_merge_pairs(raw, promote=False)
+            else:
+                sect, pairs = "merge_keys", [[nfc_strip(a), nfc_strip(b)] for b, a in (raw.get("merge_keys") or {}).items()]
+            items += [(sect, f"{self._q(a)} / {self._q(b)}") for a, b in pairs if a and b and not (seen(a) or seen(b))]
+            items += [("distinct", f"{self._q(nfc_strip(a))} / {self._q(nfc_strip(b))}") for a, b in raw.get("distinct") or []
+                      if not (seen(a) or seen(b))]
+            items += [("labels", self._q(nfc_strip(k))) for k in raw.get("labels") or {} if nfc_strip(k) and not seen(k)]
+            items += [("partner_missing", self._q(nfc_strip(k))) for k in raw.get("partner_missing") or []
+                      if nfc_strip(k) and nfc_strip(k) not in observed]
+            if not public:
+                for rep, variants in (raw.get("aliases") or {}).items():
+                    rk = self.norm.tool_key(rep)
+                    for v in variants or []:
+                        vk = self.norm.tool_key(v)
+                        if vk and vk != rk and vk not in observed:
+                            items.append(("aliases", f"{self._q(nfc_strip(rep))} ← {self._q(nfc_strip(v))}"))
+            where = config_where(path)
+            for s, item in items:
+                warnings.append(f"별칭 미적용: {where} {s} {item} — 이번 적재의 툴·연계 Tool명 어디에도 없음 "
+                                "(툴 이름 키 규칙이 바뀌었거나 그 툴이 이번 회신에 없다; 지우기 전에 확인)")
 
     @staticmethod
     def _conflicts(tools) -> dict:

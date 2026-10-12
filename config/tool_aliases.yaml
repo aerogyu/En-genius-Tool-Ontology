@@ -12,6 +12,11 @@
 #            merge_keys 만 있고 merge_pairs 가 없는 옛 파일은 merge_keys 를 그대로(apply-review 는 이력으로 승격해) 읽는다
 # labels:    {정규화 키: 대표 이름}     — apply-review 의 '대표 이름' (판정 당시의 대표 키에 두고 옮기지 않는다). 그룹 이름은 적재기가
 #            고른다: labels[대표 키] → 이력에서 가장 최근에 A 키로 적힌 키의 라벨 → 키 정렬 순 → 다수결 표기
+# partner_missing: [연계 키, ...] — 검토표 '연계SW 미해석' 행을 툴A_키 빈칸 + '별개' 로 판정한 것 (기존 툴 아님 = 조사 누락 확인, docs/09 #17).
+#            검토표에 다시 올리지 않고 CQ09 조사 누락 후보에는 남긴다. 연계 행을 '통합' 하면 merge_pairs [기존 툴 키, 연계 키] 로 쌓인다.
+# 별칭 미적용 경고 (docs/09 #2 (4)): 판정 항목(merge_pairs·distinct·labels·partner_missing, 오버레이의 aliases)의 키가 이번 적재의 툴·연계 Tool명
+#            어디에도 없으면 적재가 경고한다 — 이 파일의 aliases(공개 별칭 사전)는 쓰지 않는 표기가 있는 게 정상이라 검사하지 않는다.
+# 이름 별칭의 변형 표기는 툴사용 이름의 제조사를 뗀 키로 맞지 않으면 떼지 않은 이름 키로도 찾는다 ('ANSYS Fluent Meshing' — docs/09 #2 (3)).
 # 대소문자·공백·전각·버전 표기 차이는 정규화로 이미 같게 본다 (EXCEL = Excel = Excel 2016). 여기에는 글자가 다른 표기만.
 # 기본 별칭 (2026-10-01, Leo Q1 "Excel, EXCEL 은 같은 툴로?") — 흔한 한글·약칭 표기. 공개 툴 이름만 둔다.
 # 사내 판정(실 툴명)은 이 파일이 아니라 오버레이 data/real/config/tool_aliases.yaml 에 쌓인다 (docs/09 C15, 2026-10-02) —

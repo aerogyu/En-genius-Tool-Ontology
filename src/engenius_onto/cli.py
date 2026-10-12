@@ -156,7 +156,11 @@ def cmd_apply_review(args: argparse.Namespace) -> int:
         shown = str(r.path.resolve().relative_to(REPO_ROOT)).replace("\\", "/")
     except ValueError:
         shown = str(r.path)
-    print(f"{shown} 갱신 — 통합 {r.merged}건, 별개 {r.kept}건, 통합 해제 {r.undone}건. 다시 load 하면 반영된다.")
+    extra = (f" (연계 Tool명 대응 {r.partner_merged}건 · 누락 확인 {r.partner_missing}건)"
+             if r.partner_merged or r.partner_missing else "")                       # 검토표 연계 행 (docs/09 #17)
+    print(f"{shown} 갱신 — 통합 {r.merged}건, 별개 {r.kept}건, 통합 해제 {r.undone}건{extra}. 다시 load 하면 반영된다.")
+    for note in r.notes:
+        print(f"  {note}")
     if r.encoding != "utf-8-sig":
         print(f"  [주의] 검토표를 {r.encoding} 로 읽음 — 엑셀 '다른 이름으로 저장' 은 'CSV UTF-8(쉼표로 분리)' 를 고른다")
     if target.resolve() != (REPO_ROOT / "config").resolve():

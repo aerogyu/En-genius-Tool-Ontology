@@ -7,11 +7,14 @@
   설정 낡음 점검(시트별) · rules 오버레이 문턱 · template_examples 오버레이·template-examples --overlay · 적재기 ↔ oracle 판별식
 - D. 값·엑셀 층 (묶음 values): header_map 오버레이(I30) · 엑셀 층 신호(I37 — 수식 오류 셀·캐시 없는 수식·숨긴 행·양식 밖 시트·툴사용 0건) ·
   만료 시기 텍스트·'영구'(docs/09 #21 3단, I16·I27) · 드롭다운 빈 값 토큰(I28 기록) · 자동화 판정 빈 값 토큰(Normalizer.automatable ↔ oracle·지도·MCP)
+- E. 검토표·별칭·레지스트리 (묶음 review): 인명 유사 연계 조각 회귀(#20 (2)) · 검토표 CSV 수식 방지·apply-review 칸 검사(#25d) ·
+  연계 Tool명 미해석 행·partner_missing(#17, I10·I35) · 별칭 미적용 경고·제조사 안 뗀 이름 별칭(#2 (3)·(4)) · 레지스트리 엑셀 손상(#15 (4))
 합성 파일 사본만 쓴다 (공개 상용 툴 이름·가상 이름). 인명 시험 값은 가상 자리표시('가나다 책임')만.
 """
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import json
 import re
@@ -1225,3 +1228,375 @@ def test_automatable_na_in_store_and_viewer(tmp_path):
     data, _ = graph_view3d.build(out.out_dir)
     nodes = {n["sw_id"]: n["auto"] for n in data["nodes"] if n.get("type") == "u"}
     assert (nodes["STR-01"], nodes["STR-02"]) == (False, True)
+
+
+# --------------------------------------------------------------------------- E. 검토표·별칭·레지스트리 (묶음 review, 2026-10-12)
+from types import SimpleNamespace  # noqa: E402
+
+from engenius_onto.config import config_where  # noqa: E402
+from engenius_onto.registry import Registry, excel_explains  # noqa: E402
+from engenius_onto.survey_load import apply_review, write_fix_requests, write_review  # noqa: E402
+from test_loader_m31_2 import _add_usage  # noqa: E402
+
+PARTNER = "연계SW 미해석"
+H_PARTNER = "연계 SW명"
+REVIEW_COLS = ["툴A_키", "툴A_표기", "툴B_키", "툴B_표기", "유사도", "사유", "판정(통합/별개)", "대표 이름(통합 시)"]
+UNUSED_W = "별칭 미적용"
+UNUSED_TAIL = " — 이번 적재의 툴·연계 Tool명 어디에도 없음 (툴 이름 키 규칙이 바뀌었거나 그 툴이 이번 회신에 없다; 지우기 전에 확인)"
+AGG = yaml.safe_load((REPO / "tests" / "golden" / "expected.yaml").read_text(encoding="utf-8"))["aggregates"]
+
+
+def _review_rows(out) -> list[dict]:
+    return read_csv_rows(out.out_dir / "tool_review.csv")[0]
+
+
+def _write_rows(path: Path, rows: list[dict]) -> None:
+    with path.open("w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=REVIEW_COLS)
+        w.writeheader()
+        w.writerows(rows)
+
+
+def _cfg_copy(tmp: Path) -> Path:
+    cfg = tmp / "config"
+    shutil.copytree(CONFIG_DIR, cfg)
+    return cfg
+
+
+def _aliases_of(cfg: Path) -> dict:
+    return yaml.safe_load((cfg / "tool_aliases.yaml").read_text(encoding="utf-8"))
+
+
+def _tool_ids(reg: Path) -> dict[str, str]:
+    return {r["key"]: r["id"] for r in read_csv_rows(reg / "tools.csv")[0]}
+
+
+# ---- E1. 인명 유사 연계 조각 (docs/09 #20 (2) — 1차 구현의 회귀 테스트)
+def test_person_like_partner_not_missing_tool(tmp_path):
+    """인명처럼 보이는 연계 Tool명 조각은 조사 누락 후보(CQ09)·검토표 연계 행에 오르지 않는다 — 경고 1건(값 없음), 원문은 그래프에 보존 (D6, C9)."""
+    d = _copy(tmp_path)
+    _set_io_cells(d / STR, {("STR-01", "해석 메시"): {H_PARTNER: "가나다 책임(메일 전달)"}})
+    out = _load(d, tmp_path)
+    assert "가나다책임" not in out.log["unresolved_partners"]
+    for name in ("tool_review.csv", "load_log.json", "diag.txt"):
+        assert "가나다" not in (out.out_dir / name).read_text(encoding="utf-8-sig"), name
+    assert _w(out.result, "연계 Tool명이 인명처럼 보임") == [f"연계 Tool명이 인명처럼 보임: {STR} STR-01 '해석 메시' — 조사 누락 후보에서 뺌"]
+    assert "가나다 책임(메일 전달)" in out.turtle
+    assert not [c for c in out.result.partner_candidates if "가나다" in c["b"]]
+
+
+# ---- E2. 검토표 CSV·수정 요청표의 엑셀 수식 방지 (docs/09 #25d)
+def test_review_csv_neutralizes_formula_cells(tmp_path):
+    """표기 칸이 = + - @ 탭으로 시작하면 앞에 ' (엑셀이 수식으로 읽지 않게) — 키 칸은 [0-9a-z가-힣] 라 그대로. 연계 행 표기도 같다."""
+    res = SimpleNamespace(
+        merge_candidates=[{"a": "aa", "b": "bb", "names_a": ["=1+1"], "names_b": ["+X", "-Y"], "similarity": 0.9, "reason": "유사도"},
+                          {"a": "cc", "b": "dd", "names_a": ["@RISK"], "names_b": ["\tTab"], "similarity": 0.9, "reason": "유사도"}],
+        partner_candidates=[{"a": "ee", "b": "ff", "names_a": ["-Minus Tool"], "similarity": 0.9, "hints": [], "mentions": 1, "fields": ["P"]}])
+    p = tmp_path / "r.csv"
+    write_review(p, res)
+    with p.open(encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+    assert [r[:6] for r in rows[1:]] == [["aa", "'=1+1", "bb", "'+X / -Y", "0.900", "유사도"], ["cc", "'@RISK", "dd", "'\tTab", "0.900", "유사도"],
+                                         ["ee", "'-Minus Tool", "ff", "(연계 Tool명 · 언급 1회 · 파트 P)", "0.900", PARTNER]]
+    write_review(p, SimpleNamespace(merge_candidates=[]))                  # 연계 행이 없는 옛 결과 객체도 쓴다
+    assert p.read_text(encoding="utf-8-sig") == ",".join(REVIEW_COLS) + "\n"
+
+
+def test_apply_review_strips_apostrophe_and_rejects_excel_errors(tmp_path, capsys):
+    """apply-review: 키 칸 앞 ' 는 떼고 대표 이름 앞 ' 는 뒤가 수식 글자일 때만 뗀다. 엑셀 오류 값(#NAME?·#REF!·#N/A)·사람 이름처럼 보이는 대표 이름은
+    '[NG] 검토표 <행>행: …' 로 멈추고 파일은 그대로 (같은 검토표의 앞 행 판정도 쓰지 않는다). 사람 이름은 오류 문구에 넣지 않는다 (절대 규칙 5)."""
+    cfg = _cfg_copy(tmp_path)
+    p = tmp_path / "r.csv"
+
+    def row(a="matlab", b="matlabsimulink", verdict="통합", rep=""):
+        return dict(zip(REVIEW_COLS, [a, "MATLAB", b, "MATLAB Simulink", "0.600", "포함", verdict, rep]))
+
+    _write_rows(p, [row(a="'matlab", rep="'=Tool")])
+    assert tuple(apply_review(p, cfg)) == (1, 0, 0)
+    saved = _aliases_of(cfg)
+    assert saved["merge_pairs"] == [["matlab", "matlabsimulink"]] and saved["labels"] == {"matlab": "=Tool"} and saved["partner_missing"] == []
+    _write_rows(p, [row(rep="'Plain")])                                     # 수식 글자가 아닌 ' 는 이름의 일부
+    apply_review(p, cfg)
+    assert _aliases_of(cfg)["labels"] == {"matlab": "'Plain"}
+    before = (cfg / "tool_aliases.yaml").read_bytes()
+    for bad, match in ((row(rep="#NAME?"), r"'대표 이름\(통합 시\)' 이 엑셀 오류 값 #NAME\?"), (row(b="#REF!"), "'툴B_키' 이 엑셀 오류 값 #REF!"),
+                       (row(a="'#n/a"), "'툴A_키' 이 엑셀 오류 값"), (row(rep="가나다 책임"), "대표 이름이 사람 이름처럼 보인다")):
+        _write_rows(p, [row(rep="X"), bad])
+        with pytest.raises(ValueError, match=match) as e:
+            apply_review(p, cfg)
+        assert str(e.value).startswith("검토표 3행: ") and "가나다" not in str(e.value)
+        assert (cfg / "tool_aliases.yaml").read_bytes() == before
+    from engenius_onto.cli import main
+    assert main(["apply-review", str(p), "--config-dir", str(cfg)]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("[NG] 검토표 3행: 대표 이름이 사람 이름처럼 보인다") and "가나다" not in err
+
+
+def test_fix_request_tool_id_not_formula(tmp_path):
+    """수정 요청표(xlsx)의 Tool ID 칸도 '=' 로 시작하면 ' 를 붙여 문자열로 (openpyxl 은 '=…' 를 수식으로 저장한다)."""
+    res = SimpleNamespace(issues=[{"file": "f.xlsx", "part": None, "sheet": USAGE_SHEET, "row": 5, "tool_id": "=X", "column": "Tool ID",
+                                   "value": "=1+1", "kind": "선택지 밖 값", "hint": "-"}])
+    path, = write_fix_requests(tmp_path / "fix", res)
+    ws = openpyxl.load_workbook(path)["수정 요청"]
+    assert [(c.value, c.data_type) for c in (ws["C3"], ws["E3"])] == [("'=X", "s"), ("'=1+1", "s")]
+
+
+# ---- E3. 연계 Tool명 미해석 행 (docs/09 #17, I10·I35)
+def test_review_lists_unresolved_partners(tmp_path):
+    """합성 전체: 검토표에 사유 '연계SW 미해석' 행 = 골든 조사 누락 후보 키 (툴A 빈칸 — 유사도 0.85 미만은 힌트로만), 원문은 쓰지 않는다."""
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    out = run_load(registry_dir=reg, out_root=tmp_path / "out", shacl=False)
+    rows = [r for r in _review_rows(out) if r["사유"] == PARTNER]
+    assert [r["툴B_키"] for r in rows] == sorted(AGG["missing_tools"])
+    assert all(r["툴A_키"] == "" and r["유사도"] == "" and r["판정(통합/별개)"] == "" for r in rows)
+    by = {r["툴B_키"]: r for r in rows}
+    assert by["가상미조사툴"]["툴B_표기"] == "(연계 Tool명 · 언급 2회 · 파트 2차유로(SAS)·제어)"
+    assert by["가상외부해석툴"]["툴A_표기"] == "(기존 툴이면 툴A_키에 그 툴 키를 적는다 — 비슷한 키: 가상열해석 0.67 · 가상연소해석기 0.57)"
+    assert "가상-미조사툴" not in (out.out_dir / "tool_review.csv").read_text(encoding="utf-8-sig")
+    assert out.log["tool_keys"] == sorted(out.result.tools) and out.log["unresolved_partners"] == AGG["missing_tools"]
+
+
+def test_review_partner_spelling_maps_to_existing_tool(tmp_path):
+    """연계 행 판정 끝까지: 철자가 가까운 'Hypermash' 는 툴A_키 'hypermesh' 가 미리 채워지고, 한글 표기 '하이퍼메시' 는 빈칸 — 사람이 툴A_키를 적어
+    통합 → merge_pairs [툴 키, 연계 키] → 재적재에서 연계가 그 툴로 해석되어 CQ09·검토표에서 빠진다. 기존 툴의 TOOL ID 는 그대로."""
+    d = _copy(tmp_path)
+    _set_io_cells(d / STR, {("STR-02", "블레이드 형상"): {H_PARTNER: "하이퍼메시"}, ("STR-02", "익형 형상"): {H_PARTNER: "Hypermash"}})
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    cfg = _cfg_copy(tmp_path)
+    one = run_load(input_dir=d, registry_dir=reg, out_root=tmp_path / "o1", shacl=False, config_dir=cfg)
+    hm_id = _tool_ids(reg)["hypermesh"]
+    rows = _review_rows(one)
+    part = {r["툴B_키"]: r for r in rows if r["사유"] == PARTNER}         # 구조 파일만이라 다른 파트 툴(ansysfluent 등)도 미해석으로 함께 오른다
+    assert {"hypermash", "하이퍼메시"} <= set(part)
+    assert (part["hypermash"]["툴A_키"], part["hypermash"]["툴A_표기"], part["hypermash"]["유사도"]) == ("hypermesh", "HyperMesh", "0.889")
+    assert part["하이퍼메시"]["툴A_키"] == ""
+    part["하이퍼메시"].update({"툴A_키": "hypermesh", "판정(통합/별개)": "통합"})
+    part["hypermash"]["판정(통합/별개)"] = "통합"
+    _write_rows(one.out_dir / "tool_review.csv", rows)
+    r = apply_review(one.out_dir / "tool_review.csv", cfg)
+    assert (r.merged, r.kept, r.partner_merged, r.partner_missing, r.notes) == (2, 0, 2, 0, [])
+    assert _aliases_of(cfg)["merge_pairs"] == [["hypermesh", "hypermash"], ["hypermesh", "하이퍼메시"]]
+    two = run_load(input_dir=d, registry_dir=reg, out_root=tmp_path / "o2", shacl=False, config_dir=cfg)
+    assert not {"hypermash", "하이퍼메시"} & set(two.log["unresolved_partners"])
+    xs = {x.name: x for x in two.result.ios if x.sw_id == "STR-02"}
+    assert "hypermesh" in xs["블레이드 형상"].partner_tools and "hypermesh" in xs["익형 형상"].partner_tools
+    assert _tool_ids(reg)["hypermesh"] == hm_id and "하이퍼메시" not in _tool_ids(reg)          # 연계 키는 레지스트리 행이 없다
+    assert not {x["툴B_키"] for x in _review_rows(two) if x["사유"] == PARTNER} & {"hypermash", "하이퍼메시"}
+    assert not _w(two.result, UNUSED_W)
+
+
+def test_review_partner_missing_confirmed(tmp_path):
+    """툴A_키 빈칸 + 별개 = 기존 툴 아님(조사 누락 확인) → partner_missing. 재적재에서 검토표에는 다시 안 오르고 CQ09 후보에는 남는다.
+    그 연계 Tool명이 없는 회신을 적재하면 '별칭 미적용 … partner_missing' 경고."""
+    d = _copy(tmp_path)
+    _set_io_cells(d / STR, {("STR-02", "블레이드 형상"): {H_PARTNER: "가상누락툴"}})
+    cfg = _cfg_copy(tmp_path)
+    one = _load(d, tmp_path / "a", config_dir=cfg)
+    rows = _review_rows(one)
+    target = next(x for x in rows if x["툴B_키"] == "가상누락툴")
+    assert target["툴A_키"] == "" and target["사유"] == PARTNER
+    target["판정(통합/별개)"] = "별개"
+    _write_rows(one.out_dir / "tool_review.csv", rows)
+    r = apply_review(one.out_dir / "tool_review.csv", cfg)
+    assert (r.merged, r.kept, r.partner_merged, r.partner_missing) == (0, 0, 0, 1)
+    assert _aliases_of(cfg)["partner_missing"] == ["가상누락툴"]
+    two = _load(d, tmp_path / "b", config_dir=cfg)
+    assert "가상누락툴" in two.log["unresolved_partners"]
+    assert "가상누락툴" not in {x["툴B_키"] for x in _review_rows(two)} and not _w(two.result, UNUSED_W)
+    three = _load(_copy(tmp_path / "c"), tmp_path / "c", config_dir=cfg)
+    assert _w(three.result, UNUSED_W) == [f"{UNUSED_W}: {config_where(cfg / 'tool_aliases.yaml')} partner_missing 가상누락툴{UNUSED_TAIL}"]
+
+
+def test_review_partner_rejects_unknown_or_blank_tool_key(tmp_path, capsys):
+    """연계 행 통합: 툴A_키가 이 실행의 툴 키가 아니거나 비면 '[NG] 검토표 <행>행' (설정 그대로). 검토표를 실행 폴더 밖으로 옮겨 load_log 가 없으면
+    검사를 건너뛰고 '[주의]' — CLI 는 그 줄과 '연계 Tool명 대응' 건수를 보여 준다."""
+    d = _copy(tmp_path)
+    _set_io_cells(d / STR, {("STR-02", "블레이드 형상"): {H_PARTNER: "하이퍼메시"}})
+    cfg = _cfg_copy(tmp_path)
+    one = _load(d, tmp_path, config_dir=cfg)
+    csvp = one.out_dir / "tool_review.csv"
+    rows = _review_rows(one)
+    target = next(x for x in rows if x["툴B_키"] == "하이퍼메시")
+    assert target["사유"] == PARTNER
+    n = rows.index(target) + 2
+    before = (cfg / "tool_aliases.yaml").read_bytes()
+    for a, match in (("nosuchtool", "툴A_키 nosuchtool 는 이 실행의 툴 키가 아니다"), ("", "통합은 툴A_키에 기존 툴 키를 적는다 — 툴B_키 하이퍼메시")):
+        target.update({"툴A_키": a, "판정(통합/별개)": "통합"})
+        _write_rows(csvp, rows)
+        with pytest.raises(ValueError, match=match) as e:
+            apply_review(csvp, cfg)
+        assert str(e.value).startswith(f"검토표 {n}행: ")
+        assert (cfg / "tool_aliases.yaml").read_bytes() == before
+    target["툴A_키"] = "hypermesh"
+    moved = tmp_path / "moved" / "r.csv"
+    moved.parent.mkdir()
+    _write_rows(moved, rows)
+    from engenius_onto.cli import main
+    assert main(["apply-review", str(moved), "--config-dir", str(cfg)]) == 0
+    printed = capsys.readouterr().out
+    assert "통합 1건, 별개 0건, 통합 해제 0건 (연계 Tool명 대응 1건 · 누락 확인 0건)" in printed and "  [주의] 연계SW 미해석 행의 툴A_키를 확인하지 못함" in printed
+    assert _aliases_of(cfg)["merge_pairs"] == [["hypermesh", "하이퍼메시"]]
+
+
+def test_partner_missing_shape_and_union(tmp_path):
+    """partner_missing 은 키 목록 — 오버레이와 합집합, 목록이 아니면 ConfigError (파일·키 이름)."""
+    assert merge_config("tool_aliases.yaml", {"partner_missing": ["a"]}, {"partner_missing": ["b", "a"]})["partner_missing"] == ["a", "b"]
+    with pytest.raises(ConfigError, match="partner_missing"):
+        merge_config("tool_aliases.yaml", {}, {"partner_missing": "가상누락툴"})
+    over = _overlay(tmp_path, tool_aliases={"partner_missing": "가상누락툴"})
+    with pytest.raises(ConfigError, match="partner_missing: 형식은 목록"):
+        Loader(overlay_dir=over)
+
+
+# ---- E4. 별칭 미적용 (docs/09 #2 (4)) · 제조사를 떼지 않은 이름 별칭 (#2 (3))
+def test_unused_alias_entries_warn(tmp_path):
+    """오버레이 판정 항목 가운데 이번 적재의 툴·연계 Tool명 어디에도 키가 없는 것마다 경고 한 줄 (파일·절·항목). 쓰인 항목은 경고 없이 적용."""
+    over = _overlay(tmp_path, tool_aliases={"aliases": {"Nonexistent": ["Foo"], "HyperMesh": ["하이퍼메시"]},
+                                            "merge_pairs": [["zzz", "yyy"], ["hypermesh", "nastran"]],
+                                            "distinct": [["qqq", "rrr"], ["mechanical", "가상수명평가툴"]],
+                                            "labels": {"zzz": "Z", "hypermesh": "HM"},
+                                            "partner_missing": ["가상누락툴"]})
+    res = _load(_copy(tmp_path), tmp_path, overlay_dir=over).result
+    where = config_where(over / "tool_aliases.yaml")
+    assert "real_config" in where
+    assert _w(res, UNUSED_W) == [f"{UNUSED_W}: {where} {s}{UNUSED_TAIL}" for s in
+                                 ("merge_pairs zzz / yyy", "distinct qqq / rrr", "labels zzz", "partner_missing 가상누락툴",
+                                  "aliases HyperMesh ← 하이퍼메시", "aliases Nonexistent ← Foo")]
+    assert "nastran" not in res.tools and res.tools["hypermesh"].pref_label == "HM"
+
+
+def test_unused_alias_chain_through_observed_representative(tmp_path):
+    """merge_pairs 사슬 [c, a]·[a, b] 에서 대표 c 만 보여도 사슬은 적용된 것 — '지워도 된다' 는 오안내를 하지 않는다."""
+    over = _overlay(tmp_path, tool_aliases={"merge_pairs": [["hypermesh", "gonetool"], ["gonetool", "gonetool2"]]})
+    res = _load(_copy(tmp_path), tmp_path, overlay_dir=over).result
+    assert not _w(res, UNUSED_W)
+
+
+def test_public_alias_dictionary_not_checked(tmp_path):
+    """저장소 설정 폴더의 aliases(공개 별칭 사전 — 쓰지 않는 표기가 있는 게 정상)는 검사하지 않는다. 그 폴더의 판정 항목(labels 등)은 검사."""
+    res = _load(_copy(tmp_path / "a"), tmp_path / "a").result
+    assert not _w(res, UNUSED_W)
+    cfg = _cfg_copy(tmp_path)
+    data = _aliases_of(cfg)
+    data["aliases"]["CATIA V5"] = ["카티아"]
+    data["labels"] = {"zzz": "Z"}
+    (cfg / "tool_aliases.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    res = _load(_copy(tmp_path / "b"), tmp_path / "b", config_dir=cfg).result
+    assert _w(res, UNUSED_W) == [f"{UNUSED_W}: {config_where(cfg / 'tool_aliases.yaml')} labels zzz{UNUSED_TAIL}"]
+
+
+def test_unused_alias_masks_person_like_key(tmp_path):
+    """경고에 옮기는 항목이 인명 유사면 가린다 (Loader._q)."""
+    over = _overlay(tmp_path, tool_aliases={"labels": {"가나다책임": "X"}, "aliases": {"가나다 책임 툴": ["가나다 선임 툴"]}})
+    w = _w(_load(_copy(tmp_path), tmp_path, overlay_dir=over).result, UNUSED_W)
+    assert len(w) == 2 and all(PERSON_MASK in x for x in w) and not any("가나다" in x for x in w)
+
+
+def test_name_alias_with_vendor_prefixed_variant_applies_to_usage(tmp_path):
+    """#2 (3): 이름 별칭 'HyperMesh: [Altair HyperMesh Pro]' 의 변형 키(altairhypermeshpro)는 제조사를 떼지 않고 만든다 — 툴사용 키(제조사 뗀
+    hypermeshpro)로 안 맞으면 제조사를 떼지 않은 이름 키로도 찾아 그 툴로 (전에는 별도 툴 + 통합 후보로 남았다). 기존 툴의 TOOL ID 는 그대로."""
+    d = _copy(tmp_path)
+    _add_usage(d / STR, "STR-90", "Altair HyperMesh Pro", "Altair")
+    plain = run_load(input_dir=d, registry_dir=tmp_path / "reg0", out_root=tmp_path / "o0", shacl=False).result
+    assert "hypermeshpro" in plain.tools and ("hypermesh", "hypermeshpro") in {(c["a"], c["b"]) for c in plain.merge_candidates}
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    hm_id = _tool_ids(reg)["hypermesh"]
+    over = _overlay(tmp_path, tool_aliases={"aliases": {"HyperMesh": ["Altair HyperMesh Pro"]}})
+    res = run_load(input_dir=d, registry_dir=reg, out_root=tmp_path / "o1", shacl=False, overlay_dir=over).result
+    assert "hypermeshpro" not in res.tools and "Altair HyperMesh Pro" in res.tools["hypermesh"].names
+    assert _tool_ids(reg)["hypermesh"] == hm_id and "hypermeshpro" not in _tool_ids(reg)
+    assert not _w(res, UNUSED_W) and not [c for c in res.merge_candidates if "hypermeshpro" in (c["a"], c["b"])]
+
+
+# ---- E5. 레지스트리 엑셀 손상 (docs/09 #15 (4), Leo 결정 2026-10-12)
+def _set_usage_key(reg: Path, old: str, new: str) -> str:
+    """레지스트리 usages.csv 의 source_key 를 바꾼다 (엑셀이 바꿔 저장한 모양 흉내) → 그 행의 USE ID."""
+    rows = read_csv_rows(reg / "usages.csv")[0]
+    hit = [r for r in rows if r["source_key"] == old]
+    assert len(hit) == 1, old
+    hit[0]["source_key"] = new
+    with (reg / "usages.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+    return hit[0]["id"]
+
+
+RESTORED_TAIL = (" — 엑셀이 바꾼 Tool ID 칸('3-1'→'03월 01일', '01'→'1')을 라벨 끝 값으로 되살림, 이번 적재가 고쳐 저장한다 "
+                 "(레지스트리 CSV 는 엑셀로 저장하지 않는다 — docs/09 #15)")
+
+
+def test_registry_excel_damage_restored(tmp_path):
+    """엑셀이 바꾼 Tool ID('3-1'→'03월 01일', '0012'→'12')는 라벨 끝 값으로 되살린다 — USE·IO ID 그대로, 새 발급 0, 경고 '레지스트리 엑셀 손상 복원'.
+    (되살리지 않으면 그 툴사용·입출력이 새 ID 를 받고 옛 ID 는 폐기된다 — 경고가 적재 뒤에야 보여 늦다.)"""
+    d = _copy(tmp_path)
+    _rename_ids(d / STR, {"STR-01": "3-1", "STR-02": "0012"})
+    reg = tmp_path / "registry"
+    one = run_load(input_dir=d, registry_dir=reg, out_root=tmp_path / "o1", shacl=False)
+    ids = {u.key: u.node_id for u in one.result.usages}
+    ios = sorted(x.node_id for x in one.result.ios)
+    u1, u2 = _set_usage_key(reg, "3-1", "03월 01일"), _set_usage_key(reg, "0012", "12")
+    assert Registry(reg).notices == [f"레지스트리 엑셀 손상 복원: usages.csv 2행 ({u1}, {u2}){RESTORED_TAIL}"]
+    two = run_load(input_dir=d, registry_dir=reg, out_root=tmp_path / "o2", shacl=False)
+    assert {u.key: u.node_id for u in two.result.usages} == ids and sorted(x.node_id for x in two.result.ios) == ios
+    assert two.log["registry"]["transitions"]["usage"] == {"created": 0, "revived": 0}
+    assert _w(two.result, "레지스트리 엑셀 손상") == [f"레지스트리 엑셀 손상 복원: usages.csv 2행 ({u1}, {u2}){RESTORED_TAIL}"]
+    assert {"3-1", "0012"} <= {r["source_key"] for r in _registry_rows(reg)} and Registry(reg).notices == []    # 저장할 때 고쳐 썼다
+
+
+def test_registry_excel_damage_unexplained_warns(tmp_path):
+    """라벨로 설명되지 않는 키 불일치(손 편집 등)는 되살리지 않고 경고만 — ID 만 인용 (값 없음). 그대로 적재하면 경고대로 새 USE ID."""
+    reg = tmp_path / "registry"
+    shutil.copytree(REGISTRY_DIR, reg)
+    use = _set_usage_key(reg, "STR-01", "03월 01일")
+    rg = Registry(reg)
+    assert len(rg.notices) == 1 and rg.notices[0].startswith(f"레지스트리 엑셀 손상 의심: usages.csv 1행 ({use}) — Tool ID 칸이 라벨 끝과 다르다")
+    assert "03월" not in rg.notices[0] and rg.id_of("usage", ("FLD-002", "03월 01일")) == use
+    out = run_load(registry_dir=reg, out_root=tmp_path / "o", shacl=False)
+    assert rg.notices[0] in out.result.warnings
+    assert out.log["registry"]["transitions"]["usage"]["created"] == 1
+
+
+def test_registry_damage_unit(tmp_path):
+    """복원 (앞 0·소수 끝 0·영문 월 약어 날짜) · 같은 (분야, 원래 값) 행이 이미 있으면 의심만 · 구분 꼬리(I36) 라벨은 정상 · 설명 안 되면 의심 ·
+    분야·툴·분류 키는 엑셀 날짜 모양이면 의심."""
+    reg = tmp_path / "reg"
+    reg.mkdir()
+
+    def write(name: str, cols: list[str], rows: list[list[str]]) -> None:
+        with (reg / name).open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.writer(f, lineterminator="\n")
+            w.writerow(cols)
+            w.writerows(rows)
+
+    write("usages.csv", ["id", "field_id", "source_key", "label", "status", "merged_into"], [
+        ["USE-000001", "FLD-001", "1", "가상 01", "활성", ""],
+        ["USE-000002", "FLD-001", "1.5", "가상 1.50", "활성", ""],
+        ["USE-000003", "FLD-001", "1-Mar", "가상 파트 MAR-1", "활성", ""],
+        ["USE-000004", "FLD-001", "03월 01일", "가상 3-1", "폐기", ""],
+        ["USE-000005", "FLD-001", "3-1", "가상 3-1", "활성", ""],
+        ["USE-000006", "FLD-001", "STR-01@MD", "가상 STR-01 (MD)", "활성", ""],
+        ["USE-000007", "FLD-001", "X-9", "가상 X-1", "활성", ""]])
+    write("categories.csv", ["id", "key", "label", "status", "merged_into"], [["CAT-001", "2026-03-01", "2026-03-01", "활성", ""],
+                                                                             ["CAT-002", "해석-결과", "해석-결과", "활성", ""]])
+    rg = Registry(reg)
+    assert [r["source_key"] for r in rg.rows("usage")] == ["01", "1.50", "MAR-1", "03월 01일", "3-1", "STR-01@MD", "X-9"]
+    assert [n.split(" — ")[0] for n in rg.notices] == ["레지스트리 엑셀 손상 복원: usages.csv 3행 (USE-000001, USE-000002, USE-000003)",
+                                                      "레지스트리 엑셀 손상 의심: usages.csv 2행 (USE-000004, USE-000007)",
+                                                      "레지스트리 엑셀 손상 의심: categories.csv 1행 (CAT-001)"]
+
+
+@pytest.mark.parametrize("orig, cur, want", [
+    ("01", "1", True), ("0012", "12", True), ("12", "12", False), ("1.50", "1.5", True), ("10.0", "10", True), ("1.5", "1.5", False),
+    ("3-1", "03월 01일", True), ("3-1", "3월 1일", True), ("3/1", "1-Mar", True), ("12-31", "2026-12-31", True), ("3-1", "2026-03-01 00:00:00", True),
+    ("3-1", "3/1/2026", True), ("MAR-1", "01-Mar", True), ("mar-1", "03월 01일", True), ("2-30", "02월 30일", False), ("STR-01", "03월 01일", False),
+    ("3-1", "03월 02일", False), ("13-1", "01월 13일", False), ("A-1", "1", False), ("", "1", False)])
+def test_excel_explains(orig, cur, want):
+    assert excel_explains(orig, cur) is want
+
+
+def test_committed_registry_has_no_excel_damage():
+    assert Registry(REGISTRY_DIR).notices == []

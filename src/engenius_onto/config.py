@@ -115,7 +115,8 @@ def _expect(where: str, key: str, value, kind: str):
 
 
 ALIASES_SHAPES = {"aliases": "dict_of_list", "distinct": "list_of_pairs", "merge_pairs": "list_of_pairs",
-                  "merge_keys": "dict_of_str", "labels": "dict_of_str"}      # tool_aliases.yaml 의 정해진 키와 형식
+                  "merge_keys": "dict_of_str", "labels": "dict_of_str",
+                  "partner_missing": "list"}      # tool_aliases.yaml 의 정해진 키와 형식 (partner_missing — 검토표 연계 행 '기존 툴 아님', docs/09 #17)
 
 
 def check_aliases_shape(where: str, cfg: dict) -> dict:
@@ -148,7 +149,7 @@ def check_header_map_shape(where: str, cfg) -> dict[str, dict[str, list[str]]]:
 def merge_config(name: str, base: dict, over: dict, where_base: str | None = None, where_over: str | None = None) -> dict:
     """config/<name> 위에 오버레이 <name> 을 덮은 결과 (where_*: 오류 문구에 쓰는 파일 경로 — load_config 가 실제 경로를 넘긴다).
 
-    - tool_aliases.yaml: aliases 는 대표 이름별 변형 목록 합집합, distinct·merge_pairs 는 쌍 합집합, labels 는 키별 덮어쓰기.
+    - tool_aliases.yaml: aliases 는 대표 이름별 변형 목록 합집합, distinct·merge_pairs 는 쌍 합집합, partner_missing 은 키 합집합, labels 는 키별 덮어쓰기.
       merge_keys 는 어느 한쪽에라도 merge_pairs 키가 있으면 **합친 merge_pairs 에서 다시 계산**한다 (merge_keys_from_pairs — 두 파일의
       이력이 사슬로 이어질 때 키별 덮어쓰기는 깊이 1 이 깨져 '손으로 고친 merge_pairs' 경고가 영구히 났다). merge_pairs 키가 없는 쪽의
       merge_keys 는 쌍으로 승격해 섞는다 (옛 파일 호환). 양쪽 다 키가 없으면 옛 방식(merge_keys 키별 덮어쓰기, merge_pairs 키 없음).
@@ -174,7 +175,9 @@ def merge_config(name: str, base: dict, over: dict, where_base: str | None = Non
                 distinct.append(list(p))
         out = _merge_dict_keys({k: v for k, v in base.items() if k not in ALIASES_SHAPES},      # 정해진 키는 아래서 합친다
                                {k: v for k, v in over.items() if k not in ALIASES_SHAPES}, srcs[1][0])
-        out.update({"aliases": aliases, "distinct": distinct, "labels": {**b["labels"], **o["labels"]}})
+        missing = [str(x) for x in b["partner_missing"]]
+        missing += [str(x) for x in o["partner_missing"] if str(x) not in missing]
+        out.update({"aliases": aliases, "distinct": distinct, "labels": {**b["labels"], **o["labels"]}, "partner_missing": missing})
         if "merge_pairs" in b["_present"] or "merge_pairs" in o["_present"]:
             pairs = []
             for d in (b, o):                                   # 키가 없는 쪽만 merge_keys 를 쌍으로 승격 (read_merge_pairs 와 같은 규칙)
