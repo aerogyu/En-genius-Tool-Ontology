@@ -280,7 +280,9 @@ def quality_summary(res: LoadResult) -> dict:
                       "direction_unknown": sum(1 for x in xs if x.direction_short == "?"),
                       "choice_out": issues_by.get((f.name, "선택지 밖 값"), 0),
                       "required_missing": issues_by.get((f.name, "필수값 누락"), 0),
-                      "excluded_rows": f.excluded, "warnings": f.warnings})
+                      "excluded_rows": f.excluded, "warnings": f.warnings,
+                      # 예시와 거의 같은 행 (I15 개정) — 교체돼 빠진 행('예시 행 남음')까지. 277 vs 282 같은 툴사용 수 차이를 파트별로 본다
+                      "near_example": issues_by.get((f.name, "예시와 거의 같은 행"), 0) + issues_by.get((f.name, "예시 행 남음"), 0)})
     dist = {}
     for (sheet, slot, label), enum in QUALITY_SLOTS.items():
         allowed = set((enums.get(enum) or {}).get("permissible_values") or {})
@@ -331,12 +333,13 @@ def diag_text(run_dir: Path) -> str:
     if q:
         pct = lambda a, b: f"{100 * a / b:.0f}%" if b else "-"  # noqa: E731
         lines += ["", "파트별 (적재 파일마다 — 묶음 파일은 나뉜 파트를 괄호로):",
-                  "  파트 | 툴사용 | 입출력 | 입출력 없는 툴사용 | 고아 입출력 | 연계 Tool명 적음 | 그중 알아봄 | 방향 못 읽음 | 선택지 밖 | 필수 빈칸 | 제외 행"]
+                  "  파트 | 툴사용 | 입출력 | 입출력 없는 툴사용 | 고아 입출력 | 연계 Tool명 적음 | 그중 알아봄 | 방향 못 읽음 | 선택지 밖 | 필수 빈칸 | 제외 행 | 예시 유사"]
         for p in q["parts"]:
             name = p["part"] + (f" ({'·'.join(p['sub_parts'])})" if p["sub_parts"] else "")
             lines.append(f"  {name} | {p['usages']} | {p['ios']} | {p['usages_without_io']} | {p['orphan_ios']} | "
                          f"{p['partner_written']} ({pct(p['partner_written'], p['ios'])}) | {pct(p['partner_resolved'], p['partner_written'])} | "
-                         f"{p['direction_unknown']} | {p['choice_out']} | {p['required_missing']} | {p['excluded_rows']}")
+                         f"{p['direction_unknown']} | {p['choice_out']} | {p['required_missing']} | {p['excluded_rows']} | "
+                         f"{p.get('near_example', '-')}")
         lines += ["", "M4 계산에 쓰이는 열 — 선택지별 건수 (목록 밖 값은 건수만):"]
         for label, c in q["distributions"].items():
             lines.append(f"  {label}: " + " · ".join(f"{k} {n}" for k, n in sorted(c.items(), key=lambda kv: -kv[1]) if n))

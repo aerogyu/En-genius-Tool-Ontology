@@ -139,6 +139,9 @@ def test_P10_example_rows_by_content(res):
     assert len([x for x in res.ios if x.file.endswith("제어_20260924.xlsx") and x.row in (5, 6)]) == 2
     assert _usage(res, "2차유로(SAS)/SAS-01").v["reported_tool_name"] == "가상-1D네트워크"   # P10-c
     assert not [w for w in res.warnings if "중복 SW ID" in w and "SAS-01" in w]
+    # I15 개정: 합성 응답은 예시 유사가 아니다 (최고 SAS-01 19/30 = 0.633 < 0.8) — 유사 경고·교체·설정 점검 없음
+    assert not [w for w in res.warnings if w.startswith(("예시와 거의 같은 행", "예시 행 판별 설정 점검", "중복 SW ID — 예시 유사"))]
+    assert not [u for u in res.usages if u.near_example] and not [x for x in res.ios if x.near_example]
 
 
 def test_RESEND_superseded_file_not_loaded(res):

@@ -3,6 +3,8 @@
 - A. 확장자 정규화 (docs/09 #10) · 적재기 ↔ oracle 확장자 parity (docs/09 6장) · 인명 가림 헬퍼(Normalizer.looks_person·Loader._q)
 - B. 파일 층 (docs/09 #1 잔여·#8 C4): 파일 간 같은 (파트, Tool ID) 구분 키(I36) · '(n)' 사본 파일명(I31·I33) · 같은 내용 파일 한 번만 ·
   규칙 밖 해시 이름 유일화 · 규칙 밖 고아 표시
+- C. 예시와 거의 같은 행 (docs/09 #3, I15 개정): 정보 열 기준 유사 판별·경고 · 중복 Tool ID 면 예시 유사 행을 빼고 진짜 행 ·
+  설정 낡음 점검(시트별) · rules 오버레이 문턱 · template_examples 오버레이·template-examples --overlay · 적재기 ↔ oracle 판별식
 합성 파일 사본만 쓴다 (공개 상용 툴 이름·가상 이름). 인명 시험 값은 가상 자리표시('가나다 책임')만.
 """
 
@@ -20,8 +22,8 @@ import yaml
 from rdflib import RDF, Graph
 
 from engenius_onto import synth
-from engenius_onto.config import CONFIG_DIR, read_csv_rows
-from engenius_onto.loader import PERSON_MASK, FileReport, Loader, UsageRec
+from engenius_onto.config import CONFIG_DIR, ConfigError, merge_config, read_csv_rows
+from engenius_onto.loader import IO_SHEET, PERSON_MASK, USAGE_SHEET, FileReport, Loader, UsageRec
 from engenius_onto.normalize import Normalizer
 from engenius_onto.rdf_writer import SchemaTerms
 from engenius_onto.survey_load import DATA_SETS, run_load
@@ -554,3 +556,327 @@ def test_off_rule_orphan_io_not_merged(tmp_path):
     assert "None/" not in json.dumps(out.log, ensure_ascii=False)
     assert not any(x.startswith("완전 중복 입출력 행") for x in out.result.warnings)
     _one_each(out)
+
+
+# --------------------------------------------------------------------------- C. 예시와 거의 같은 행 (docs/09 #3, I15 개정)
+SAS = "SW조사_2차유로(SAS)_20260924.xlsx"
+NEAR_W = "예시와 거의 같은 행"
+SWAP_W = "중복 SW ID — 예시 유사 행 제외"
+STALE_W = "예시 행 판별 설정 점검"
+NEAR_HINT = "양식 예시와 거의 같습니다 — 남은 예시면 지우고, 실제 응답이면 예시 문구(비고 등)를 실제 내용으로 고쳐 주세요"
+
+
+def _cols(ws) -> dict[str, int]:
+    """헤더 → 열 번호 (헤더 끝의 ' *' 는 떼고 비교)."""
+    return {str(c.value).rstrip(" *"): c.column for c in ws[2] if c.value}
+
+
+def _set_row(path: Path, sheet: str, row: int, changes: dict[str, object]) -> None:
+    """행 번호로 셀을 고친다 ({헤더: 값}) — SAS 파일은 예시 4행과 진짜 5행이 같은 SAS-01 이라 SW ID 로는 행을 못 고른다."""
+    wb = openpyxl.load_workbook(path)
+    ws = wb[sheet]
+    col = _cols(ws)
+    for h, v in changes.items():
+        ws.cell(row, col[h.rstrip(" *")]).value = v
+    wb.save(path)
+
+
+def _clear_row(path: Path, sheet: str, row: int) -> None:
+    wb = openpyxl.load_workbook(path)
+    ws = wb[sheet]
+    for c in range(1, ws.max_column + 1):
+        ws.cell(row, c).value = None
+    wb.save(path)
+
+
+def _append_row(path: Path, sheet: str, values: dict[str, object]) -> int:
+    """마지막 내용 행 바로 아래에 한 행을 쓴다 ({헤더: 값}) → 행 번호."""
+    wb = openpyxl.load_workbook(path)
+    ws = wb[sheet]
+    col = _cols(ws)
+    row = max(r[0].row for r in ws.iter_rows(min_row=4) if r[0].value is not None) + 1
+    for h, v in values.items():
+        ws.cell(row, col[h.rstrip(" *")]).value = v
+    wb.save(path)
+    return row
+
+
+def _row_values(path: Path, sheet: str, row: int) -> dict[str, object]:
+    wb = openpyxl.load_workbook(path)
+    ws = wb[sheet]
+    out = {h: ws.cell(row, c).value for h, c in _cols(ws).items()}
+    wb.close()
+    return out
+
+
+def _rows_of(path: Path, sheet: str, sw_id: str) -> list[int]:
+    wb = openpyxl.load_workbook(path, read_only=True)
+    rows = [i for i, r in enumerate(wb[sheet].iter_rows(min_row=1, values_only=True), start=1) if r and r[0] == sw_id]
+    wb.close()
+    return rows
+
+
+def _usage(res, key: str):
+    return next(u for u in res.usages if u.key == key)
+
+
+@pytest.fixture(scope="module")
+def sas_base(tmp_path_factory):
+    """손대지 않은 SAS 파일만 적재한 기준 (파일 통계 비교용)."""
+    tmp = tmp_path_factory.mktemp("sas_base")
+    return _load(_copy(tmp, (SAS,)), tmp)
+
+
+@pytest.mark.parametrize("edit, why", [({"사용 인원수": 7}, "29/30 열 같음, 비고가 예시 문구"), ({"비고": None}, "29/30 열 같음")],
+                         ids=["users-6to7", "note-cleared"])
+def test_near_example_row_swapped_for_real_row(tmp_path, sas_base, edit, why):
+    """#3 A: 예시 행(4행)을 한 칸 고쳐 남기면 — 예시 유사 경고, 같은 SAS-01 의 진짜 5행을 쓰고 4행은 사유와 함께 제외.
+    (고치기 전: SANTA(4행)가 SAS-01 로 적재되고 진짜 5행이 '중복 SW ID' 로 빠졌다 — 입출력도 전부 SANTA 에 붙음, 예시 언급 경고 0)"""
+    d = _copy(tmp_path, (SAS,))
+    _set_row(d / SAS, "SW기본정보", 4, edit)
+    out = _load(d, tmp_path)
+    res = out.result
+    u = _usage(res, "2차유로(SAS)/SAS-01")
+    assert (u.v["reported_tool_name"], u.row, u.near_example) == ("가상-1D네트워크", 5, None)
+    near = [w for w in res.warnings if w.startswith(NEAR_W)]
+    assert near == [f"예시와 거의 같은 행: {SAS} SW기본정보 4행 ({why}) — 응답으로 적재, 양식 예시가 남은 것인지 확인"]
+    assert [w for w in res.warnings if w.startswith(SWAP_W)] == [
+        f"중복 SW ID — 예시 유사 행 제외: {SAS} SAS-01 — 4행(예시와 {why}) 제외, '가상-1D네트워크'(5행) 사용"]
+    assert not [w for w in res.warnings if w.startswith("중복 SW ID:")]
+    ex4 = [r for r in res.excluded_rows if r["sheet"] == "SW기본정보" and r["row"] == 4]
+    assert len(ex4) == 1 and "예시" in ex4[0]["reason"] and not ex4[0]["reason"].startswith("템플릿 예시 행")
+    assert ex4[0]["reason"] == "SW ID 중복 — 예시와 거의 같은 행이라 제외 (5행 사용, #3)"
+    owners = {x.owner.row for x in res.ios if x.sw_id == "SAS-01"}
+    assert owners == {5}
+    assert "santa" not in res.tools and "가상1d네트워크" in res.tools
+    # 시트별 설정 점검: 기본정보는 정확한 예시 0·유사 1 → 경고 (예시를 고쳐 남긴 경우에도 난다 — 문구가 그 경우를 먼저 든다), 입출력은 예시 3행이 정확
+    assert [w for w in res.warnings if w.startswith(STALE_W)] == [
+        f"예시 행 판별 설정 점검: {SAS} SW기본정보 — 예시와 정확히 같은 행 0, 거의 같은 행 1 → 예시를 고쳐 남긴 것이 아니면 "
+        "config/template_examples.yaml 이 이 파일의 양식과 다를 수 있음 (양식판 확인 · template-examples --form <양식> --overlay)"]
+    f, f0 = res.files[0], sas_base.result.files[0]
+    assert (f.usage_rows, f.io_rows, f.excluded) == (f0.usage_rows, f0.io_rows, f0.excluded)
+    assert f.warnings == f0.warnings + 3
+    row4 = [(i["kind"], i["value"], i["column"]) for i in res.issues if i["sheet"] == "SW기본정보" and i["row"] == 4]
+    assert row4 == [("예시 행 남음", "", "")]                       # 유사 행 요청이 교체 뒤 '예시 행 남음' 하나로 바뀐다
+    diag = (out.out_dir / "diag.txt").read_text(encoding="utf-8")
+    assert f"  {NEAR_W}: 1" in diag and f"  {SWAP_W}: 1" in diag and "| 예시 유사" in diag
+    assert next(ln for ln in diag.splitlines() if ln.startswith("  2차유로(SAS) |")).endswith(" | 1")
+    assert "SANTA" not in diag and "1D네트워크" not in diag
+
+
+def test_near_example_sole_row_loaded_with_warning(tmp_path):
+    """진짜 SAS-01 이 없으면 고친 예시 행은 응답으로 적재 (I15 — 일부만 같으면 응답) + 경고·수정 요청 '예시와 거의 같은 행'."""
+    d = _copy(tmp_path, (SAS,))
+    _set_row(d / SAS, "SW기본정보", 4, {"사용 인원수": 7})
+    _clear_row(d / SAS, "SW기본정보", 5)
+    res = _load(d, tmp_path).result
+    u = _usage(res, "2차유로(SAS)/SAS-01")
+    assert (u.v["reported_tool_name"], u.row, u.near_example) == ("SANTA", 4, "29/30 열 같음, 비고가 예시 문구")
+    assert len([w for w in res.warnings if w.startswith(NEAR_W)]) == 1
+    assert not [w for w in res.warnings if w.startswith(("중복 SW ID", SWAP_W))]
+    assert {x.owner.row for x in res.ios if x.sw_id == "SAS-01"} == {4}
+    assert "santa" in res.tools
+    iss = [i for i in res.issues if i["kind"] == NEAR_W]
+    assert [(i["sheet"], i["row"], i["tool_id"], i["value"], i["hint"]) for i in iss] == [("SW기본정보", 4, "SAS-01", "", NEAR_HINT)]
+
+
+def test_near_example_after_real_row_keeps_first(tmp_path):
+    """고친 예시 행이 진짜 행 **뒤**에 있으면 '먼저 나온 행' 규칙 그대로 — 진짜 행 유지, 뒤 행은 기존 '중복 SW ID' 사유로 제외."""
+    d = _copy(tmp_path, (SAS,))
+    vals = _row_values(d / SAS, "SW기본정보", 4)
+    vals["사용 인원수"] = 7
+    row = _append_row(d / SAS, "SW기본정보", vals)
+    res = _load(d, tmp_path).result
+    assert _usage(res, "2차유로(SAS)/SAS-01").row == 5
+    assert [w for w in res.warnings if w.startswith(NEAR_W)] == [
+        f"예시와 거의 같은 행: {SAS} SW기본정보 {row}행 (29/30 열 같음, 비고가 예시 문구) — 응답으로 적재, 양식 예시가 남은 것인지 확인"]
+    assert [w for w in res.warnings if w.startswith("중복 SW ID")] == [
+        f"중복 SW ID: {SAS} SAS-01 — 먼저 나온 행 사용, 'SANTA' 행 제외"]
+    assert [r["reason"] for r in res.excluded_rows if r["row"] == row] == ["중복 SW ID SAS-01 (먼저 나온 5행 사용)"]
+    assert not [w for w in res.warnings if w.startswith(STALE_W)]          # 4행 예시가 정확히 남아 있다
+
+
+def test_near_example_io_row_keeps_fill_down(tmp_path):
+    """입출력 예시를 고쳐 남긴 행도 경고 후 응답으로 적재하고, 이어받기(I22)를 끊지 않는다 — 아래 행이 Tool ID 를 이어받는다."""
+    d = _copy(tmp_path, (SAS,))
+    _set_row(d / SAS, "SW입출력", 4, {"전달 방법": "메일·수기 전달"})
+    _set_row(d / SAS, "SW입출력", 5, {"SW ID": None})
+    res = _load(d, tmp_path).result
+    near = [w for w in res.warnings if w.startswith(NEAR_W)]
+    assert near == [f"예시와 거의 같은 행: {SAS} SW입출력 4행 (11/12 열 같음) — 응답으로 적재, 양식 예시가 남은 것인지 확인",
+                    f"예시와 거의 같은 행: {SAS} SW입출력 5행 (11/12 열 같음) — 응답으로 적재, 양식 예시가 남은 것인지 확인"]
+    assert f"Tool ID 이어받음: {SAS} SW입출력 '경계조건(압력·온도)' → 'SAS-01' (바로 위 행)" in res.warnings
+    x4, x5 = (next(x for x in res.ios if x.row == r) for r in (4, 5))
+    assert x4.near_example == x5.near_example == "11/12 열 같음" and x4.owner.row == x5.owner.row == 5
+    assert not [w for w in res.warnings if w.startswith(STALE_W)]          # 입출력 6행 예시가 정확히 남아 있다
+
+
+def test_dup_warnings_mask_person_like(tmp_path):
+    """C5: 중복 SW ID 경고 두 종류 모두 Tool ID·툴명이 인명 유사면 가린다 (값은 '가나다 책임' 같은 가상 자리표시)."""
+    d = _copy(tmp_path, (SAS, STR))
+    _set_row(d / SAS, "SW기본정보", 4, {"사용 인원수": 7})
+    _set_row(d / SAS, "SW기본정보", 5, {"SW명(정식)": "가나다 책임 매크로"})
+    second = _rows_of(d / STR, "SW기본정보", "STR-03")[1]
+    _set_row(d / STR, "SW기본정보", second, {"SW명(정식)": "가나다 책임 툴"})
+    res = _load(d, tmp_path).result
+    dup = [w for w in res.warnings if w.startswith("중복 SW ID")]
+    assert dup == [f"중복 SW ID — 예시 유사 행 제외: {SAS} SAS-01 — 4행(예시와 29/30 열 같음, 비고가 예시 문구) 제외, '{PERSON_MASK}'(5행) 사용",
+                   f"중복 SW ID: {STR} STR-03 — 먼저 나온 행 사용, '{PERSON_MASK}' 행 제외"]
+    assert not any("가나다" in w for w in dup)
+
+
+def test_na_heavy_real_rows_are_not_near(tmp_path):
+    """정보 열 기준 (2026-10-12): NA·모름 투성이 실제 응답은 v1.1 TA-01 예시와 빈 값 칸이 같아도 예시 유사가 아니다."""
+    d = _copy(tmp_path)
+    _append_row(d / STR, "SW입출력", {"SW ID": "STR-01", "방향": "입력(소비)", "데이터/산출물 명칭": "가상 하중조건",
+                                       "분류": "해석-입력데이터", "파일 형식/확장자": "NA", "포맷 표준성": "모름", "데이터 성격": "수치·표",
+                                       "전달 방법": "메일·수기 전달", "연계 SW명": "NA", "보안등급": "미정"})
+    res = _load(d, tmp_path).result
+    assert not [w for w in res.warnings if w.startswith((NEAR_W, STALE_W))]       # 정보 열 5/7 = 0.71 (빈 값 칸까지 세면 8/10 = 0.80 — 걸렸다)
+    ld = Loader()
+    ta = dict(next(e for e in ld.examples[USAGE_SHEET] if e["source_key"] == "TA-01"))
+    ta.update(source_key="TA-07", reported_tool_name="가상-터빈 리그 계산표", purpose_detail="가상 용도", task_summary="가상 업무",
+              note="가상 비고")
+    present = {c.slot for c in ld.spec.columns[USAGE_SHEET]}
+    assert ld._example_similarity(USAGE_SHEET, ta, present) == (10, 15)          # 예시의 비지 않은 열 전부로 세면 24/29 = 0.83 — 걸렸다
+    assert ld._near_example(USAGE_SHEET, ta, present) is None
+
+
+def _near_cases() -> list[tuple[str, str, dict, set | None]]:
+    """(이름, 시트, 행, present | None=전체 열) — 적재기·oracle 대조용."""
+    ld = Loader()
+    out = []
+    for sheet in (USAGE_SHEET, IO_SHEET):
+        for i, ex in enumerate(ld.examples[sheet]):
+            row = dict(ex)
+            k = "reported_tool_name" if sheet == USAGE_SHEET else "data_name"     # 모든 예시의 정보 열
+            row[k] = "가상-다른값"
+            out.append((f"{sheet}-{i}-one-cell", sheet, row, None))
+            out.append((f"{sheet}-{i}-exact", sheet, dict(ex), None))
+    sas = dict(ld.examples[USAGE_SHEET][0])
+    out.append(("float-int-cell", USAGE_SHEET, {**sas, "user_count": 6.0, "license_count": 10.0, "version": "v4.3"}, None))
+    out.append(("note-only", USAGE_SHEET, {"source_key": "X-1", "reported_tool_name": "가상", "note": sas["note"]}, None))
+    out.append(("note-NFC-space", USAGE_SHEET, {"source_key": "X-1", "note": "  " + sas["note"] + " "}, None))
+    out.append(("note-absent-column", USAGE_SHEET, {"source_key": "X-1", "note": sas["note"]},
+                {c.slot for c in ld.spec.columns[USAGE_SHEET]} - {"note"}))
+    ta_io = dict(next(e for e in ld.examples[IO_SHEET] if e["owner_source_key"] == "TA-01"))
+    out.append(("na-heavy-io", IO_SHEET, {**ta_io, "owner_source_key": "STR-01", "data_name": "가상 하중조건"}, None))
+    out.append(("few-columns-present", USAGE_SHEET, dict(sas), {"source_key", "reported_tool_name", "version", "note"}))
+    out.append(("half-present", USAGE_SHEET, {**sas, "version": "v9"},
+                {"source_key", "reported_tool_name", "version", "reported_vendor", "reported_kind", "purpose_class", "phase"}))
+    return out
+
+
+@pytest.mark.parametrize("name, sheet, row, present", _near_cases(), ids=[c[0] for c in _near_cases()])
+def test_example_similarity_matches_oracle(name, sheet, row, present):
+    """I15 개정 판별식 — 적재기 Loader._example_similarity·_near_example ↔ oracle.example_similarity·example_near (독립 구현)."""
+    ld = Loader()
+    present = present if present is not None else {c.slot for c in ld.spec.columns[sheet]}
+    examples = ld.examples[sheet]
+    got = ld._example_similarity(sheet, row, present)
+    assert got == oracle.example_similarity(row, examples, present)
+    assert (ld._near_example(sheet, row, present) is not None) == oracle.example_near(row, examples, present, sheet == USAGE_SHEET)
+    if name.endswith("-one-cell"):
+        eq, n = got
+        assert n and eq == n - 1 and eq / n >= 0.8, name                    # 예시 한 칸 수정은 모두 잡힌다
+    if name == "few-columns-present":
+        assert got == (0, 0)                                                # 정보 열 4 < example_near_min_cols 5 — 비고 대조만 남는다
+        assert ld._near_example(sheet, row, present) == "비고가 예시 문구"
+    if name == "note-only":
+        assert ld._near_example(sheet, row, present).endswith("비고가 예시 문구")
+
+
+def test_example_near_ratio_from_rules_overlay(tmp_path):
+    """rules.yaml loader.example_near_ratio 는 사내 오버레이로 조정 — 0.6 이면 골든 SAS 5행(19/30 = 0.633)이 걸린다. 틀린 값은 ConfigError."""
+    d = _copy(tmp_path, (SAS,))
+    over = tmp_path / "real_config"
+    over.mkdir()
+    (over / "rules.yaml").write_text(yaml.safe_dump({"loader": {"example_near_ratio": 0.6}}), encoding="utf-8")
+    ld = Loader(overlay_dir=over)
+    assert (ld.near_ratio, ld.near_min_cols) == (0.6, 5) and "rules.yaml" in ld.overlay_files
+    res = ld.load(ld.discover(d))
+    assert [w for w in res.warnings if w.startswith(NEAR_W)] == [
+        f"예시와 거의 같은 행: {SAS} SW기본정보 5행 (19/30 열 같음) — 응답으로 적재, 양식 예시가 남은 것인지 확인"]
+    assert not [w for w in res.warnings if w.startswith(STALE_W)]          # 4행이 정확한 예시
+    assert Loader().near_ratio == 0.8
+    for bad in ({"example_near_ratio": 1.5}, {"example_near_ratio": "abc"}, {"example_near_ratio": 0}, {"example_near_ratio": True},
+                {"example_near_min_cols": 0}, {"example_near_min_cols": 2.5}):
+        (over / "rules.yaml").write_text(yaml.safe_dump({"loader": bad}), encoding="utf-8")
+        with pytest.raises(ConfigError, match="example_near_"):
+            Loader(overlay_dir=over)
+
+
+def test_stale_template_examples_warned_per_sheet(tmp_path):
+    """#3c: 설정의 기본정보 예시가 양식과 다르면(버전 v4.2 → v4.3, template-examples 재실행 안 함) 적재 8개 파일 모두 기본정보 시트에
+    '예시 행 판별 설정 점검' 1건 — 입출력 예시는 정확히 맞아 파일 단위 조건(docs/09 원안)으로는 0/8 이었다. SAS 파일은 진짜 SAS-01 로 교체,
+    다른 7개 파일의 '<파트>/SAS-01' 은 예시 유사 경고와 함께 응답으로 적재되고 키는 파트마다 따로 (Leo #3 A 의 동작 고정)."""
+    cfg = tmp_path / "config"
+    shutil.copytree(CONFIG_DIR, cfg)
+    ex = yaml.safe_load((cfg / "template_examples.yaml").read_text(encoding="utf-8"))
+    for r in ex[USAGE_SHEET]:
+        if r.get("version") == "v4.2":
+            r["version"] = "v4.3"
+    (cfg / "template_examples.yaml").write_text(yaml.safe_dump(ex, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    res = run_load(registry_dir=tmp_path / "registry", out_root=tmp_path / "out", shacl=False, config_dir=cfg).result
+    loaded = [f.name for f in res.loaded_files]
+    assert len(loaded) == 8
+    stale = [w for w in res.warnings if w.startswith(STALE_W)]
+    assert sorted(w.split(" — ")[0] for w in stale) == sorted(f"{STALE_W}: {f} SW기본정보" for f in loaded)
+    assert not any(" SW입출력 — " in w for w in stale)
+    assert _usage(res, "2차유로(SAS)/SAS-01").v["reported_tool_name"] == "가상-1D네트워크"
+    sas01 = [u for u in res.usages if u.sw_id == "SAS-01"]
+    assert len({u.key for u in sas01}) == len(sas01) == 8
+    assert all(u.near_example for u in sas01 if u.field != "2차유로(SAS)")
+    perf = next(w for w in stale if "성능" in w)
+    assert "거의 같은 행 2" in perf                                          # 성능 파일은 예시 복사본(9행)까지
+
+
+def test_template_examples_overlay_union(tmp_path):
+    """#3d: 사내 오버레이 template_examples.yaml 은 저장소 예시와 시트별 합집합 — 그 행이 정확한 예시로 제외되고 저장소 예시도 계속 제외."""
+    d = _copy(tmp_path)
+    row = _append_row(d / STR, "SW기본정보", {"SW ID": "STR-90", "SW명(정식)": "가상-사내예시툴", "버전": "v1", "비고": "(사내 양식 예시)"})
+    over = tmp_path / "real_config"
+    over.mkdir()
+    extra = {"source_key": "STR-90", "reported_tool_name": "가상-사내예시툴", "version": "v1", "note": "(사내 양식 예시)"}
+    (over / "template_examples.yaml").write_text(yaml.safe_dump({USAGE_SHEET: [extra]}, allow_unicode=True), encoding="utf-8")
+    out = run_load(input_dir=d, registry_dir=tmp_path / "registry", out_root=tmp_path / "out", shacl=False, overlay_dir=over)
+    ex = {(r["sheet"], r["row"]): r["reason"] for r in out.result.excluded_rows}
+    assert ex[(USAGE_SHEET, row)] == ex[(USAGE_SHEET, 4)] == "템플릿 예시 행 (내용 일치, I15)"
+    assert "STR-90" not in {u.sw_id for u in out.result.usages}
+    assert "template_examples.yaml" in out.log["config_overlay"]["files"]
+    plain = run_load(input_dir=d, registry_dir=tmp_path / "reg2", out_root=tmp_path / "out2", shacl=False)   # 오버레이 없으면 응답
+    assert "STR-90" in {u.sw_id for u in plain.result.usages}
+    base = yaml.safe_load((CONFIG_DIR / "template_examples.yaml").read_text(encoding="utf-8"))
+    merged = merge_config("template_examples.yaml", base, {USAGE_SHEET: [extra, base[USAGE_SHEET][0]], IO_SHEET: []})
+    assert merged[USAGE_SHEET] == base[USAGE_SHEET] + [extra] and merged[IO_SHEET] == base[IO_SHEET]
+    with pytest.raises(ConfigError, match="예시 행은 매핑"):
+        merge_config("template_examples.yaml", base, {USAGE_SHEET: ["문자열"]})
+    with pytest.raises(ConfigError, match="목록"):
+        merge_config("template_examples.yaml", base, {USAGE_SHEET: {"a": 1}})
+
+
+def test_template_examples_cli_overlay_writes_real_config(tmp_path, monkeypatch):
+    """#3d: template-examples --form <사내 양식> --overlay 는 저장소 config 를 건드리지 않고 data/real/config 에 **새 예시만 더한다** (다시 돌려도 0)."""
+    import engenius_onto.config as cfgmod
+    from engenius_onto.cli import main
+
+    real = tmp_path / "real_config"
+    monkeypatch.setattr(cfgmod, "REAL_CONFIG_DIR", real)
+    form = tmp_path / "사내양식_v1.2.xlsx"
+    shutil.copy(REPO / "reference" / "Tool조사양식_EnGenius_v1.1.xlsx", form)
+    wb = openpyxl.load_workbook(form)
+    ws = wb["Tool 기본정보"]
+    assert ws.cell(5, 2).value == "SAS-01"
+    ws.cell(5, _cols(ws)["버전"]).value = "v9.9"                           # 사내 양식판의 예시가 조금 다르다
+    wb.save(form)
+    repo_bytes = (CONFIG_DIR / "template_examples.yaml").read_bytes()
+    assert main(["template-examples", "--overlay"]) == 1                    # --form 없이는 거부
+    assert main(["template-examples", "--form", str(form), "--overlay"]) == 0
+    assert (CONFIG_DIR / "template_examples.yaml").read_bytes() == repo_bytes
+    data = yaml.safe_load((real / "template_examples.yaml").read_text(encoding="utf-8"))
+    assert [r["version"] for r in data[USAGE_SHEET]] == ["v9.9"] and data[IO_SHEET] == []
+    assert "사내 전용" in (real / "template_examples.yaml").read_text(encoding="utf-8")
+    assert main(["template-examples", "--form", str(form), "--overlay"]) == 0
+    assert yaml.safe_load((real / "template_examples.yaml").read_text(encoding="utf-8")) == data
+    ld = Loader(overlay_dir=real)
+    assert "template_examples.yaml" in ld.overlay_files and len(ld.examples[USAGE_SHEET]) == len(Loader().examples[USAGE_SHEET]) + 1

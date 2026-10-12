@@ -7,7 +7,9 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
 - 시트·선택지 목록 이름은 양식판마다 다르다 — config/rules.yaml loader.sheets·choice_list_aliases 가 흡수 (docs/09 #13, 양식 v1.1).
 - 파트(Field) = 파일명의 약칭 (docs/10 5장). 묶음 파일(MD = MDT+MDC)은 행의 Tool ID 앞부분으로 나눈다 (config/parts.yaml).
   행의 '담당 부서' 는 분류 속성 reported_domain — 파트 설정과 다르면 경고만.
-- 예시 행은 위치가 아니라 적재 열 전체가 템플릿 예시와 같은지로 판별 (I15) — config/template_examples.yaml.
+- 예시 행은 위치가 아니라 적재 열 전체가 템플릿 예시와 같은지로 판별 (I15) — config/template_examples.yaml (+ 오버레이).
+  예시의 정보 열 80% 이상이 같거나 비고가 예시 문구인 '예시와 거의 같은 행' 은 경고 후 응답으로 적재하고, 같은 Tool ID 의 진짜 행이 뒤에
+  있으면 진짜 행을 쓴다 (I15 개정, docs/09 #3). 시트에 예시 유사 행만 있고 정확한 예시가 0 이면 설정 점검 경고.
 - 같은 파트 파일이 여럿이면 (날짜, 사본 번호 '(n)', 파일명) 최신 1개만 적재하고, 그 뒤 같은 내용(sha256) 파일은 한 번만 (I31·I33).
 - 파일 간 같은 (파트, Tool ID) 는 둘 다 적재하고 경고 — 전용 파일이 아닌 쪽 레지스트리 키에 구분 꼬리 '@<약칭|file-sha10>' (I36, docs/09 #1).
 - 어떤 행도 조용히 버리지 않는다 — 제외는 사유와 함께 excluded_rows, 문제는 warnings (5장 6). 행 단위 문제는 issues 에도
@@ -60,6 +62,7 @@ class UsageRec:
     tool_key: str = ""
     node_id: str = ""                # 레지스트리 USE ID (rdf_writer 가 채움)
     reg_tag: str = ""                # 파일 간 같은 (파트, Tool ID) 의 구분 꼬리 — 파일 약칭 또는 'file-<sha256 앞 10자>' (I36, 충돌 때만)
+    near_example: str | None = None  # 예시와 거의 같은 행이면 근거 ('29/30 열 같음' 등, I15 개정 — docs/09 #3)
 
     @property
     def sw_id(self) -> str:
@@ -96,6 +99,7 @@ class IORec:
     seq: int = 0                    # 완전 중복 행 순번 (D2)
     suffix: str = ""                # 표시 키 구분 (골든 키 표기)
     node_id: str = ""                # IO-<해시> (rdf_writer 가 채움)
+    near_example: str | None = None  # 예시와 거의 같은 행이면 근거 (I15 개정 — 응답으로 적재, 경고만)
 
     @property
     def sw_id(self) -> str:
@@ -248,7 +252,10 @@ class Loader:
         self.norm = Normalizer.from_config(self.config_dir, self.overlay_dir)
         self._note_overlay("extensions.yaml")
         self.spec: FormSpec = load_form_spec(schema_file, self.config_dir)
-        self.examples = load_yaml("template_examples.yaml", self.config_dir)
+        self.examples = self._cfg("template_examples.yaml")      # 오버레이는 시트별 합집합 (사내 양식판의 예시 — docs/09 #3)
+        self.near_ratio, self.near_min_cols = self._near_settings()
+        self.example_notes = {k for k in (cell_key(e.get("note")) for e in self.examples.get(USAGE_SHEET, []))
+                              if k and not self.norm.is_empty(k)}           # 기본정보 예시 비고 문구 (예시 유사 판별)
         self.aliases_cfg = self._cfg("tool_aliases.yaml")
         self.person_re = re.compile(self.rules["person_pattern"])
         self.person_all = [re.compile(p) for p in self.rules.get("person_patterns_all") or []]
@@ -279,6 +286,17 @@ class Loader:
     def _note_overlay(self, name: str) -> None:
         if self.overlay_dir and (self.overlay_dir / name).is_file() and name not in self.overlay_files:
             self.overlay_files.append(name)
+
+    def _near_settings(self) -> tuple[float, int]:
+        """rules.yaml loader.example_near_ratio (0 < r ≤ 1) · example_near_min_cols (정수 ≥ 1) — 틀리면 ConfigError (I15 개정, docs/09 #3)."""
+        r = self.lcfg.get("example_near_ratio", 0.8)
+        m = self.lcfg.get("example_near_min_cols", 5)
+        where = "config/rules.yaml (또는 data/real/config 오버레이) loader"
+        if isinstance(r, bool) or not isinstance(r, (int, float)) or not 0 < r <= 1:
+            raise ConfigError(f"{where}.example_near_ratio: 0 보다 크고 1 이하인 수여야 한다 (지금: {r!r})")
+        if isinstance(m, bool) or not isinstance(m, int) or m < 1:
+            raise ConfigError(f"{where}.example_near_min_cols: 1 이상의 정수여야 한다 (지금: {m!r})")
+        return float(r), m
 
     def _optional_yaml(self, name: str) -> dict:
         path = self.config_dir / name
@@ -572,6 +590,34 @@ class Loader:
         got = tuple(cell_key(v.get(s)) for s in cols)
         return any(got == tuple(cell_key(ex.get(s)) for s in cols) for ex in self.examples.get(sheet, []))
 
+    def _example_similarity(self, sheet: str, v: dict, present: set) -> tuple[int, int]:
+        """(같은 칸 수, 비교한 칸 수) — 예시 가운데 비율이 가장 높은 것 (같으면 비교한 칸이 많은 쪽, 그다음 앞 예시). 없으면 (0, 0).
+        비교 칸 = 예시의 정보 열: 예시 값이 비지 않고 빈 값 토큰(I16 — NA·모름 등)도 아니며 이 파일에 있는 열(present). 이런 열이
+        example_near_min_cols 보다 적은 예시는 보지 않는다. 값 비교는 _is_example 과 같은 cell_key (I15 개정, docs/09 #3).
+        빈 값 토큰 칸을 빼는 이유: 양식 v1.1 TA-01 예시는 절반이 NA·모름이라 NA 투성이 실제 응답이 0.8 을 넘었다."""
+        best = (0, 0)
+        for ex in self.examples.get(sheet, []):
+            eq = n = 0
+            for c in self.spec.columns[sheet]:
+                e = cell_key(ex.get(c.slot))
+                if not e or c.slot not in present or self.norm.is_empty(e):
+                    continue
+                n += 1
+                eq += cell_key(v.get(c.slot)) == e
+            if n >= self.near_min_cols and (not best[1] or (eq / n, n) > (best[0] / best[1], best[1])):
+                best = (eq, n)
+        return best
+
+    def _near_example(self, sheet: str, v: dict, present: set) -> str | None:
+        """예시와 거의 같은 행이면 근거 문구('29/30 열 같음', '…, 비고가 예시 문구'), 아니면 None. 정확한 예시(_is_example)는 먼저 걸러 둔다.
+        판별: 정보 열 같은 비율 ≥ example_near_ratio, 또는 기본정보 비고가 예시 비고 문구와 같음 (I15 개정)."""
+        eq, n = self._example_similarity(sheet, v, present)
+        hit = bool(n) and eq / n >= self.near_ratio
+        note = sheet == USAGE_SHEET and "note" in present and cell_key(v.get("note")) in self.example_notes
+        if not (hit or note):
+            return None
+        return ", ".join(([f"{eq}/{n} 열 같음"] if n else []) + (["비고가 예시 문구"] if note else []))
+
     # ---- 셀 규칙 (D5) -------------------------------------------------------------
     def _convert(self, col: Column, value, where: str, warnings: list, rep: FileReport):
         """문자열 슬롯의 숫자·날짜 셀 변환 (I27). 정수 슬롯은 (정수 | None, 원문 | None)."""
@@ -686,11 +732,31 @@ class Loader:
             excluded.append({"file": fname, "sheet": sheet, "row": row, "reason": reason})
             rep.excluded += 1
 
+        # 예시 행 (I15): 시트별 정확 일치·유사 행 수 — 끝에서 설정 낡음 점검. 기본정보 유사 행의 수정 요청 행은 교체되면 종류를 바꾼다
+        n_exact = {USAGE_SHEET: 0, IO_SHEET: 0}
+        n_near = {USAGE_SHEET: 0, IO_SHEET: 0}
+        near_issue: dict[int, dict] = {}
+
+        def near_check(sheet: str, n: int, raw: dict, present: set, tool_id) -> str | None:
+            """예시와 거의 같은 행이면 경고·수정 요청 후 근거 문구 (원문 셀 기준 — 병합 채움 뒤·값 대응표 전, 값은 인용하지 않는다)."""
+            near = self._near_example(sheet, raw, present)
+            if near:
+                n_near[sheet] += 1
+                warnings.append(f"예시와 거의 같은 행: {fname} {sheet} {n}행 ({near}) — 응답으로 적재, 양식 예시가 남은 것인지 확인")
+                rep.warnings += 1
+                self._issue(rep, sheet, n, tool_id, None, None, "예시와 거의 같은 행",
+                            "양식 예시와 거의 같습니다 — 남은 예시면 지우고, 실제 응답이면 예시 문구(비고 등)를 실제 내용으로 고쳐 주세요")
+                if sheet == USAGE_SHEET:
+                    near_issue[n] = self.issues[-1]
+            return near
+
         usages, by_id = [], {}
         for n, raw in urows:
             if self._is_example(USAGE_SHEET, raw):
                 exclude(USAGE_SHEET, n, "템플릿 예시 행 (내용 일치, I15)")
+                n_exact[USAGE_SHEET] += 1
                 continue
+            near = near_check(USAGE_SHEET, n, raw, upresent, raw.get("source_key"))
             if _blank(raw.get("source_key")):
                 name = nfc_strip(raw.get("reported_tool_name"))
                 warnings.append(f"SW ID 없는 내용 행: {fname} {USAGE_SHEET} '{name}' — 건너뜀")
@@ -706,16 +772,30 @@ class Loader:
                     rawvals[slot] = r
             aliased += self._apply_value_aliases(v, rep)
             self._check(USAGE_SHEET, v, upresent, choices, where, warnings, rep, n, v.get("source_key"), missing_lists)
-            u = UsageRec(fname, rep.field, n, v, rawvals, part=self._part_of(rep, v.get("source_key"), warnings, n))
+            u = UsageRec(fname, rep.field, n, v, rawvals, part=self._part_of(rep, v.get("source_key"), warnings, n),
+                         near_example=near)
             k = id_key(u.sw_id)
             if k in by_id:
-                warnings.append(f"중복 SW ID: {fname} {u.sw_id} — 먼저 나온 행 사용, "
-                                f"'{nfc_strip(v.get('reported_tool_name'))}' 행 제외")
+                prev = by_id[k]
+                if not (prev.near_example and not near):              # 보통: 먼저 나온 행 사용 (docs/02 5장 4)
+                    warnings.append(f"중복 SW ID: {fname} {self._q(u.sw_id)} — 먼저 나온 행 사용, "
+                                    f"'{self._q(nfc_strip(v.get('reported_tool_name')))}' 행 제외")
+                    rep.warnings += 1
+                    exclude(USAGE_SHEET, n, f"중복 SW ID {self._q(u.sw_id)} (먼저 나온 {prev.row}행 사용)")
+                    self._issue(rep, USAGE_SHEET, n, u.sw_id, "Tool ID", u.sw_id, "Tool ID 중복",
+                                f"{prev.row}행과 같은 Tool ID — 번호를 다르게 해 주세요")
+                    continue
+                # 예외 (I15 개정, Leo #3 A): 앞 행이 예시 유사이고 이 행은 아니면 — 고쳐 남긴 예시가 진짜 행을 밀어내지 않게 앞 행을 뺀다.
+                # 입출력 소유는 툴사용을 다 읽은 뒤 by_id 로 정하므로 이 행으로 붙는다. 아래 공통 경로(담당 부서·정수 변환 경고·등록)로 이어진다.
+                usages.remove(prev)
+                rep.usage_rows -= 1
+                exclude(USAGE_SHEET, prev.row, f"SW ID 중복 — 예시와 거의 같은 행이라 제외 ({n}행 사용, #3)")
+                warnings.append(f"중복 SW ID — 예시 유사 행 제외: {fname} {self._q(u.sw_id)} — {prev.row}행(예시와 {prev.near_example}) 제외, "
+                                f"'{self._q(nfc_strip(v.get('reported_tool_name')))}'({n}행) 사용")
                 rep.warnings += 1
-                exclude(USAGE_SHEET, n, f"중복 SW ID {u.sw_id} (먼저 나온 {by_id[k].row}행 사용)")
-                self._issue(rep, USAGE_SHEET, n, u.sw_id, "Tool ID", u.sw_id, "Tool ID 중복",
-                            f"{by_id[k].row}행과 같은 Tool ID — 번호를 다르게 해 주세요")
-                continue
+                if prev.row in near_issue:
+                    near_issue[prev.row].update(kind="예시 행 남음",
+                                                hint=f"양식 예시를 고쳐 남긴 행으로 보여 같은 Tool ID 의 {n}행을 썼습니다 — 예시 행을 지워 주세요")
             dom = nfc_strip(v.get("reported_domain"))
             allowed = self._domains(u.part)
             if u.part and dom and allowed and dom not in allowed:
@@ -734,8 +814,10 @@ class Loader:
         for n, raw in irows:
             if self._is_example(IO_SHEET, raw):
                 exclude(IO_SHEET, n, "템플릿 예시 행 (내용 일치, I15)")
+                n_exact[IO_SHEET] += 1
                 prev_n = prev_id = None
                 continue
+            near = near_check(IO_SHEET, n, raw, ipresent, raw.get("owner_source_key"))   # 응답이므로 이어받기를 끊지 않는다 (I22)
             if _blank(raw.get("owner_source_key")) and fill_down and prev_id is not None and prev_n == n - 1:
                 # 같은 툴의 입출력을 여러 행에 적으며 첫 행에만 ID 를 적은 경우 (Leo 2026-10-09) — 바로 위 행과 붙어 있을 때만
                 raw = {**raw, "owner_source_key": prev_id}
@@ -759,7 +841,7 @@ class Loader:
             sw = nfc_strip(v.get("owner_source_key"))
             owner = by_id.get(id_key(sw))                            # D3: 소유는 같은 파일 안에서 (#18 표기 차이 흡수)
             dval = nfc_strip(v.get("direction"))
-            x = IORec(fname, rep.field, n, v, owner, self.dir_short.get(dval, "?"))
+            x = IORec(fname, rep.field, n, v, owner, self.dir_short.get(dval, "?"), near_example=near)
             if owner is None:
                 warnings.append(f"고아 입출력: {fname} SW ID '{sw}' ({x.name}) — SW기본정보에 없음")
                 rep.warnings += 1
@@ -776,6 +858,13 @@ class Loader:
             x.partner_names = self.norm.split_partners(v.get("partner_raw"))
             ios.append(x)
             rep.io_rows += 1
+        # 설정 낡음 점검 (I15 개정, docs/09 #3c) — 시트별: 파일 단위면 입출력 예시가 정확히 맞아 기본정보 예시만 어긋난 양식을 놓친다
+        for sh in (USAGE_SHEET, IO_SHEET):
+            if n_near[sh] and not n_exact[sh]:
+                warnings.append(f"예시 행 판별 설정 점검: {fname} {sh} — 예시와 정확히 같은 행 0, 거의 같은 행 {n_near[sh]} → "
+                                "예시를 고쳐 남긴 것이 아니면 config/template_examples.yaml 이 이 파일의 양식과 다를 수 있음 "
+                                "(양식판 확인 · template-examples --form <양식> --overlay)")
+                rep.warnings += 1
         if aliased:
             warnings.append(f"값 대응표 적용: {fname} {aliased}건 (config/value_aliases.yaml)")
             rep.warnings += 1
@@ -1135,12 +1224,33 @@ def extract_template_examples(form_xlsx: Path, config_dir: Path | None = None) -
     return out
 
 
-def write_template_examples(forms: list[Path], config_dir: Path | None = None) -> Path:
-    """여러 양식판의 예시 행을 합쳐 쓴다 (v1.0 + v1.1, M3.1)."""
+def write_template_examples(forms: list[Path], config_dir: Path | None = None, overlay_dir: Path | None = None) -> tuple[Path, int]:
+    """여러 양식판의 예시 행을 합쳐 쓴다 (v1.0 + v1.1, M3.1) → (쓴 파일, 새로 더한 행 수).
+
+    overlay_dir 를 주면 (cli --overlay — 사내 data/real/config, docs/09 #3) 저장소 config/template_examples.yaml 은 손대지 않고 그 폴더의
+    template_examples.yaml 에 **더한다** — 이미 그 파일이나 저장소 파일에 있는 행은 빼고. 적재기가 시트별 합집합으로 읽는다 (config.merge_config).
+    저장소 파일을 고치면 업데이트가 '.new' 로 남기고 selftest(양식 일치 검사)가 실패하므로 사내 양식판은 이쪽으로 넣는다."""
     data: dict[str, list] = {USAGE_SHEET: [], IO_SHEET: []}
     for form in forms:
         for sheet, rows in extract_template_examples(form, config_dir).items():
             data[sheet] += [r for r in rows if r not in data[sheet]]
+    if overlay_dir is not None:
+        path = Path(overlay_dir) / "template_examples.yaml"
+        base = load_yaml("template_examples.yaml", config_dir)
+        old = read_yaml(path) if path.is_file() else {}
+        merged = {sheet: list(old.get(sheet) or []) for sheet in (USAGE_SHEET, IO_SHEET)}
+        added = 0
+        for sheet, rows in data.items():
+            for r in rows:
+                if r not in merged[sheet] and r not in (base.get(sheet) or []):
+                    merged[sheet].append(r)
+                    added += 1
+        head = ("# 사내 양식판의 템플릿 예시 행 (사내 전용 — 실제 값이 섞일 수 있어 밖으로 가져가지 않는다). 양식 파일 이름은 적지 않는다 (인명이 섞일 수 있다).\n"
+                "# 더하기: python -m engenius_onto template-examples --form <양식 xlsx> --overlay (이미 있는 행은 그대로)\n"
+                "# 적재기는 저장소 config/template_examples.yaml 과 시트별로 합쳐 읽는다 (I15, docs/09 #3).\n")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(head + yaml.safe_dump(merged, allow_unicode=True, sort_keys=False, width=1000), encoding="utf-8", newline="\n")
+        return path, added
     path = (config_dir or CONFIG_DIR) / "template_examples.yaml"
     head = (f"# 템플릿 예시 행 (docs/02 2장, 골든 I15) — {', '.join(f.name for f in forms)} 에서 추출.\n"
             "# 다시 만들기: python -m engenius_onto template-examples --form <양식 xlsx> [--form <양식 xlsx> ...]\n"
@@ -1148,4 +1258,4 @@ def write_template_examples(forms: list[Path], config_dir: Path | None = None) -
             "# 수식 열(SW명·Tool명 자동)과 '실무 문의처' 열은 적재 열이 아니라 여기에도 없다 (인명 미저장).\n")
     body = yaml.safe_dump(data, allow_unicode=True, sort_keys=False, width=1000)
     path.write_text(head + body, encoding="utf-8", newline="\n")
-    return path
+    return path, sum(len(rows) for rows in data.values())

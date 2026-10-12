@@ -167,13 +167,22 @@ def cmd_apply_review(args: argparse.Namespace) -> int:
 def cmd_template_examples(args: argparse.Namespace) -> int:
     from pathlib import Path
 
-    from engenius_onto.config import REPO_ROOT
+    from engenius_onto.config import REAL_CONFIG_DIR, REPO_ROOT, ConfigError
     from engenius_onto.loader import write_template_examples
 
+    if args.overlay and not args.form:
+        print("[NG] --overlay 에는 --form <사내 양식 xlsx> 가 필요하다 (기본 양식 v1.0·v1.1 의 예시는 이미 config/ 에 있다)", file=sys.stderr)
+        return 1
     forms = [Path(f) for f in args.form] if args.form else [REPO_ROOT / "reference" / "SW조사양식_EnGenius_v1.0.xlsx",
                                                           REPO_ROOT / "reference" / "Tool조사양식_EnGenius_v1.1.xlsx"]
-    path = write_template_examples(forms)
-    print(f"{path} 갱신")
+    try:
+        path, n = write_template_examples(forms, overlay_dir=REAL_CONFIG_DIR if args.overlay else None)
+    except ConfigError as e:
+        return _config_error(e)
+    if args.overlay:
+        print(f"{path} 에 예시 행 {n}개 더함 (사내 전용 — 밖으로 가져가지 않는다. --data real 적재가 config/ 와 합쳐 읽는다)")
+    else:
+        print(f"{path} 갱신")
     return 0
 
 
@@ -270,6 +279,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_apply_review)
     sp = sub.add_parser("template-examples", help="양식 xlsx 의 예시 행을 config/template_examples.yaml 로 추출")
     sp.add_argument("--form", action="append", help="양식 xlsx, 여러 번 가능 (기본: reference 의 v1.0 + v1.1 양식)")
+    sp.add_argument("--overlay", action="store_true",
+                    help="저장소 config/ 대신 사내 오버레이 data/real/config/template_examples.yaml 에 더함 ('예시 행 판별 설정 점검' 경고 때 — 사내 양식판)")
     sp.set_defaults(func=cmd_template_examples)
     sp = sub.add_parser("diag", help="적재 진단 요약 — 경고 종류·열·파트별 건수만 (값 없음, 반출용)")
     sp.add_argument("--run", help="실행 폴더 (기본 output/ 의 최신)")

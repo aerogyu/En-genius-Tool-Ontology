@@ -136,6 +136,7 @@ def merge_config(name: str, base: dict, over: dict, where_base: str | None = Non
       이력이 사슬로 이어질 때 키별 덮어쓰기는 깊이 1 이 깨져 '손으로 고친 merge_pairs' 경고가 영구히 났다). merge_pairs 키가 없는 쪽의
       merge_keys 는 쌍으로 승격해 섞는다 (옛 파일 호환). 양쪽 다 키가 없으면 옛 방식(merge_keys 키별 덮어쓰기, merge_pairs 키 없음).
     - value_aliases.yaml: 열별 깊은 병합 (같은 열의 '적힌 값' 은 오버레이가 이긴다)
+    - template_examples.yaml: 시트별 예시 행 목록 합집합 (같은 행은 한 번 — 사내 양식판의 예시를 더한다, docs/09 #3)
     - 그 밖(rules.yaml 등): 키 단위 덮어쓰기 (중첩 dict 는 키별)
     형식이 틀린 값(목록 자리에 문자열 등)·값 없는 키는 파일·키 이름을 붙인 ConfigError(ValueError) 로 멈춘다 — 조용히 무시하지 않는다.
     """
@@ -170,6 +171,17 @@ def merge_config(name: str, base: dict, over: dict, where_base: str | None = Non
         out = {col: dict(m or {}) for col, m in b.items()}
         for col, m in o.items():
             out[col] = {**out.get(col, {}), **(m or {})}
+        return out
+    if name == "template_examples.yaml":
+        out: dict = {}
+        for w, d in srcs:
+            for sheet, rows in _expect(w, "(파일 전체)", d, "dict_of_list").items():
+                cur = out.setdefault(sheet, [])
+                for row in rows or []:
+                    if not isinstance(row, dict):
+                        raise ConfigError(f"{w} {sheet}: 예시 행은 매핑(슬롯: 값) 이어야 한다 (지금: {type(row).__name__})")
+                    if row not in cur:
+                        cur.append(row)
         return out
     return _merge_dict_keys(base, over, srcs[1][0])
 

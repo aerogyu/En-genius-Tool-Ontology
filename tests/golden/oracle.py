@@ -14,6 +14,7 @@ import re
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from fractions import Fraction
 from itertools import combinations
 from pathlib import Path
 
@@ -284,6 +285,54 @@ def template_choices(template: Path) -> dict[str, list[str]]:
     return out
 
 
+EXAMPLE_NEAR_RATIO = Fraction(4, 5)      # [I15 개정] rules.yaml loader.example_near_ratio (0.8)
+EXAMPLE_NEAR_MIN_COLS = 5                # [I15 개정] rules.yaml loader.example_near_min_cols
+
+
+def _cell_text(v) -> str:
+    """예시 대조용 셀 표기 (적재기 cell_key 와 따로 구현): 정수값 실수는 소수점 없이, 자정 날짜시각은 날짜만, 문자열은 NFC·앞뒤 공백 제거."""
+    if v is None:
+        return ""
+    if isinstance(v, (bool, int)):
+        return str(v)
+    if isinstance(v, float):
+        return str(int(v)) if v.is_integer() else repr(v)
+    if isinstance(v, dt.datetime):
+        return v.isoformat() if (v.hour, v.minute, v.second, v.microsecond) != (0, 0, 0, 0) else v.date().isoformat()
+    if isinstance(v, dt.date):
+        return v.isoformat()
+    return unicodedata.normalize("NFC", str(v)).strip()
+
+
+def example_similarity(row: dict, examples: list[dict], present: set, min_cols: int = EXAMPLE_NEAR_MIN_COLS) -> tuple[int, int]:
+    """[I15 개정] 예시와의 유사도 (같은 칸, 비교 칸) — 비교 칸은 예시의 정보 열(예시 값이 비지 않고 빈 값 토큰(I16)도 아니며 그 파일에 있는 열).
+    정보 열이 min_cols 보다 적은 예시는 보지 않고, 비율(분수)이 가장 큰 예시 — 같으면 비교 칸이 많은 쪽, 그다음 앞 예시. 없으면 (0, 0).
+    적재기 Loader._example_similarity 와 따로 구현했다 (합성 명세에는 예시 유사 행이 없어 compute() 는 쓰지 않는다 — 단위 테스트로 대조)."""
+    best: tuple[Fraction, int, int] | None = None
+    for ex in examples:
+        info = [k for k, val in ex.items()
+                if k in present and _cell_text(val) and _nfkc(_cell_text(val)).strip().lower() not in EMPTY_TOKENS]
+        if len(info) < min_cols:
+            continue
+        same = sum(1 for k in info if _cell_text(row.get(k)) == _cell_text(ex[k]))
+        cand = (Fraction(same, len(info)), len(info), same)
+        if best is None or cand[:2] > best[:2]:
+            best = cand
+    return (best[2], best[1]) if best else (0, 0)
+
+
+def example_near(row: dict, examples: list[dict], present: set, usage_sheet: bool) -> bool:
+    """[I15 개정] 예시와 거의 같은 행 — 유사도 ≥ 0.8 이거나 (기본정보만) 비고가 예시 비고 문구와 같음 (빈 값 토큰 문구는 제외)."""
+    same, n = example_similarity(row, examples, present)
+    if n and Fraction(same, n) >= EXAMPLE_NEAR_RATIO:
+        return True
+    if not usage_sheet or "note" not in present:
+        return False
+    notes = {_cell_text(ex.get("note")) for ex in examples}
+    note = _cell_text(row.get("note"))
+    return bool(note) and _nfkc(note).strip().lower() not in EMPTY_TOKENS and note in notes
+
+
 def template_example_rows(template: Path) -> dict[str, list[tuple]]:
     """예시 행 내용 (적재 열만 — B 수식·K 문의처 제외) [I15]."""
     wb = openpyxl.load_workbook(template, data_only=True)
@@ -481,6 +530,8 @@ def compute(spec: dict, repo: Path) -> dict:
                     warnings.append(f"매핑 안 된 헤더: {fname} {sheet} '{h}'")
 
         # 예시 행: 템플릿 위치에 남은 것 + 복사본 [I15]
+        # [I15 개정] 예시와 거의 같은 행(경고·중복 교체·설정 점검)은 명세에 없다 — 합성 응답의 최고 유사도가 기본정보 19/30·입출력 4/7 이라
+        # 경고 0. 판별식은 example_similarity·example_near 로 따로 구현해 적재기와 단위 테스트로 대조한다 (tests/test_loader_m31_3.py C절).
         stats["excluded"] += 1 + (1 if f.get("io_start_row") == 5 else 3)
         for u in f["usages"]:
             if u.get("example_copy"):
