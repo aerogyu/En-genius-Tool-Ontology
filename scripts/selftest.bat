@@ -26,6 +26,8 @@ if "%RC%"=="0" (set VERDICT=PASS) else (set VERDICT=FAIL)
 > "%OUT%" echo selftest %VERDICT%  commit %COMMIT%  %DATE% %TIME%  doctor rc=%DOCTOR_RC%  pytest rc=%RC%
 >> "%OUT%" findstr /B /C:"[OK]" /C:"[NG]" /C:"[--]" "%LOG%"
 >> "%OUT%" findstr /R /B /C:"[0-9][0-9]* passed" /C:"[0-9][0-9]* failed" /C:"[0-9][0-9]* error" /C:"no tests ran" "%LOG%"
+rem tests\conftest.py stops the run with one "Exit: ..." line (UTF-8 mode off, or a lock left in data\synthetic\registry) - no values, relative paths only.
+>> "%OUT%" findstr /B /C:"Exit:" "%LOG%"
 rem Failed/errored test names only: the whole "FAILED nodeid" part (nodeids may contain spaces), cut before " - message" (values may be there).
 .venv\Scripts\python -c "import sys; [print(l.split(' - ')[0].rstrip()) for l in open(sys.argv[1], encoding='utf-8', errors='replace') if l.startswith(('FAILED ', 'ERROR '))]" "%LOG%" >> "%OUT%"
 echo.

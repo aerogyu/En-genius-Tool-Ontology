@@ -21,7 +21,7 @@ from engenius_onto import config as cfgmod
 from engenius_onto.config import CONFIG_DIR, REPO_ROOT, installed_version, merge_config, read_csv_rows
 from engenius_onto.loader import Loader
 from engenius_onto.normalize import Normalizer
-from engenius_onto.registry import Registry
+from engenius_onto.registry import Registry, copy_registry
 from engenius_onto.survey_load import DATA_SETS, apply_review, diag_text, review_target_dir, run_load
 
 SURVEY_DIR, REGISTRY_DIR = DATA_SETS["synthetic"]
@@ -132,7 +132,7 @@ def test_overlay_not_applied_to_synthetic_or_custom_by_default(tmp_path, monkeyp
     out = _load(d, tmp_path)
     assert out.log["config_overlay"]["used"] is False
     reg = tmp_path / "reg"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     out = run_load(registry_dir=reg, out_root=tmp_path / "s", shacl=False)
     assert out.log["config_overlay"]["used"] is False
     assert Loader(overlay_dir=over).rules["hub_top_n"] == 3 and Loader(overlay_dir=over).overlay_files == ["rules.yaml"]
@@ -145,7 +145,7 @@ def test_apply_review_target_follows_run_dataset(tmp_path, monkeypatch):
     import engenius_onto.survey_load as sl
     monkeypatch.setattr(sl, "REAL_CONFIG_DIR", over)
     reg = tmp_path / "reg"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     out = run_load(registry_dir=reg, out_root=tmp_path / "s", shacl=False)
     assert review_target_dir(out.out_dir / "tool_review.csv") == CONFIG_DIR
     real_run = tmp_path / "r" / "20260101T000000"
@@ -589,7 +589,7 @@ def test_installed_version_bom_and_full_hash_are_normalised(tmp_path, monkeypatc
     orig = sl.installed_version
     monkeypatch.setattr(sl, "installed_version", lambda: orig(tmp_path))
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     out = run_load(registry_dir=reg, out_root=tmp_path / "out", shacl=False)
     assert out.log["installed_version"] == {"commit": "0123456", "commit_full": full, "number": 61, "source": "installed_commit.txt"}
     text = diag_text(out.out_dir)
@@ -771,7 +771,7 @@ def test_review_csv_cp949_and_registry_cp949(tmp_path):
     r = apply_review(tmp_path / "r.csv", cfg)
     assert r.encoding == "cp949" and r.merged == 1
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     text = (reg / "tools.csv").read_text(encoding="utf-8-sig")
     (reg / "tools.csv").write_bytes(text.encode("cp949"))
     rows_utf8 = Registry(REGISTRY_DIR).rows("tool")
@@ -803,7 +803,7 @@ def test_int_empty_tokens_are_blank_without_warning(tmp_path):
 def test_usage_without_io_is_a_fix_request_row(tmp_path):
     """입출력이 하나도 없는 툴사용은 '입출력 없음' 수정 요청 행 (툴사용당 1건, 확인 요청 — 정상일 수 있음), 경고는 아니다."""
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     out = run_load(registry_dir=reg, out_root=tmp_path / "out", shacl=False)
     rows = [i for i in out.result.issues if i["kind"] == "입출력 없음"]
     assert [(i["part"], i["tool_id"]) for i in rows] == [("제어", "가상-제어로직툴")]           # 골든 P4 no_io
@@ -828,7 +828,7 @@ def test_installed_version_sources(tmp_path):
         v = installed_version(REPO_ROOT)
         assert v.source == "git" and v.commit != "미상" and v.number
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     out = run_load(registry_dir=reg, out_root=tmp_path / "out", shacl=False)
     assert out.log["installed_version"]["commit"] == installed_version().commit
     assert "· 설치 판 " + str(installed_version()) + " ·" in diag_text(out.out_dir)

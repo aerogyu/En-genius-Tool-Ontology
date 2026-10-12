@@ -16,6 +16,7 @@ import yaml
 
 from engenius_onto.config import CONFIG_DIR
 from engenius_onto.loader import Loader, id_key
+from engenius_onto.registry import copy_registry
 from engenius_onto.survey_load import DATA_SETS, diag_text, run_load
 
 SURVEY_DIR, REGISTRY_DIR = DATA_SETS["synthetic"]
@@ -161,7 +162,7 @@ def test_rows_after_blank_gap_are_recorded_not_lost(tmp_path):
 def test_unreadable_file_is_skipped_and_nothing_retired(tmp_path):
     """깨진 파일 하나가 적재를 멈추지 않는다 — 경고, 나머지 적재, 이번 실행은 폐기 판정 안 함 (docs/09 #7 A)."""
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     d = tmp_path / "survey"
     shutil.copytree(SURVEY_DIR, d)
     (d / "SW조사_제어_20260924.xlsx").write_bytes(b"not a real workbook")
@@ -256,7 +257,7 @@ def test_input_without_registry_is_refused(tmp_path):
 def test_fix_requests_and_diag(tmp_path):
     """파일별 수정 요청표와 반출용 진단 요약 — diag 에는 셀 값이 없다."""
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     out = run_load(registry_dir=reg, out_root=tmp_path / "out", shacl=False)
     files = sorted(p.name for p in (out.out_dir / "fix_requests").iterdir())
     assert "SW조사_터빈_20260924_수정요청.xlsx" in files

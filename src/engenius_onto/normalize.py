@@ -185,7 +185,8 @@ class Normalizer:
     @cached_property
     def _paren_ext(self):
         """'형식명(.확장자)' (I12, docs/09 #10) — 괄호 안이 '.확장자'(점으로 시작, '*.' 허용; 여럿이면 구분자로 이음)뿐인 괄호와
-        그 바로 앞 한 단어(괄호와 사이 공백 허용). 점 없는 괄호('STEP(AP214)')는 맞지 않는다 — 주석으로 뗀다."""
+        그 바로 앞 한 단어(괄호와 사이 공백 허용). 점 없는 괄호('STEP(AP214)')는 맞지 않는다 — 주석으로 뗀다.
+        앞 단어가 '.'·'*.' 으로 시작하면 형식 이름이 아니라 확장자라 버리지 않는다 (extensions() 의 take)."""
         sep, dot = self._ext_seps, r"\*?\.[a-z0-9_+\-]+(?:\.[a-z0-9_+\-]+)*"
         return re.compile(rf"(?P<name>[^{sep}()]*)\s*\(\s*(?P<exts>{dot}(?:[{sep}]+{dot})*)\s*\)")
 
@@ -216,7 +217,10 @@ class Normalizer:
 
         def take(m) -> str:
             nonlocal inhouse
-            inhouse = inhouse or any(t in m.group("name") for t in inhouse_tokens)
+            name = m.group("name")
+            if name.startswith((".", "*.")):                  # 괄호 앞 단어가 '.확장자' 자체 — '.cas(.dat)' 는 둘 다 확장자 (2026-10-12 검토 수리)
+                return " " + name + " " + m.group("exts") + " "
+            inhouse = inhouse or any(t in name for t in inhouse_tokens)
             return " " + m.group("exts") + " "
 
         s = self._paren_ext.sub(take, s)

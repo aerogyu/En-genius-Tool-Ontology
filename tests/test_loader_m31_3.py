@@ -11,6 +11,8 @@
   연계 Tool명 미해석 행·partner_missing(#17, I10·I35) · 별칭 미적용 경고·제조사 안 뗀 이름 별칭(#2 (3)·(4)) · 레지스트리 엑셀 손상(#15 (4))
 - F. 식별자·실행 안전 (묶음 ids): 정식 이름 변경 회귀 · 약칭 개명 renamed_from(#25b, I31 — 레지스트리 rekey·옛 약칭 파일명·재발송·묶음 앞부분·보류·설정 오류) ·
   '파트 신규·폐기 동시' 휴리스틱 · 동시 적재 잠금 · 같은 초 두 실행 (docs/09 7장)
+- 2차 잔여 검토 수리 (2026-10-12) — 각 절에: A 값 인용 경고 전부 가림·'.확장자(.확장자)' · B 대체된 옛 회신의 사본 · D 빈 문자열 캐시 수식·먼 서식 칸·옛 rules.yaml ·
+  E 승인 인명 패턴 보충·검토표 표기 칸 가림·열 모자란 레지스트리 행·잠금 없는 레지스트리 복사 · F 같은 날짜 옛·새 약칭 파일·범용 이름 툴 키 개명
 합성 파일 사본만 쓴다 (공개 상용 툴 이름·가상 이름). 인명 시험 값은 가상 자리표시('가나다 책임')만.
 """
 
@@ -22,6 +24,7 @@ import json
 import re
 import shutil
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -35,6 +38,7 @@ from engenius_onto.config import CONFIG_DIR, ConfigError, merge_config, read_csv
 from engenius_onto.loader import IO_SHEET, PERSON_MASK, USAGE_SHEET, FileReport, Loader, UsageRec
 from engenius_onto.normalize import Normalizer
 from engenius_onto.rdf_writer import SchemaTerms
+from engenius_onto.registry import copy_registry
 from engenius_onto.survey_load import DATA_SETS, run_load
 
 sys.path.insert(0, str(Path(__file__).parent / "golden"))
@@ -113,6 +117,13 @@ EXT_CASES = [
     ("stp igs Parasolid(.x_t)", ["igs", "stp", "x_t"], False, []),   # 앞 목록은 보존
     ("csv (.dat)", ["dat"], False, []),                 # 한계 고정: 공백 허용 한 단어 (Leo 2026-10-12 C)
     ("(.dat)", ["dat"], False, []),
+    # 괄호 앞 단어가 '.확장자' 자체면 형식 이름이 아니다 — 둘 다 확장자 (2026-10-12 검토 수리: 전에는 앞 확장자가 경고 없이 사라졌다)
+    (".cas(.dat)", ["cas", "dat"], False, []),
+    (".bdf (.dat)", ["bdf", "dat"], False, []),
+    ("*.stp(.igs)", ["igs", "stp"], False, []),
+    (".x_t(.x_b)", ["x_b", "x_t"], False, []),
+    ("stp, .x_t(.x_b)", ["stp", "x_b", "x_t"], False, []),
+    ("x_t(.x_b)", ["x_b"], False, []),                  # 한계 고정: 점 없는 단어는 형식 이름으로 본다 ('csv (.dat)' 와 같다)
     ("Excel(.xlsx", [], False, ["excel(.xlsx"]),        # 닫히지 않은 괄호는 매핑 실패
     ("Parasolid(.x_t,)", [], False, ["parasolid"]),     # 괄호 안이 '.확장자' 목록만이 아니면 주석
     ("a((.x))", ["a"], False, []),                      # 안쪽 괄호부터
@@ -219,7 +230,7 @@ def test_extension_notations_e2e(tmp_path):
 def test_extension_warnings_on_synthetic_unchanged(tmp_path):
     """합성 전체 적재: 확장자 경고는 골든 TEST-05 '또는' 1건 그대로, 수정 요청표에는 그 칸의 '확장자 확인' 1행이 더해진다."""
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     out = run_load(registry_dir=reg, out_root=tmp_path / "out", shacl=False, save_registry=False)
     ext_w = [x for x in out.result.warnings if x.startswith("확장자")]
     assert len(ext_w) == 1 and "['또는']" in ext_w[0]
@@ -252,6 +263,55 @@ def test_person_mask_helpers(norm):
     assert ld._looks_person("dat 가나다 책임") and not ld._looks_person("dat")
     assert ld._q("dat 가나다 책임") == PERSON_MASK == "[인명 유사 — 값 생략]"
     assert ld._q("익형 형상") == "익형 형상" and ld._q(None) == ""
+    # #20 1-A 승인 목록에서 빠졌던 두 꼴 (2026-10-12 검토 수리) — 직급+에게·께, 이름(직급)
+    for s in ("가나다 선임에게 메일", "가나다 책임께", "가나다(책임)", "가나다 (수석)"):
+        assert norm.looks_person(s), s
+    assert not norm.looks_person("가상수명평가툴") and not norm.looks_person("구조 해석 결과")
+
+
+PERSON_TOKENS = ("가나다", "나다라", "다라마", "라마바")       # 가상 인명 자리표시 (시험 전용)
+
+
+def test_value_quoting_warnings_redact_person_like(tmp_path, capsys):
+    """docs/09 #20 수리 계획 2)·C5 — 값을 인용하는 모든 경고가 _q 를 거친다: 행 경고의 위치 문구(Tool ID·데이터명)·선택지 밖 값·담당 부서·
+    정수 변환·SW ID 없는 행·고아·이어받기·방향·범용 이름·확장자·완전 중복 키·헤더 문구. 인명 유사 값은 경고·콘솔·수정 요청표에 원문이 없고
+    가림 문구로 나온다 (2026-10-12 검토 수리: 전에는 '인명 유사 패턴' 경고가 자기가 잡은 데이터명을 그대로 실었다). 값은 그래프에 보존 (D6)."""
+    d = _copy(tmp_path)
+    p = d / STR
+    _set_row(p, USAGE_SHEET, 6, {"담당 부서": "구조 가나다 책임"})                         # STR-02 — 선택지 밖·담당 부서·인명 유사
+    _set_row(p, USAGE_SHEET, 9, {"사용 인원수": "가나다 책임 외 3"})                        # STR-04 — 정수 변환 실패
+    _set_row(p, USAGE_SHEET, 11, {"SW ID": "작성: 가나다 책임", "만료 시기": "2027.03"})    # 표 아래 꼬리말이 Tool ID 칸에 (C8)
+    _set_row(p, USAGE_SHEET, 12, {"SW명(정식)": "문의: 라마바 책임(내선 0000)"})            # Tool ID 없는 내용 행
+    _set_row(p, IO_SHEET, 8, {"데이터/산출물 명칭": "가나다 책임 메모", "데이터 성격": "아무값"})
+    _set_row(p, IO_SHEET, 9, {"방향": "나다라 선임에게"})
+    _set_row(p, IO_SHEET, 21, {"SW ID": "STR-99", "방향": "입력(소비)", "데이터/산출물 명칭": "다라마 책임 전달본"})
+    foot = {"SW ID": "작성: 가나다 책임", "방향": "출력(생산)", "데이터/산출물 명칭": "꼬리말 자료", "분류": "해석-결과",
+            "파일 형식/확장자": "model.stp", "데이터 성격": "정형(표·수치)", "전달 방법": "공유폴더"}
+    _set_row(p, IO_SHEET, 23, foot)
+    _set_row(p, IO_SHEET, 24, {"방향": "출력(생산)", "데이터/산출물 명칭": "나다라 책임 사본"})   # 바로 위 행 ID 이어받기
+    _set_row(p, IO_SHEET, 25, foot)                                                         # 23행과 완전 중복
+    wb = openpyxl.load_workbook(p)
+    ws = wb[USAGE_SHEET]
+    ws.cell(2, ws.max_column + 1).value = "나다라 책임 메모"                                 # 헤더 칸에 적은 이름 (N3)
+    wb.save(p)
+    rc = cli.main(["load", "--input", str(d), "--registry", str(tmp_path / "registry"), "--out", str(tmp_path / "out"), "--no-shacl"])
+    console = capsys.readouterr().out
+    assert rc == 0
+    run = next((tmp_path / "out").iterdir())
+    log = json.loads((run / "load_log.json").read_text(encoding="utf-8"))
+    texts = {"console": console, "warnings": "\n".join(log["warnings"]), "issues": json.dumps(log["issues"], ensure_ascii=False),
+             "review": (run / "tool_review.csv").read_text(encoding="utf-8-sig"), "diag": (run / "diag.txt").read_text(encoding="utf-8")}
+    for where, text in texts.items():
+        assert not [t for t in PERSON_TOKENS if t in text], where
+    masked = {w.split(":", 1)[0] for w in log["warnings"] if PERSON_MASK in w}
+    assert {"인명 유사 패턴", "선택지 밖 값", "파일 분야 ≠ 담당 부서", "사용 인원수 정수 변환 실패", "필수값 누락", "만료 시기 표기 변환",
+            "툴 이름 범용/비어 있음", "SW ID 없는 내용 행", "매핑 안 된 헤더", "방향 값 인식 못 함", "고아 입출력", "확장자 다중 점 확인",
+            "Tool ID 이어받음", "완전 중복 입출력 행"} <= masked
+    assert f"인명 유사 패턴: {STR} {IO_SHEET} STR-01 '{PERSON_MASK}' '데이터/산출물 명칭 *'" in log["warnings"]
+    assert f"[경고] 인명 유사 패턴: {STR} {IO_SHEET} STR-01 '{PERSON_MASK}' '데이터/산출물 명칭 *'" in console
+    assert any(i["tool_id"] == PERSON_MASK for i in log["issues"])                           # 수정 요청표 Tool ID 칸도 가림 (행 번호로 찾는다)
+    ttl = (run / "survey.ttl").read_text(encoding="utf-8")
+    assert "가나다 책임 메모" in ttl and "구조 가나다 책임" in ttl                                # 값은 보존 (D6)
 
 
 # --------------------------------------------------------------------------- B. 파일 층 (docs/09 #1 잔여 · #8 C4)
@@ -565,6 +625,40 @@ def test_off_rule_orphan_io_not_merged(tmp_path):
     assert "None/" not in json.dumps(out.log, ensure_ascii=False)
     assert not any(x.startswith("완전 중복 입출력 행") for x in out.result.warnings)
     _one_each(out)
+
+
+def test_copy_of_superseded_file_not_loaded(tmp_path):
+    """I33: 재발송으로 대체된 옛 회신과 내용이 같은 사본(탐색기 '- 복사본'·다른 약칭으로 저장한 규칙 안 파일)도 적재하지 않는다 — 옛 데이터가
+    사본으로 다시 들어와 툴사용이 두 번 잡히지 않게 (2026-10-12 검토 수리: 전에는 대체된 파일이 '같은 내용' 대조에서 빠져 사본이 적재됐다)."""
+    one = _load(_survey(tmp_path, "one", {TURB: TURB}), tmp_path / "one")
+    n = len(one.result.usages)
+    survey = tmp_path / "survey"
+    _place(survey, TURB, "SW조사_터빈_20260901.xlsx")
+    _place(survey, TURB, "SW조사_터빈_20260901 - 복사본.xlsx")
+    _set_names(_place(survey, TURB, "SW조사_터빈_20260915.xlsx"), {"TURB-01": "가상-새회신툴"})
+    _place(survey, TURB, "SW조사_압축기_20260901.xlsx")                     # 다른 약칭으로 잘못 저장한 옛 터빈 회신
+    out = _load(survey, tmp_path)
+    assert [f.name for f in out.result.loaded_files] == ["SW조사_터빈_20260915.xlsx"]
+    assert len(out.result.usages) == n and "가상-새회신툴" in out.turtle
+    same = sorted(x for x in out.result.warnings if x.startswith("같은 내용 파일"))
+    tail = "(SW조사_터빈_20260901.xlsx 은 재발송으로 대체됨 — 적재 안 함)"
+    assert len(same) == 2
+    assert same[0] == f"같은 내용 파일: SW조사_압축기_20260901.xlsx = SW조사_터빈_20260901.xlsx {tail} — 약칭이 다르다, 어느 파트 파일인지 확인"
+    assert re.fullmatch(rf"같은 내용 파일: Tool조사_규칙밖_[0-9a-f]{{10}}\.xlsx = SW조사_터빈_20260901\.xlsx {re.escape(tail)}", same[1])
+    dup = {f["name"]: f["duplicate_of"] for f in out.log["files"] if f["duplicate_of"]}
+    assert set(dup.values()) == {"SW조사_터빈_20260901.xlsx"} and len(dup) == 2
+    assert not any(x.startswith(("규칙 밖 파일의 Tool ID", "파일 분야 ≠ 담당 부서")) for x in out.result.warnings)
+    # 대체된 옛 회신과 같은 내용인 최신 파일 자신(내용 같은 재발송)은 정상 — 그 사본만 한 번만 (기존 동작)
+    s2 = tmp_path / "s2"
+    _place(s2, TURB, "SW조사_터빈_20260901.xlsx")
+    _place(s2, TURB, "SW조사_터빈_20260915.xlsx")
+    _place(s2, TURB, "SW조사_터빈_20260915 - 복사본.xlsx")
+    out2 = _load(s2, tmp_path / "t2")
+    assert [f.name for f in out2.result.loaded_files] == ["SW조사_터빈_20260915.xlsx"] and len(out2.result.usages) == n
+    assert [x for x in out2.result.warnings if x.startswith(("재발송으로 대체", "같은 내용 파일"))][0] == \
+        "재발송으로 대체: SW조사_터빈_20260901.xlsx → SW조사_터빈_20260915.xlsx (적재 안 함) (내용 같음)"
+    assert any(re.fullmatch(r"같은 내용 파일: Tool조사_규칙밖_[0-9a-f]{10}\.xlsx = SW조사_터빈_20260915\.xlsx \(한 번만 적재\)", x)
+               for x in out2.result.warnings)
 
 
 # --------------------------------------------------------------------------- C. 예시와 거의 같은 행 (docs/09 #3, I15 개정)
@@ -1037,17 +1131,15 @@ def test_formula_without_cache_warns(tmp_path):
 
 
 def test_formula_scan_failure_keeps_loading(tmp_path, monkeypatch):
-    """수식 검사용 두 번째 읽기가 실패해도 적재는 계속 — 경고 '수식 검사 못 함' 한 줄 (값·경로 없이 예외 종류만)."""
-    real = openpyxl.load_workbook
+    """수식 검사(시트 XML 직접 읽기)가 실패해도 적재는 계속 — 경고 '수식 검사 못 함' 한 줄 (값·경로 없이 예외 종류만)."""
+    from engenius_onto import loader as loader_mod
 
     def fake(path, *a, **kw):
-        if kw.get("read_only") and kw.get("data_only") is False:
-            raise OSError("가상 실패")
-        return real(path, *a, **kw)
+        raise OSError("가상 실패")
 
     d = _copy(tmp_path)
     base = len(_load(d, tmp_path / "a").result.usages)
-    monkeypatch.setattr(openpyxl, "load_workbook", fake)
+    monkeypatch.setattr(loader_mod, "formula_cells_without_cache", fake)
     res = _load(d, tmp_path / "b").result
     assert _w(res, "수식 검사 못 함") == [f"수식 검사 못 함: {STR} — OSError (캐시 없는 수식 경고를 내지 않음, 적재는 계속)"]
     assert len(res.usages) == base == 5
@@ -1099,6 +1191,102 @@ def test_copied_form_sheet_and_zero_usage_warn(tmp_path):
     ld = Loader(overlay_dir=over)
     res2 = ld.load(ld.discover(d))
     assert _w(res2, OFF_W) == [f"양식 밖 시트: {STR} '{PERSON_MASK}'{off}"] and len(_w(res2, COPY_W)) == 1
+
+
+def _patch_cell_xml(path: Path, ref: str, new_xml: str) -> None:
+    """xlsx 안 시트 XML 에서 칸 하나(<c r="ref" …>…</c>)를 통째로 바꾼다 — 그 칸에 openpyxl 로 먼저 'MARK' 가 든 수식을 넣어 두고 그 시트를 찾는다
+    (엑셀이 저장한 모양을 openpyxl 없이 흉내 — 2026-10-12 검토: 엑셀 실측 '<c t="str"><f>…</f><v/></c>')."""
+    import zipfile
+
+    with zipfile.ZipFile(path) as z:
+        items = [(i, z.read(i.filename)) for i in z.infolist()]
+    hit = 0
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for info, data in items:
+            if info.filename.startswith("xl/worksheets/") and b"MARK" in data:
+                data, k = re.subn(rf'<c r="{ref}"[^>]*>.*?</c>'.encode(), new_xml.encode(), data, count=1)
+                hit += k
+            z.writestr(info, data)
+    assert hit == 1
+
+
+@pytest.mark.parametrize("cell, warned", [
+    ('<c r="{ref}" t="str"><f>IFERROR(VLOOKUP(A5,Z:Z,1,0),"")</f><v/></c>', False),   # 엑셀 저장본 — 캐시된 빈 문자열
+    ('<c r="{ref}" t="str"><f>IF(1=1,"","")</f><v></v></c>', False),                  # LibreOffice 저장본
+    ('<c r="{ref}"><f>IF(1=1,"","")</f></c>', True),                                   # <v> 없음 — 캐시 없음
+    ('<c r="{ref}"><f>IF(1=1,"","")</f><v/></c>', True),                               # openpyxl 저장본 (형식 n + 빈 <v>) — 캐시 없음
+    ('<c r="{ref}" t="str"><f>IF(1=1,"x","")</f><v>x</v></c>', False),
+], ids=["excel-v-selfclose", "libreoffice-v-empty", "no-v", "openpyxl", "cached-text"])
+def test_formula_empty_string_cache_not_warned(tmp_path, cell, warned):
+    """I37 ②: 빈 문자열을 돌려주는 수식(=IFERROR(…,""))을 엑셀은 t="str" + 빈 <v> 로 저장한다 — 캐시가 있는 칸이라 '캐시 없는 수식' 이 아니다
+    (2026-10-12 검토 수리: openpyxl 은 셋을 모두 None 으로 읽어 다시 저장해도 사라지지 않는 거짓 경고가 났다 — 시트 XML 을 직접 본다)."""
+    from openpyxl.utils import get_column_letter
+
+    d = _copy(tmp_path)
+    _set_row(d / STR, USAGE_SHEET, 5, {"비고": '="MARK"'})
+    ref = get_column_letter(_cols(openpyxl.load_workbook(d / STR)[USAGE_SHEET])["비고"]) + "5"
+    _patch_cell_xml(d / STR, ref, cell.format(ref=ref))                                     # 칸 글(text)의 " 는 XML 에서 그대로 둬도 된다
+    res = _load(d, tmp_path).result
+    want = [f"캐시 없는 수식: {STR} {USAGE_SHEET} '비고' 1칸{NOCACHE_TAIL}"] if warned else []
+    assert _w(res, NOCACHE_W) == want
+    assert len(res.usages) == 5
+
+
+def test_far_styled_cells_do_not_blow_up(tmp_path):
+    """서식만 있는 먼 칸(엑셀 Ctrl+End 가 튀는 칸) — 양식 밖 시트 검사·시트 행 읽기가 max_row × max_column 직사각형을 만들지 않는다
+    (2026-10-12 검토 수리, docs/09 C7: '개정이력' 시트 (100000행, 30열) 칸 하나에 8~18초·730MB 였다). 있는 칸만 훑어 결과는 같다."""
+    from openpyxl.styles import Border, Side
+
+    d = _copy(tmp_path)
+    wb = openpyxl.load_workbook(d / STR)
+    extra = wb.create_sheet("개정이력")
+    extra["A1"] = "가상 개정 이력"
+    thin = Border(left=Side(style="thin"))
+    extra.cell(100000, 30).border = thin
+    wb[IO_SHEET].cell(100000, 30).border = thin
+    wb[USAGE_SHEET].cell(100000, 30).border = thin
+    wb.save(d / STR)
+    base = _load(_copy(tmp_path / "base"), tmp_path / "base").result
+    ld = Loader()
+    wb = openpyxl.load_workbook(d / STR, data_only=True)
+    sizes = {ws.title: len(ws._cells) for ws in wb.worksheets}
+    rep = FileReport(STR, "0" * 64, "구조", "20260924", path=d / STR)
+    w: list[str] = []
+    ld._used_sheets = {USAGE_SHEET, IO_SHEET}
+    ld._formula_cells = {}
+    ld._extra_sheets(wb, rep, w)
+    assert w == [f"양식 밖 시트: {STR} '개정이력' — 읽지 않음 (아는 시트면 rules.yaml loader.other_sheets 에 추가)"]
+    ld._read_sheet(wb, IO_SHEET, rep, [], [])
+    ld._read_sheet(wb, USAGE_SHEET, rep, [], [])
+    grown = {ws.title: len(ws._cells) - sizes[ws.title] for ws in wb.worksheets}
+    assert grown["개정이력"] == 0 and grown[IO_SHEET] < 2000 and grown[USAGE_SHEET] < 2000, grown
+    wb.close()
+    t0 = time.perf_counter()
+    res = _load(d, tmp_path).result
+    assert time.perf_counter() - t0 < 6                                                      # 고치기 전 15초 이상
+    assert sorted(x.key for x in res.ios) == sorted(x.key for x in base.ios) and len(res.usages) == len(base.usages)
+    assert _w(res, OFF_W) == w
+
+
+def test_old_rules_without_new_loader_keys(tmp_path):
+    """사내 rules.yaml 이 로컬 수정이라 업데이트가 rules.yaml.new 로만 남긴 상태(새 키 month_blank_values·other_sheets 없음) — 코드 기본값이
+    배포 값과 같아 '작성안내' 가 '양식 밖 시트' 로 쏟아지지 않고 '영구' 도 빈칸 (2026-10-12 검토 수리). 키를 빈 목록으로 적으면 그 뜻대로."""
+    d = _copy(tmp_path)
+    _set_row(d / STR, USAGE_SHEET, 10, {EXP: "영구"})                                     # STR-05
+    cfg = _cfg_copy(tmp_path)
+    rules = yaml.safe_load((cfg / "rules.yaml").read_text(encoding="utf-8"))
+    for k in ("month_blank_values", "other_sheets"):
+        rules["loader"].pop(k)
+    (cfg / "rules.yaml").write_text(yaml.safe_dump(rules, allow_unicode=True), encoding="utf-8")
+    res = _load(d, tmp_path, config_dir=cfg).result
+    assert not _w(res, OFF_W) and not _w(res, "만료 시기 형식 아님")
+    assert _usage(res, "구조/STR-05").v["license_expiry"] is None and _w(res, "빈 값 표기 만료 시기")
+    assert not [i for i in res.issues if i["kind"] == "만료 시기 형식"]
+    rules["loader"].update(month_blank_values=[], other_sheets=[])
+    (cfg / "rules.yaml").write_text(yaml.safe_dump(rules, allow_unicode=True), encoding="utf-8")
+    res2 = _load(d, tmp_path / "b", config_dir=cfg).result
+    assert _w(res2, OFF_W) == [f"양식 밖 시트: {STR} '작성안내' — 읽지 않음 (아는 시트면 rules.yaml loader.other_sheets 에 추가)"]
+    assert _usage(res2, "구조/STR-05").v["license_expiry"] == "영구" and _w(res2, "만료 시기 형식 아님")
 
 
 # ---- D3. 만료 시기 텍스트·'영구' (docs/09 #21 3단, I16·I27)
@@ -1287,6 +1475,42 @@ def test_person_like_partner_not_missing_tool(tmp_path):
     assert not [c for c in out.result.partner_candidates if "가나다" in c["b"]]
 
 
+def test_person_like_partner_widened_patterns_never_reach_partner_missing(tmp_path):
+    """#20 1-A 승인 목록의 '직급+에게·께'·'이름(직급)' (2026-10-12 검토 수리 — 전에는 빠져 '가나다선임에게메일'·'가나다' 키가 조사 누락 후보·
+    검토표 연계 행에 올랐고, '별개' 판정이면 partner_missing 에 영구 기록돼 적재마다 '별칭 미적용' 으로 다시 인용됐다)."""
+    d = _copy(tmp_path)
+    _set_io_cells(d / STR, {("STR-01", "해석 메시"): {H_PARTNER: "가나다 선임에게 메일"},
+                            ("STR-01", "구조 메시"): {H_PARTNER: "가나다(책임)"}})
+    out = _load(d, tmp_path)
+    assert not [k for k in out.log["unresolved_partners"] if "가나다" in k]
+    rows = _review_rows(out)
+    assert not [r for r in rows if "가나다" in "".join(r.values())]
+    assert len(_w(out.result, "연계 Tool명이 인명처럼 보임")) == 2 and not [w for w in out.result.warnings if "가나다" in w]
+    # 연계 행이 없으니 '별개' 판정으로 partner_missing 에 들어갈 길도 없다 — 검토표 전체를 별개로 판정해도 그 키는 안 생긴다
+    p = out.out_dir / "tool_review.csv"
+    _write_rows(p, [{**r, "판정(통합/별개)": "별개"} for r in rows if r["사유"] == PARTNER and not r["툴A_키"]])
+    cfg = _cfg_copy(tmp_path)
+    apply_review(p, cfg)
+    assert not [k for k in _aliases_of(cfg)["partner_missing"] if "가나다" in k]
+    assert "가나다 선임에게 메일" in out.turtle and "가나다(책임)" in out.turtle                    # 원문은 그래프에 (D6)
+
+
+def test_review_name_cells_mask_person_like(tmp_path):
+    """C5 '검토표 표기 칸도 가림' — 툴A_표기·툴B_표기(보고 이름)가 인명 유사면 PERSON_MASK (키 칸은 apply-review 가 쓰므로 그대로).
+    (2026-10-12 검토 수리: 연계 행·통합 후보 행의 보고 이름이 원문으로 실렸다)"""
+    d = _copy(tmp_path)
+    _set_names(d / STR, {"STR-04": "가상-수명평가툴 (가나다 책임 개발)", "STR-05": "가상-수명평가툴 Pro"})
+    _set_io_cells(d / STR, {("STR-01", "해석 메시"): {H_PARTNER: "가상수명평가툴프로"}})
+    out = _load(d, tmp_path)
+    rows = _review_rows(out)
+    partner = [r for r in rows if r["사유"] == PARTNER and r["툴B_키"] == "가상수명평가툴프로"]
+    assert len(partner) == 1 and partner[0]["툴A_키"] == "가상수명평가툴" and partner[0]["툴A_표기"] == PERSON_MASK
+    cand = [r for r in rows if r["사유"] != PARTNER and {r["툴A_키"], r["툴B_키"]} == {"가상수명평가툴", "가상수명평가툴pro"}]
+    assert len(cand) == 1 and PERSON_MASK in (cand[0]["툴A_표기"], cand[0]["툴B_표기"])
+    assert "가나다" not in (out.out_dir / "tool_review.csv").read_text(encoding="utf-8-sig")
+    assert not [c for c in out.log["tool_merge_candidates"] if "가나다" in json.dumps(c, ensure_ascii=False)]
+
+
 # ---- E2. 검토표 CSV·수정 요청표의 엑셀 수식 방지 (docs/09 #25d)
 def test_review_csv_neutralizes_formula_cells(tmp_path):
     """표기 칸이 = + - @ 탭으로 시작하면 앞에 ' (엑셀이 수식으로 읽지 않게) — 키 칸은 [0-9a-z가-힣] 라 그대로. 연계 행 표기도 같다."""
@@ -1347,7 +1571,7 @@ def test_fix_request_tool_id_not_formula(tmp_path):
 def test_review_lists_unresolved_partners(tmp_path):
     """합성 전체: 검토표에 사유 '연계SW 미해석' 행 = 골든 조사 누락 후보 키 (툴A 빈칸 — 유사도 0.85 미만은 힌트로만), 원문은 쓰지 않는다."""
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     out = run_load(registry_dir=reg, out_root=tmp_path / "out", shacl=False)
     rows = [r for r in _review_rows(out) if r["사유"] == PARTNER]
     assert [r["툴B_키"] for r in rows] == sorted(AGG["missing_tools"])
@@ -1365,7 +1589,7 @@ def test_review_partner_spelling_maps_to_existing_tool(tmp_path):
     d = _copy(tmp_path)
     _set_io_cells(d / STR, {("STR-02", "블레이드 형상"): {H_PARTNER: "하이퍼메시"}, ("STR-02", "익형 형상"): {H_PARTNER: "Hypermash"}})
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     cfg = _cfg_copy(tmp_path)
     one = run_load(input_dir=d, registry_dir=reg, out_root=tmp_path / "o1", shacl=False, config_dir=cfg)
     hm_id = _tool_ids(reg)["hypermesh"]
@@ -1504,7 +1728,7 @@ def test_name_alias_with_vendor_prefixed_variant_applies_to_usage(tmp_path):
     plain = run_load(input_dir=d, registry_dir=tmp_path / "reg0", out_root=tmp_path / "o0", shacl=False).result
     assert "hypermeshpro" in plain.tools and ("hypermesh", "hypermeshpro") in {(c["a"], c["b"]) for c in plain.merge_candidates}
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     hm_id = _tool_ids(reg)["hypermesh"]
     over = _overlay(tmp_path, tool_aliases={"aliases": {"HyperMesh": ["Altair HyperMesh Pro"]}})
     res = run_load(input_dir=d, registry_dir=reg, out_root=tmp_path / "o1", shacl=False, overlay_dir=over).result
@@ -1552,7 +1776,7 @@ def test_registry_excel_damage_restored(tmp_path):
 def test_registry_excel_damage_unexplained_warns(tmp_path):
     """라벨로 설명되지 않는 키 불일치(손 편집 등)는 되살리지 않고 경고만 — ID 만 인용 (값 없음). 그대로 적재하면 경고대로 새 USE ID."""
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     use = _set_usage_key(reg, "STR-01", "03월 01일")
     rg = Registry(reg)
     assert len(rg.notices) == 1 and rg.notices[0].startswith(f"레지스트리 엑셀 손상 의심: usages.csv 1행 ({use}) — Tool ID 칸이 라벨 끝과 다르다")
@@ -1602,6 +1826,34 @@ def test_excel_explains(orig, cur, want):
 
 def test_committed_registry_has_no_excel_damage():
     assert Registry(REGISTRY_DIR).notices == []
+
+
+def test_registry_row_with_missing_columns_loads(tmp_path):
+    """메모장 손 편집으로 꼬리 쉼표가 빠진 행('USE-000999,FLD-001,SAS-99') — csv 가 빠진 칸을 None 으로 채워 엑셀 손상 검사가 traceback 으로
+    적재를 멈췄다 (2026-10-12 검토 수리, 430b398 회귀). 빈칸으로 읽고 적재는 rc 0, 저장할 때 열을 채워 쓴다."""
+    reg = copy_registry(REGISTRY_DIR, tmp_path / "registry")
+    with (reg / "usages.csv").open("a", encoding="utf-8", newline="") as f:
+        f.write("USE-000999,FLD-001,SAS-99\n")
+    rg = Registry(reg)
+    assert rg.notices == [] and rg.id_of("usage", ("FLD-001", "SAS-99")) == "USE-000999"
+    rc = cli.main(["load", "--input", str(_copy(tmp_path)), "--registry", str(reg), "--out", str(tmp_path / "out"), "--no-shacl"])
+    assert rc == 0
+    assert "USE-000999,FLD-001,SAS-99,,," in (reg / "usages.csv").read_text(encoding="utf-8-sig").splitlines()
+
+
+def test_copy_registry_skips_lock_and_temp_files(tmp_path):
+    """시험·사본용 레지스트리 복사는 잠금·임시 파일을 빼고 CSV 만 (2026-10-12 검토 수리: 강제 종료로 합성 레지스트리에 남은 잠금이 사본마다
+    따라가 시험 수십 건이 임시 폴더의 잠금을 가리키며 실패했다). conftest 는 합성 레지스트리의 그 잠금을 시작 때 한 줄로 알리고 멈춘다."""
+    import conftest
+
+    src = copy_registry(REGISTRY_DIR, tmp_path / "src")
+    for name in (LOCK_NAME, "usages.csv.tmp", ".write_test"):
+        (src / name).write_text("pid=1 started=x\n", encoding="utf-8")
+    dst = copy_registry(src, tmp_path / "dst")
+    assert sorted(p.name for p in dst.iterdir()) == sorted(p.name for p in REGISTRY_DIR.glob("*.csv"))
+    out = run_load(input_dir=_copy(tmp_path), registry_dir=dst, out_root=tmp_path / "out", shacl=False)
+    assert len(out.result.usages) == 5
+    assert conftest.SYNTH_LOCK == REGISTRY_DIR / LOCK_NAME and not conftest.SYNTH_LOCK.exists()
 
 
 # --------------------------------------------------------------------------- F. 식별자·실행 안전 (묶음 ids, 2026-10-12)
@@ -1720,7 +1972,7 @@ def test_part_code_rename_supersedes_old_file(tmp_path):
     shutil.copytree(SURVEY_DIR, survey)
     _place(survey, STR, STR_NEW)
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     out = run_load(input_dir=survey, registry_dir=reg, out_root=tmp_path / "out", shacl=False, config_dir=_rename_cfg(tmp_path))
     assert out.log["counts"]["usages"] == 34
     assert _wt(out, "재발송으로 대체: SW조사_구조") == [f"재발송으로 대체: {STR} → {STR_NEW} (적재 안 함) (내용 같음)"]
@@ -1729,6 +1981,67 @@ def test_part_code_rename_supersedes_old_file(tmp_path):
     committed = {r["key"]: r["id"] for r in read_csv_rows(REGISTRY_DIR / "fields.csv")[0]}
     assert _fields(reg)["STR"]["id"] == committed["구조"]
     assert len(_wt(out, RENAMED_W)) == 1 and not _wt(out, TURNOVER_W)
+
+
+@pytest.mark.parametrize("old_name, new_name, renamed_from", [
+    ("SW조사_구조_20261012.xlsx", "SW조사_STR_20261012.xlsx", "구조"),        # 한글 옛 약칭 > ASCII 새 약칭 — 옛 파일이 이겼다
+    ("Tool조사_구조_20261012.xlsx", "Tool조사_STR_20261012.xlsx", "구조"),    # v1.1 정식 접두
+    ("Tool조사_구조_20261012.xlsx", "SW조사_STR_20261012.xlsx", "구조"),      # 접두가 달라도 ('Tool' > 'SW')
+    ("Tool조사_TMP1_20261012.xlsx", "Tool조사_STR_20261012.xlsx", "TMP1"),    # ASCII 끼리 ('TMP1' > 'STR')
+], ids=["sw-hangul", "tool-hangul", "mixed-prefix", "ascii"])
+def test_part_code_rename_same_date_new_name_wins(tmp_path, old_name, new_name, renamed_from):
+    """I33: 옛·새 약칭 파일의 날짜·사본 번호가 같으면 새 약칭 파일이 최신 — renamed_from 은 옛 약칭이 먼저 쓰였다는 뜻이라 같은 날 새 이름으로
+    다시 보낸 파일이 나중 것이다 (2026-10-12 검토 수리: 파일명 사전순으로 갈려 고친 새 파일이 '재발송으로 대체' 로 버려지고, 남은 옛 파일에
+    '다음 회신부터 새 약칭 파일명으로' 경고가 붙었다)."""
+    cfg = _parts_cfg(tmp_path, "tie", {"STR": {**STR_PART, "renamed_from": [renamed_from]}},
+                     drop_synthetic=(renamed_from,) if renamed_from == "구조" else ())
+    survey = _survey(tmp_path, "s", {old_name: STR, new_name: STR})
+    _set_names(survey / new_name, {"STR-01": "가상-고친툴"})
+    out = run_load(input_dir=survey, registry_dir=tmp_path / "registry", out_root=tmp_path / "out", shacl=False, config_dir=cfg)
+    assert [f.name for f in out.result.loaded_files] == [new_name]
+    assert _wt(out, "재발송으로 대체") == [f"재발송으로 대체: {old_name} → {new_name} (적재 안 함)"]
+    assert not _wt(out, OLD_NAME_W)
+    assert "가상-고친툴" in out.turtle and {u.field for u in out.result.usages} == {"STR"}
+
+
+def test_part_code_rename_keeps_generic_tool_ids(tmp_path):
+    """I34·#25b: 범용 이름 툴의 행별 키 '미상:<파트>/<Tool ID>' 는 약칭을 품고 있어 개명 때 툴 표 키 접두도 바꾼다 — TOOL ID 유지, 새 툴 0
+    (2026-10-12 검토 수리: '미상:구조/STR-01' → '미상:STR/STR-01' 로 새 TOOL 이 발급되고 옛 것이 폐기됐다). 옛·새 약칭 파일명 모두."""
+    reg = tmp_path / "registry"
+    s0 = _survey(tmp_path, "s0", {STR: STR, TURB: TURB})
+    _set_names(s0 / STR, {"STR-01": "자체개발"})
+    base = run_load(input_dir=s0, registry_dir=reg, out_root=tmp_path / "o0", shacl=False, now=F_NOW)
+    tool0 = _tool_ids(reg)["미상:구조/STR-01"]
+    others = {k: v for k, v in _tool_ids(reg).items() if not k.startswith("미상:")}
+    use0, io0 = _ids_of(base, "구조")
+    cfg = _rename_cfg(tmp_path)
+    out1 = run_load(input_dir=s0, registry_dir=reg, out_root=tmp_path / "o1", shacl=False, config_dir=cfg)
+    ids = _tool_ids(reg)
+    assert ids["미상:STR/STR-01"] == tool0 and "미상:구조/STR-01" not in ids
+    assert {k: v for k, v in ids.items() if not k.startswith("미상:")} == others
+    assert out1.log["registry"]["transitions"]["tool"] == {"created": 0, "revived": 0}
+    assert {r["status"] for r in read_csv_rows(reg / "tools.csv")[0] if r["id"] == tool0} == {"활성"}
+    fld = _fields(reg)["STR"]["id"]
+    assert _wt(out1, RENAMED_W) == [f"파트 약칭 개명 반영: 구조 → STR ({fld} 유지 — 툴사용·입출력 ID 도 유지, 범용 이름 툴 1개 키 "
+                                    "'미상:구조/…' → '미상:STR/…' (TOOL ID 유지))"]
+    assert _ids_of(out1, "STR") == (use0, io0)
+    s2 = _survey(tmp_path, "s2", {STR_NEW: STR, TURB: TURB})                     # 새 약칭 파일명으로 — 그대로 (멱등)
+    _set_names(s2 / STR_NEW, {"STR-01": "자체개발"})
+    out2 = run_load(input_dir=s2, registry_dir=reg, out_root=tmp_path / "o2", shacl=False, config_dir=cfg)
+    assert _tool_ids(reg)["미상:STR/STR-01"] == tool0 and not _wt(out2, RENAMED_W)
+    assert out2.log["registry"]["transitions"]["tool"] == {"created": 0, "revived": 0}
+
+
+def test_generic_tool_rekey_prefix_held_when_target_exists(tmp_path):
+    """툴 표 키 접두 개명: 새 키 행이 이미 있으면 그 행은 손대지 않는다 — 옛 행이 활성이면 보류 목록, 폐기면 조용히 (알릴 것이 없다)."""
+    reg = tmp_path / "reg"
+    reg.mkdir()
+    (reg / "tools.csv").write_text("id,key,label,status,merged_into\nTOOL-000001,미상:A/X-1,a,활성,\nTOOL-000002,미상:B/X-1,b,활성,\n"
+                                   "TOOL-000003,미상:A/X-2,c,활성,\nTOOL-000004,미상:A/X-3,d,폐기,\nTOOL-000005,미상:B/X-3,e,활성,\n"
+                                   "TOOL-000006,미상:AB/X-1,f,활성,\n", encoding="utf-8-sig")
+    rg = Registry(reg)
+    assert rg.rekey_prefix("tool", "미상:A/", "미상:B/") == (["TOOL-000003"], ["TOOL-000001"])
+    assert [r["key"] for r in rg.rows("tool")] == ["미상:A/X-1", "미상:B/X-1", "미상:B/X-2", "미상:A/X-3", "미상:B/X-3", "미상:AB/X-1"]
 
 
 def test_part_new_and_retired_then_rename_conflict(tmp_path):
@@ -1812,7 +2125,7 @@ def test_parts_renamed_from_retired_entry_ok_and_cli_error(tmp_path, capsys):
     assert ld.file_label("Tool조사_TEST_20261012.xlsx", "0" * 64) == ("Tool조사_TEST_20261012.xlsx", "TST", "20261012", 0)
     (over / "parts.yaml").write_text(yaml.safe_dump({"parts": {"TST": {"renamed_from": ["TEST"]}}}, allow_unicode=True), encoding="utf-8")
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     rc = cli.main(["load", "--registry", str(reg), "--out", str(tmp_path / "out"), "--overlay", str(over), "--no-shacl"])
     err = capsys.readouterr().err
     assert rc == 2 and err.startswith("[NG] 설정 오류: ") and "옛 약칭 'TEST' 이 parts 에 아직 있다" in err and "Traceback" not in err
@@ -1851,7 +2164,7 @@ def _csv_bytes(reg: Path) -> dict[str, bytes]:
 
 def test_registry_lock_blocks_second_load(tmp_path):
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     lock = reg / LOCK_NAME
     lock.write_text("pid=4321 started=2026-10-12T09:00:00+09:00\n", encoding="utf-8")
     before = _csv_bytes(reg)
@@ -1883,7 +2196,7 @@ def test_registry_lock_blocks_second_load(tmp_path):
 def test_lock_and_run_dir_released_on_failure(tmp_path, monkeypatch):
     """적재 도중 예외 — 잠금 파일이 지워지고, 레지스트리는 그대로, 빈 실행 폴더도 남지 않는다."""
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     before = _csv_bytes(reg)
 
     def boom(self, *a, **kw):
@@ -1899,7 +2212,7 @@ def test_lock_and_run_dir_released_on_failure(tmp_path, monkeypatch):
 def test_dry_run_ignores_lock(tmp_path):
     """save_registry=False 는 레지스트리를 쓰지 않아 잠그지 않는다 — 남의 잠금이 있어도 적재하고, 그 잠금은 건드리지 않는다."""
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     (reg / LOCK_NAME).write_text("pid=1 started=x\n", encoding="utf-8")
     out = run_load(input_dir=_survey(tmp_path, "s", {STR: STR}), registry_dir=reg, out_root=tmp_path / "out", shacl=False,
                    save_registry=False)
@@ -1908,7 +2221,7 @@ def test_dry_run_ignores_lock(tmp_path):
 
 def test_cli_load_registry_busy_rc2(tmp_path, capsys):
     reg = tmp_path / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     (reg / LOCK_NAME).write_text("pid=4321 started=2026-10-12T09:00:00+09:00\n", encoding="utf-8")
     rc = cli.main(["load", "--registry", str(reg), "--out", str(tmp_path / "out"), "--no-shacl"])
     err = capsys.readouterr().err
@@ -1925,7 +2238,7 @@ def test_lock_file_is_git_ignored():
 def test_same_second_runs_get_distinct_run_dirs(tmp_path):
     out_root = tmp_path / "out"
     reg_a, reg_b = tmp_path / "reg_a", tmp_path / "reg_b"
-    shutil.copytree(REGISTRY_DIR, reg_a)
+    copy_registry(REGISTRY_DIR, reg_a)
     a = run_load(registry_dir=reg_a, out_root=out_root, now=F_NOW, shacl=False)
     ttl_a = (a.out_dir / "survey.ttl").read_bytes()
     b = run_load(input_dir=_survey(tmp_path, "s", {STR: STR}), registry_dir=reg_b, out_root=out_root, now=F_NOW, shacl=False)

@@ -21,6 +21,7 @@ from rdflib.namespace import RDF, RDFS, SKOS
 from engenius_onto import synth
 from engenius_onto.config import CONFIG_DIR, REPO_ROOT, ConfigError, namespaces
 from engenius_onto.loader import Loader, extract_template_examples
+from engenius_onto.registry import copy_registry
 from engenius_onto.survey_load import DATA_SETS, apply_review, run_load
 
 GOLDEN = Path(__file__).parent / "golden"
@@ -38,7 +39,7 @@ SURVEY_DIR, REGISTRY_DIR = DATA_SETS["synthetic"]
 
 def _copy_registry(tmp: Path) -> Path:
     reg = tmp / "registry"
-    shutil.copytree(REGISTRY_DIR, reg)
+    copy_registry(REGISTRY_DIR, reg)
     return reg
 
 

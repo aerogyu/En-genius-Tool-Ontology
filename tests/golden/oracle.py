@@ -50,7 +50,16 @@ VERSION_TOKEN = re.compile(r"^(v\d+(\.\d+)*|\d{4}r\d+|r\d+[a-z]?|sp\d+|\d+(\.\d+
 # 'ㆍ'(U+318D) 는 NFKC 에서 U+119E 로 바뀐다 — 정규화 뒤에 나누므로 둘 다 구분자로 둔다
 EXT_SEP = re.compile("[/,;·ㆍᆞ・\\s]+")
 PARTNER_SEP = re.compile("[,;/·ㆍᆞ・\\n]+")                                            # [I17]
-PERSON_PATTERN = re.compile(r"(책임|선임|수석|연구원|과장|차장|부장|대리|사원|팀장)\s*\(\s*내선")   # [D6]
+PERSON_PATTERN = re.compile(r"(책임|선임|수석|연구원|과장|차장|부장|대리|사원|팀장)\s*\(\s*내선")   # [D6] 자유 텍스트 열
+# [I29] 모든 적재 문자열 열 — rules.yaml person_patterns_all (docs/09 #20 1-A 승인 목록 — '직급+에게·께'·'이름(직급)' 2026-10-12 검토 수리)
+TITLES = "책임|선임|수석|과장|차장|부장|대리|팀장"
+PERSON_PATTERNS_ALL = [re.compile(p) for p in (
+    r"(책임|선임|수석|연구원|과장|차장|부장|대리|사원|팀장|파트장|그룹장|센터장)\s*님",
+    r"[가-힣]{2,4}\s*(책임|선임|수석|과장|차장|부장|대리|팀장|파트장|그룹장)(님|\b|\s|$)",
+    r"내선\s*[:：]?\s*\d{3,5}",
+    r"01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}",
+    rf"({TITLES})\s*(님|에게|께)",
+    rf"(?<![가-힣])[가-힣]{{2,4}}\s*\(?({TITLES})\)?(?![가-힣])")]
 EXPIRY_BLANK = {"영구"}                                                                 # [I16] rules.yaml loader.month_blank_values
 # [I27] 만료 시기 텍스트 날짜 — NFKC 뒤 전체: 연 구분자 월 (구분자 일)? 점? | 연 '년' 월 '월' (일 '일')?  (적재기는 패턴 3개로 따로 구현)
 EXPIRY_TEXT = re.compile(r"(?P<y>[0-9]{4})\s*(?:[./-]\s*(?P<m>[0-9]{1,2})(?:\s*[./-]\s*(?P<d>[0-9]{1,2}))?\s*\.?"
@@ -213,7 +222,8 @@ def _dot_ext(t: str) -> bool:
 
 def _take_format_parens(s: str) -> tuple[str, bool]:
     """[I12] 1단계 — 안쪽 괄호(안에 다른 괄호 없음)를 왼쪽부터 훑어, 안이 '.확장자' 뿐이면 그 확장자만 남기고 괄호 바로 앞 한 단어
-    (괄호와 사이 공백 허용, 구분자·괄호에서 끊김)는 형식 이름으로 버린다. (버린 단어에 '사내' 가 있었는지)"""
+    (괄호와 사이 공백 허용, 구분자·괄호에서 끊김)는 형식 이름으로 버린다 — 단 그 단어가 '.'·'*.' 으로 시작하면 확장자라 남긴다.
+    (버린 단어에 '사내' 가 있었는지)"""
     out, keep_from, pos, inhouse = [], 0, 0, False
     while True:
         a = s.find("(", pos)
@@ -231,6 +241,8 @@ def _take_format_parens(s: str) -> tuple[str, bool]:
             cut = len(word)
             while cut > 0 and not EXT_SEP.match(word[cut - 1]) and word[cut - 1] not in "()":
                 cut -= 1                                     # 괄호 앞 한 단어의 시작
+            if word[cut:].startswith((".", "*.")):            # 그 단어가 '.확장자' 자체면 형식 이름이 아니다 — 남긴다 ('.cas(.dat)' → cas·dat)
+                cut = len(head)
             inhouse |= "사내" in word[cut:]
             out.append(head[:cut] + " " + " ".join(toks) + " ")
             keep_from = b + 1
@@ -495,7 +507,8 @@ def check_row(keys: dict, v: dict, choices: dict, where: str, warnings: list, sh
                     counts["na_choice"] += 1
             else:
                 warnings.append(f"선택지 밖 값: {where} '{header}' = '{val}'")
-        if k in FREE_TEXT and val and PERSON_PATTERN.search(str(val)):
+        if isinstance(val, str) and val.strip() and (
+                (k in FREE_TEXT and PERSON_PATTERN.search(val)) or any(p.search(val) for p in PERSON_PATTERNS_ALL)):
             warnings.append(f"인명 유사 패턴: {where} '{header}'")
 
 

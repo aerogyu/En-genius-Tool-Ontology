@@ -2,6 +2,7 @@
 
 - 키: 분야 = 파트 약칭 (v0.3 — 파일명의 약칭, docs/10), 툴 = 정규화 키, 분류 = 이름, 툴사용 = (FLD ID, SW ID 원문) — 원천 파일명은 키에 넣지 않는다 (D3).
   약칭 개명(parts.yaml renamed_from)은 분야 행의 키만 바꾼다(rekey) — FLD ID 가 그대로라 툴사용·입출력 ID 도 그대로 (docs/09 #25b).
+  범용 이름 툴의 행별 키 '미상:<파트>/<Tool ID>'(I34)는 약칭을 품고 있어 툴 표의 키 접두도 바꾼다(rekey_prefix) — TOOL ID 유지.
   파일 간 같은 (파트, Tool ID) 충돌 때만 전용 파일이 아닌 쪽 SW ID 에 '@<파일 약칭 | file-sha256 앞 10자>' 꼬리 (I36 — 이것도 파일명이 아니다).
 - 이번 적재에 없는 분야·툴·분류는 지우지 않고 status=폐기 로 남긴다 — survey 그래프에도 폐기 상태로 계속 낸다 (D7).
   폐기된 ID 는 재발급하지 않는다 (다시 나오면 같은 ID 로 활성 복귀). 통합됨 행도 그 키가 다시 활성 그룹으로 보이면
@@ -25,6 +26,7 @@ import csv
 import datetime as dt
 import os
 import re
+import shutil
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -66,6 +68,18 @@ def registry_lock(directory: Path):
             path.unlink()
         except FileNotFoundError:
             pass
+
+
+COPY_IGNORE = (LOCK_NAME, "*.tmp", ".write_test")   # 레지스트리 폴더 사본에서 뺄 것 — 잠금·저장 도중 임시 파일·쓰기 확인 파일
+
+
+def copy_registry(src: Path, dst: Path) -> Path:
+    """레지스트리 폴더 사본 (CSV 만 — COPY_IGNORE 제외). 강제 종료로 원본에 남은 잠금 파일까지 복사하면 사본으로 하는 적재가 모두
+    '레지스트리 사용 중' 으로 멈추고, 오류 문구는 사본(임시 폴더)의 잠금을 가리킨다 (2026-10-12 검토 수리 — 시험이 이것을 쓴다)."""
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns(*COPY_IGNORE))
+    return Path(dst)
+
+
 MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 # 엑셀이 날짜로 바꿔 저장한 모양 (#15 (4)) — '03월 01일'(ko-KR, 실측) · '2026-03-01[ 00:00[:00]]' · '3/1[/2026]' · '1-Mar'
 DATE_SHAPE = re.compile(r"\d{1,2}월\s?\d{1,2}일|\d{4}-\d{2}-\d{2}(?:\s\d{1,2}:\d{2}(?::\d{2})?)?|\d{1,2}/\d{1,2}(?:/\d{2,4})?|\d{1,2}-[A-Za-z]{3}")
@@ -172,6 +186,27 @@ class Table:
         r_old.update(dict(zip(self.spec[3], new)))
         return "rekeyed", r_old["id"], r_old["id"]
 
+    def rekey_prefix(self, old: str, new: str) -> tuple[list[str], list[str]]:
+        """키가 열 하나인 표에서 old 로 시작하는 키를 new 로 시작하게 바꾼다 (#25b 약칭 개명 — 범용 이름 툴 키 '미상:<옛>/…' → '미상:<새>/…',
+        I34). (바꾼 ID, 보류한 활성 ID) — 새 키 행이 이미 있으면 그 행은 손대지 않는다 (개명 설정 없이 한 번 적재한 흔적 — 옛 행이 이미 폐기면
+        알릴 것이 없어 보류 목록에 넣지 않는다)."""
+        col = self.spec[3][0]
+        have = {r[col] for r in self.rows}
+        moved, held = [], []
+        for r in sorted(self.rows, key=lambda x: x["id"]):
+            if not r[col].startswith(old):
+                continue
+            target = new + r[col][len(old):]
+            if target in have:
+                if r["status"] == ACTIVE:
+                    held.append(r["id"])
+                continue
+            have.discard(r[col])
+            have.add(target)
+            r[col] = target
+            moved.append(r["id"])
+        return moved, held
+
     def retire_unseen(self) -> list[dict]:
         out = []
         for r in self.rows:
@@ -196,6 +231,9 @@ class Registry:
                     self.notices.append(f"레지스트리 CSV 를 {enc} 로 읽음: {p.name} — 저장할 때 utf-8-sig 로 되돌린다 (#15)")
                 for r in t.rows:
                     r.setdefault("merged_into", "")
+                    for k, v in list(r.items()):          # 열이 모자란 행(메모장 손 편집에서 꼬리 쉼표가 빠짐) — csv 가 None 으로 채운다
+                        if v is None:
+                            r[k] = ""
         self._check_excel_damage()
 
     def _check_excel_damage(self) -> None:
@@ -211,8 +249,8 @@ class Registry:
         keys = {(r.get("field_id", ""), r.get("source_key", "")) for r in t.rows}
         restored, suspect = [], []
         for r in t.rows:
-            key, label = r.get("source_key", ""), r.get("label", "")
-            if _label_ok(label, key):
+            key, label = r.get("source_key") or "", r.get("label") or ""
+            if not label or _label_ok(label, key):                 # 라벨이 빈 행(손으로 더한 행)은 대조할 것이 없다
                 continue
             tails = {label[i + 1:] for i, ch in enumerate(label) if ch == " "}
             orig = sorted(x for x in tails if excel_explains(x, key))
@@ -245,6 +283,10 @@ class Registry:
     def rekey(self, kind: str, old, new) -> tuple[str, str | None, str | None]:
         """Table.rekey — 키가 열 하나인 종류는 문자열로 넘겨도 된다 (분야 약칭 개명, #25b)."""
         return self.tables[kind].rekey(old if isinstance(old, tuple) else (old,), new if isinstance(new, tuple) else (new,))
+
+    def rekey_prefix(self, kind: str, old: str, new: str) -> tuple[list[str], list[str]]:
+        """Table.rekey_prefix — 범용 이름 툴 키의 파트 부분 개명 (#25b, I34)."""
+        return self.tables[kind].rekey_prefix(old, new)
 
     def id_of(self, kind: str, key) -> str | None:
         r = self.tables[kind].find(key if isinstance(key, tuple) else (key,))

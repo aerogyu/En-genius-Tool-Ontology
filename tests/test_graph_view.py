@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from engenius_onto.config import REPO_ROOT
+from engenius_onto.registry import copy_registry
 from engenius_onto.survey_load import DATA_SETS, run_load
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
@@ -25,7 +26,7 @@ NOW = dt.datetime(2026, 9, 24, 12, 0, 0)
 def run_dir(tmp_path_factory) -> Path:
     tmp = tmp_path_factory.mktemp("view")
     reg = tmp / "registry"
-    shutil.copytree(DATA_SETS["synthetic"][1], reg)
+    copy_registry(DATA_SETS["synthetic"][1], reg)
     return run_load(registry_dir=reg, out_root=tmp / "out", now=NOW, shacl=False).out_dir
 
 
@@ -139,7 +140,7 @@ def test_overlay_outside_repo_is_recorded_absolute_and_found(tmp_path):
     """저장소 밖 --overlay 폴더는 load_log config_overlay.dir 에 절대 경로 그대로 + outside_repo: true 로 남고(이름만 남던 문제),
     overlay_dir_of 가 그 폴더를 다시 찾는다. 폴더가 사라지면 (None, True)."""
     reg = tmp_path / "registry"
-    shutil.copytree(DATA_SETS["synthetic"][1], reg)
+    copy_registry(DATA_SETS["synthetic"][1], reg)
     overlay = tmp_path / "overlay"
     overlay.mkdir()
     (overlay / "rules.yaml").write_text("manual_transfer_values: []\n", encoding="utf-8")

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import shutil
-
 import pytest
 
 from engenius_onto import backends, cli
 from engenius_onto.config import fuseki_config
+from engenius_onto.registry import copy_registry
 from engenius_onto.survey_load import DATA_SETS
 
 
@@ -49,7 +48,7 @@ def test_load_reports_config_error_in_one_line(tmp_path, capsys):
     over.mkdir()
     (over / "rules.yaml").write_text("manual_transfer_values:\nloader:\n", encoding="utf-8")
     reg = tmp_path / "registry"
-    shutil.copytree(DATA_SETS["synthetic"][1], reg)
+    copy_registry(DATA_SETS["synthetic"][1], reg)
     rc = cli.main(["load", "--registry", str(reg), "--out", str(tmp_path / "out"), "--overlay", str(over), "--no-shacl"])
     assert rc == 2
     err = capsys.readouterr().err

@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import sys
 from pathlib import Path
 
 import pytest
 
 from engenius_onto.config import REPO_ROOT
+from engenius_onto.registry import copy_registry
 from engenius_onto.survey_load import DATA_SETS, run_load
 
 mcp = pytest.importorskip("mcp")
@@ -26,7 +26,7 @@ TOOLS = ["overview", "find_tool", "tool_info", "part_tools", "tool_io", "tool_pa
 @pytest.fixture(scope="module")
 def run_dir(tmp_path_factory) -> Path:
     tmp = tmp_path_factory.mktemp("mcp")
-    shutil.copytree(DATA_SETS["synthetic"][1], tmp / "registry")
+    copy_registry(DATA_SETS["synthetic"][1], tmp / "registry")
     return run_load(registry_dir=tmp / "registry", out_root=tmp / "out", shacl=False).out_dir
 
 

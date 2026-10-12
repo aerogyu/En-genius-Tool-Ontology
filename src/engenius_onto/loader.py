@@ -15,7 +15,8 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
 - 예시 행은 위치가 아니라 적재 열 전체가 템플릿 예시와 같은지로 판별 (I15) — config/template_examples.yaml (+ 오버레이).
   예시의 정보 열 80% 이상이 같거나 비고가 예시 문구인 '예시와 거의 같은 행' 은 경고 후 응답으로 적재하고, 같은 Tool ID 의 진짜 행이 뒤에
   있으면 진짜 행을 쓴다 (I15 개정, docs/09 #3). 시트에 예시 유사 행만 있고 정확한 예시가 0 이면 설정 점검 경고.
-- 같은 파트 파일이 여럿이면 (날짜, 사본 번호 '(n)', 파일명) 최신 1개만 적재하고, 그 뒤 같은 내용(sha256) 파일은 한 번만 (I31·I33).
+- 같은 파트 파일이 여럿이면 (날짜, 사본 번호 '(n)', 새 약칭 파일명인가, 파일명) 최신 1개만 적재하고, 그 뒤 같은 내용(sha256) 파일은 한 번만 —
+  대체된 옛 회신과 내용이 같은 사본도 적재하지 않는다 (I31·I33).
 - 파일 간 같은 (파트, Tool ID) 는 둘 다 적재하고 경고 — 전용 파일이 아닌 쪽 레지스트리 키에 구분 꼬리 '@<약칭|file-sha10>' (I36, docs/09 #1).
 - 툴 통합 (6.1): 별칭·통합 판정(tool_aliases.yaml + 오버레이)은 제조사를 뗀 키, 없으면 떼지 않은 이름 키로 찾는다 (docs/09 #2 (3)). 판정 항목 가운데
   이번 적재의 툴·연계 Tool명 어디에도 키가 없는 것은 경고 '별칭 미적용' (#2 (4) — 저장소의 공개 별칭 사전은 제외). 해석 못 한 연계 Tool명은
@@ -23,7 +24,8 @@ RDF 로 쓰는 것은 rdf_writer, ID 고정은 registry 가 맡는다. 세부 �
 - 어떤 행도 조용히 버리지 않는다 — 제외는 사유와 함께 excluded_rows, 문제는 warnings (5장 6). 행 단위 문제는 issues 에도
   구조화해 남겨 파트별 수정 요청표(fix_requests)를 만든다 (M3.1).
 - 인명 열(실무 문의처)은 읽지 않는다 (CLAUDE.md 절대 규칙 5). 인명 유사 패턴은 경고만 하고 경고에 값을 옮기지 않는다 (D6, #20).
-  값을 인용하는 경고는 Loader._q 를 거친다 — 인명 유사면 PERSON_MASK (docs/09 C5, 확장자 경고부터 2026-10-12).
+  값을 인용하는 경고·수정 요청표·검토표 표기 칸은 Loader._q 를 거친다 — 인명 유사면 PERSON_MASK (docs/09 C5; 모든 경고 2026-10-12 검토 수리 —
+  행 경고의 위치 문구(where)도 Tool ID·데이터명을 _q 로 만든다).
   규칙 밖 파일명은 해시 이름으로만 기록한다 (#8 — 파일명에 인명이 섞여 있을 수 있다).
 """
 
@@ -32,8 +34,11 @@ from __future__ import annotations
 import datetime as dt
 import difflib
 import hashlib
+import posixpath
 import re
 import unicodedata
+import xml.etree.ElementTree as ET
+import zipfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from itertools import combinations
@@ -41,6 +46,7 @@ from pathlib import Path
 
 import openpyxl
 import yaml
+from openpyxl.utils.cell import column_index_from_string
 
 from engenius_onto.config import CONFIG_DIR, ConfigError, config_where, load_config, load_yaml, read_yaml
 from engenius_onto.form_spec import Column, FormSpec, load_form_spec, norm_header
@@ -87,6 +93,83 @@ def id_key(s) -> str:
     """Tool ID 연결용 키 (docs/09 #18): NFKC·앞뒤 공백·보이지 않는 문자 제거·대문자, '-' 뒤 숫자 앞 0 무시 (MDC-01 = MDC-1)."""
     k = unicodedata.normalize("NFKC", "" if s is None else str(s)).translate(ZERO_WIDTH).strip().upper()
     return re.sub(r"(?<=-)0+(?=\d)", "", re.sub(r"\s+", "", k))
+
+
+# --------------------------------------------------------------------------- 시트 XML 직접 읽기 (I37 ② 캐시 없는 수식)
+# openpyxl 은 칸의 <v></v>·<v/>·<v> 없음을 모두 None 으로 읽어 '캐시된 빈 문자열' 과 '캐시 없음' 을 구별하지 못한다 — 표준 라이브러리로 XML 을 본다.
+def _local(tag: str) -> str:
+    """XML 태그·속성 이름의 로컬 부분 ('{ns}c' → 'c') — OOXML 표준·엄격(strict) 이름공간을 함께 받는다."""
+    return tag.rsplit("}", 1)[-1]
+
+
+def _xml_root(z: zipfile.ZipFile, part: str):
+    with z.open(part) as f:
+        return ET.parse(f).getroot()
+
+
+def sheet_parts(z: zipfile.ZipFile) -> dict[str, str]:
+    """{시트 이름: 시트 XML 경로} — _rels/.rels(통합 문서 위치) → 통합 문서의 <sheet name r:id> → 통합 문서 rels 의 Target."""
+    names = set(z.namelist())
+    wb_part = "xl/workbook.xml"
+    if "_rels/.rels" in names:
+        for rel in _xml_root(z, "_rels/.rels"):
+            if rel.get("Type", "").endswith("/officeDocument"):
+                wb_part = rel.get("Target", wb_part).lstrip("/")
+                break
+    base = posixpath.dirname(wb_part)
+    targets = {}
+    for rel in _xml_root(z, posixpath.join(base, "_rels", posixpath.basename(wb_part) + ".rels")):
+        t = rel.get("Target", "")
+        targets[rel.get("Id")] = t.lstrip("/") if t.startswith("/") else posixpath.normpath(posixpath.join(base, t))
+    out = {}
+    for el in _xml_root(z, wb_part).iter():
+        if _local(el.tag) == "sheet":
+            rid = next((v for k, v in el.attrib.items() if _local(k) == "id"), None)
+            if rid in targets:
+                out[el.get("name")] = targets[rid]
+    return out
+
+
+def formula_cells_without_cache(path: Path, sheets: list[str], min_row: int) -> dict[str, set[tuple[int, int]]]:
+    """{시트: 캐시 없는 수식 칸 (행, 열)} — min_row 행부터 (I37 ②). 시트 XML 을 스트리밍으로 훑는다 (먼 서식 칸이 있어도 메모리 일정).
+
+    캐시 없음 = <f> 가 있는데 캐시 값이 없다: <v> 가 없거나, <v> 가 비었고 형식(t)이 'str' 이 아님 (openpyxl 로 저장한 수식 — 엑셀이 계산한 적
+    없음). 엑셀·LibreOffice 는 빈 문자열을 돌려주는 수식(=IFERROR(…,""))을 t="str" + 빈 <v> 로 저장한다 — 캐시된 빈 문자열이라 다시 저장해도
+    그대로이므로 '캐시 없음' 이 아니다 (2026-10-12 검토 수리). 인라인 문자열(<is>)도 캐시로 본다."""
+    out: dict[str, set[tuple[int, int]]] = {}
+    with zipfile.ZipFile(path) as z:
+        parts = sheet_parts(z)
+        for name in sheets:
+            cells: set[tuple[int, int]] = set()
+            row = col = 0
+            sheet_data = None
+            with z.open(parts[name]) as f:
+                for ev, el in ET.iterparse(f, events=("start", "end")):
+                    tag = _local(el.tag)
+                    if ev == "start":
+                        if tag == "sheetData":
+                            sheet_data = el
+                        elif tag == "row":
+                            r = el.get("r")
+                            row, col = (int(r) if r else row + 1), 0
+                        continue
+                    if tag == "c":
+                        ref = el.get("r")
+                        if ref:
+                            letters = ref.rstrip("0123456789")
+                            row_c, col = int(ref[len(letters):]), column_index_from_string(letters)
+                        else:
+                            row_c, col = row, col + 1
+                        kids = {_local(ch.tag): ch for ch in el}
+                        if "f" in kids and row_c >= min_row:
+                            v = kids.get("v")
+                            if not ("is" in kids or (v is not None and (v.text or el.get("t") == "str"))):
+                                cells.add((row_c, col))
+                        el.clear()
+                    elif tag == "row" and sheet_data is not None:
+                        sheet_data.clear()                               # 읽은 행은 버린다 (메모리 일정)
+            out[name] = cells
+    return out
 
 
 # --------------------------------------------------------------------------- 레코드
@@ -323,8 +406,10 @@ class Loader:
         self.person_all = [re.compile(p) for p in self.rules.get("person_patterns_all") or []]
         self.free_text = set(self.rules["free_text_slots"])
         self.month_slots = set(self.lcfg.get("month_slots", ["license_expiry"]))
-        self.month_blank = {nfkc(v).strip().lower() for v in self.lcfg.get("month_blank_values") or []}   # '영구' 등 (I16)
-        self.other_sheets = {norm_header(s) for s in self.lcfg.get("other_sheets") or []}             # 양식 밖이지만 아는 시트 (I37)
+        # 아래 두 키의 코드 기본값 = 배포 rules.yaml 값 — 사내 rules.yaml 이 로컬 수정이라 업데이트가 '.new' 로만 남겨도(키 없음) 같은 동작.
+        # 키가 있으면(빈 목록 포함) 그 값 (2026-10-12 검토 수리)
+        self.month_blank = {nfkc(v).strip().lower() for v in self.lcfg.get("month_blank_values", ["영구"]) or []}   # '영구' 등 (I16)
+        self.other_sheets = {norm_header(s) for s in self.lcfg.get("other_sheets", ["작성안내"]) or []}          # 양식 밖이지만 아는 시트 (I37)
         d = self.rules["direction"]
         self.dir_short = {**{x: "in" for x in d["consume"]}, **{x: "out" for x in d["produce"]}}
         self.choice_aliases = {name: [name, *alts] for name, alts in (self.lcfg.get("choice_list_aliases") or {}).items()}
@@ -479,12 +564,16 @@ class Loader:
             old = self.parse_name(p.name)[0] if code is not None else None      # 옛 약칭 파일명이면 (#25b)
             reports.append(FileReport(label, sha, code, date, path=p, copy=copy, index=idx,
                                       renamed_from=old if old != code else None))
-        # 재발송 (I33): 같은 파트는 (날짜, 사본 번호, 파일명) 최신만 — 같은 날짜면 브라우저 사본 '(n)' 의 번호가 큰 쪽(나중에 받은 파일)
+        # 재발송 (I33): 같은 파트는 (날짜, 사본 번호, 새 약칭 파일명인가, 파일명) 최신만 — 같은 날짜면 브라우저 사본 '(n)' 의 번호가 큰 쪽
+        # (나중에 받은 파일), 날짜·번호까지 같으면 새 약칭 파일명(renamed_from 의 옛 약칭이 아닌 쪽 — 개명 뒤에 받은 파일)이 이긴다
+        def newer(r: FileReport) -> tuple:
+            return r.date, r.copy, r.renamed_from is None, r.name
+
         latest: dict[str, FileReport] = {}
         for r in reports:
             if r.field is None:
                 continue
-            if r.field not in latest or (r.date, r.copy, r.name) > (latest[r.field].date, latest[r.field].copy, latest[r.field].name):
+            if r.field not in latest or newer(r) > newer(latest[r.field]):
                 latest[r.field] = r
         for r in reports:
             if r.field is None:
@@ -530,16 +619,28 @@ class Loader:
     def _same_content(self, reports: list[FileReport], warnings: list) -> None:
         """I33 뒤에: 대체되지 않은 파일 가운데 내용(sha256)이 같은 파일은 한 번만 적재한다 — 규칙 안 파일 우선, 다음 입력 순서.
         나머지는 duplicate_of + 경고 '같은 내용 파일' (제외 건수에 넣지 않는다 — I33 과 같은 원칙). 같은 날짜 '(n)' 사본처럼 규칙 안
-        같은 약칭이면 이미 I33 이 '(내용 같음)' 으로 처리했다. 두 규칙 안 파일의 약칭이 다르면 어느 파트 파일인지 확인을 덧붙인다."""
+        같은 약칭이면 이미 I33 이 '(내용 같음)' 으로 처리했다. 두 규칙 안 파일의 약칭이 다르면 어느 파트 파일인지 확인을 덧붙인다.
+        I33 이 대체한(버린) 옛 회신과 내용이 같은 파일도 적재하지 않는다 — 탐색기 사본('- 복사본')·다른 약칭으로 저장한 사본으로 옛 데이터가
+        다시 들어와 툴사용이 두 번 잡히지 않게 (2026-10-12 검토 수리). 단 그 옛 회신을 대체한 최신 파일 자신(내용이 같은 재발송 —
+        I33 '(내용 같음)')이 그 묶음에 있으면 그 파일은 정상이고 나머지만 위 규칙으로 한 번만."""
         groups: dict[str, list[FileReport]] = defaultdict(list)
         for r in reports:
-            if r.superseded_by is None:
-                groups[r.sha256].append(r)
+            groups[r.sha256].append(r)
         for group in groups.values():
-            if len(group) < 2:
+            live = [r for r in group if r.superseded_by is None]
+            stale = [r for r in group if r.superseded_by is not None]
+            if stale and live and not {s.superseded_by for s in stale} & {r.name for r in live}:
+                src = min(stale, key=lambda r: (r.field is None, r.index))
+                for r in live:
+                    r.duplicate_of = src.name
+                    note = " — 약칭이 다르다, 어느 파트 파일인지 확인" if r.field is not None and r.field != src.field else ""
+                    warnings.append(f"같은 내용 파일: {r.name} = {src.name} ({src.name} 은 재발송으로 대체됨 — 적재 안 함){note}")
+                    r.warnings += 1
                 continue
-            keep = min(group, key=lambda r: (r.field is None, r.index))
-            for r in group:
+            if len(live) < 2:
+                continue
+            keep = min(live, key=lambda r: (r.field is None, r.index))
+            for r in live:
                 if r is keep:
                     continue
                 r.duplicate_of = keep.name
@@ -598,10 +699,12 @@ class Loader:
 
     def _issue(self, rep: FileReport, sheet: str, row: int | None, tool_id, header: str | None, value, kind: str,
                hint: str) -> None:
-        """수정 요청표 한 줄 (값은 사내 파일에만 — diag 는 값을 쓰지 않는다)."""
+        """수정 요청표 한 줄 (값은 사내 파일에만 — diag 는 값을 쓰지 않는다). 인명 유사 값은 싣지 않는다 — 적힌 값은 비우고
+        Tool ID 는 PERSON_MASK (행 번호로 찾는다; 표 아래 꼬리말·서명이 Tool ID 칸에 들어간 경우, docs/09 C5·C8)."""
+        val = "" if value is None else cell_key(value)
         self.issues.append({"file": rep.name, "part": rep.field, "sheet": sheet, "row": row,
-                            "tool_id": nfc_strip(tool_id) if tool_id is not None else "",
-                            "column": (header or "").rstrip(" *"), "value": "" if value is None else cell_key(value),
+                            "tool_id": self._q(nfc_strip(tool_id)) if tool_id is not None else "",
+                            "column": (header or "").rstrip(" *"), "value": "" if self._looks_person(val) else val,
                             "kind": kind, "hint": hint})
 
     # ---- 시트 읽기 ----------------------------------------------------------------
@@ -630,12 +733,12 @@ class Loader:
             if nh in by_h:
                 col = by_h[nh]
                 if col in mapping.values():                                   # #19 중복 헤더 — 앞 열 사용
-                    warnings.append(f"중복 헤더: {fname} {sheet} '{nfc_strip(h)}' — 앞 열만 읽음")
+                    warnings.append(f"중복 헤더: {fname} {sheet} '{self._q(nfc_strip(h))}' — 앞 열만 읽음")
                     rep.warnings += 1
                     continue
                 mapping[idx] = col
-            else:
-                warnings.append(f"매핑 안 된 헤더: {fname} {sheet} '{nfc_strip(h)}'")
+            else:                                                             # 헤더 칸에 적은 이름도 가린다 (N3)
+                warnings.append(f"매핑 안 된 헤더: {fname} {sheet} '{self._q(nfc_strip(h))}'")
                 rep.warnings += 1
         present = {c.slot for c in mapping.values()}
         missing = [c.header for c in self.spec.columns[sheet] if c.slot not in present and c.slot not in self.absent_ok]
@@ -648,7 +751,7 @@ class Loader:
         nocache: Counter = Counter()                                            # 슬롯 → 캐시 없는 수식 칸 수
         hidden: set[int] = set()
         rows, blanks, ended, tail = [], 0, False, []
-        for n in range(start, ws.max_row + 1):
+        for n in range(start, self._last_content_row(ws, start, mapping, fill) + 1):
             v, err_here, nocache_here = {}, {}, []
             for i, c in mapping.items():
                 if (n, i) in fill:
@@ -700,6 +803,17 @@ class Loader:
                             f"빈 행 {self.lcfg['blank_rows_end']}개 이상 뒤에 있어 읽지 않았다 — 빈 행을 지우고 위로 붙여 주세요")
         return rows, present
 
+    @staticmethod
+    def _last_content_row(ws, start: int, mapping: dict, fill: dict) -> int:
+        """매핑 열에 값이 있는 마지막 행 (병합 채움 포함, 없으면 start - 1) — 그 뒤는 모두 빈 행이라 읽어도 결과가 같다.
+        ws.max_row 는 서식만 있는 먼 칸(엑셀 Ctrl+End 가 튀는 칸)까지 세어, 거기까지 ws.cell 로 돌면 칸 객체를 수백만 개 만든다 (docs/09 C7).
+        있는 칸만 본다 (openpyxl 일반 모드의 ws._cells — 없으면 max_row 그대로)."""
+        cells = getattr(ws, "_cells", None)
+        if not isinstance(cells, dict):
+            return ws.max_row
+        last = max((r for (r, c), x in cells.items() if r >= start and c - 1 in mapping and not _blank(x.value)), default=start - 1)
+        return max([last, *(r for r, _i in fill)])
+
     def _merged_fill(self, ws, start: int, mapping: dict, fname: str, sheet: str, rep: FileReport, warnings: list) -> dict:
         """데이터 영역의 세로 병합 셀은 위(첫) 칸 값으로 채운다 — 범위마다 경고 1회 (docs/09 #4 A)."""
         fill = {}
@@ -722,33 +836,24 @@ class Loader:
         return fill
 
     def _scan_formulas(self, rep: FileReport, sheets: list[str], warnings: list) -> dict[str, set[tuple[int, int]]]:
-        """{시트: 수식 칸 좌표 (행, 열)} — 데이터 시작 행부터 (I37). 본 로드(data_only)는 수식의 캐시값만 보여 캐시 없는 수식이 그냥
-        빈칸이 된다 — 수식 여부만 보려고 읽기 전용으로 한 번 더 연다 (값은 쓰지 않는다; dimension 은 다시 잰다 — #5).
-        실패해도 적재는 계속하고 경고 '수식 검사 못 함' (캐시 없는 수식 경고만 빠진다)."""
-        out: dict[str, set[tuple[int, int]]] = {}
+        """{시트: 캐시 없는 수식 칸 좌표 (행, 열)} — 데이터 시작 행부터 (I37 ②). 본 로드(data_only)는 수식의 캐시값만 보여 캐시 없는 수식이
+        그냥 빈칸이 되고, openpyxl 은 캐시된 빈 문자열(엑셀이 =IFERROR(…,"") 를 저장한 모양)과도 구별하지 못한다 — 시트 XML 을 직접 본다
+        (formula_cells_without_cache — 값은 쓰지 않는다). 실패해도 적재는 계속하고 경고 '수식 검사 못 함' (캐시 없는 수식 경고만 빠진다)."""
         if not sheets:
-            return out
+            return {}
         try:
-            wf = openpyxl.load_workbook(rep.path, read_only=True, data_only=False)
-            try:
-                start = self.lcfg["data_start_row"]
-                for name in sheets:
-                    ws = wf[name]
-                    ws.reset_dimensions()
-                    out[name] = {(c.row, c.column) for row in ws.iter_rows(min_row=start) for c in row
-                                 if getattr(c, "data_type", None) == "f"}
-            finally:
-                wf.close()
+            return formula_cells_without_cache(rep.path, sheets, self.lcfg["data_start_row"])
         except Exception as e:                                          # noqa: BLE001 — 본 로드는 이미 됐다
             warnings.append(f"수식 검사 못 함: {rep.name} — {type(e).__name__} (캐시 없는 수식 경고를 내지 않음, 적재는 계속)")
             rep.warnings += 1
             return {}
-        return out
 
     def _extra_sheets(self, wb, rep: FileReport, warnings: list) -> None:
         """양식 밖 시트 (I37) — 읽은 기본정보·입출력 시트, 선택지 시트, rules.yaml loader.other_sheets(작성안내 등, 공백·'*' 무시) 밖의
         내용 있는 시트. 2행 헤더가 기본정보·입출력 양식 열의 절반 이상과 맞으면(헤더 추가 문구 포함) '양식 사본 시트'(+ 수정 요청표),
-        아니면 '양식 밖 시트' 경고만. 적재는 하지 않는다 (무엇이 응답인지는 사람이 판단 — HITL). 시트 이름은 _q 로 인용 (인명 가림)."""
+        아니면 '양식 밖 시트' 경고만. 적재는 하지 않는다 (무엇이 응답인지는 사람이 판단 — HITL). 시트 이름은 _q 로 인용 (인명 가림).
+        있는 칸만 훑는다 (ws._cells) — iter_rows 는 max_row × max_column 직사각형의 빈 칸까지 만들어, 서식만 있는 먼 칸 하나에 수 초·수백 MB 가
+        든다 (2026-10-12 검토 수리, docs/09 C7)."""
         hr, start = self.lcfg["header_row"], self.lcfg["data_start_row"]
         known = set(self._used_sheets)
         choices = resolve_sheet(wb.sheetnames, self.lcfg["choices_sheet"])
@@ -758,17 +863,25 @@ class Loader:
             name = ws.title
             if name in known or norm_header(name) in self.other_sheets:
                 continue
-            rows = list(ws.iter_rows(values_only=True))
-            filled = [any(not _blank(v) for v in r) for r in rows]
-            if not any(filled):
+            cells = getattr(ws, "_cells", None)
+            items = (((r, x.value) for (r, _c), x in cells.items()) if isinstance(cells, dict)
+                     else ((x.row, x.value) for row in ws.iter_rows() for x in row))
+            filled: set[int] = set()
+            hdr: set[str] = set()
+            for r, v in items:
+                if _blank(v):
+                    continue
+                filled.add(r)
+                if r == hr:
+                    hdr.add(norm_header(v))
+            if not filled:
                 continue
-            hdr = {norm_header(h) for h in (rows[hr - 1] if len(rows) >= hr else ()) if not _blank(h)}
             form = [s for s in (USAGE_SHEET, IO_SHEET)
                     if len(hdr & set(self.spec.by_header(s))) * 2 >= len(self.spec.columns[s])]
             state = " (숨김)" if ws.sheet_state != "visible" else ""
             label = self._q(nfc_strip(name))
             if form:
-                content = sum(filled[start - 1:])
+                content = sum(1 for r in filled if r >= start)
                 warnings.append(f"양식 사본 시트: {rep.name} '{label}'{state} — {form[0]} 와 같은 헤더, 내용 {content}행, 적재하지 않음")
                 self._issue(rep, form[0], None, "", None, None if label == PERSON_MASK else nfc_strip(name), "양식 사본 시트",
                             "응답이 이 시트에 있으면 원래 시트로 옮기고 사본 시트는 지워 주세요 (사본 시트는 읽지 않습니다)")
@@ -931,13 +1044,13 @@ class Loader:
                 elif str(val) not in lst and self.norm.is_empty(val):
                     self._na_cells += 1       # 'NA'·'-' 등 — 양식 v1.1 안내가 'NA' 를 쓰라고 한다. 경고 대신 파일당 한 줄 (#21)
                 elif str(val) not in lst:
-                    warnings.append(f"선택지 밖 값: {where} '{col.header}' = '{val}'")
+                    warnings.append(f"선택지 밖 값: {where} '{col.header}' = '{self._q(val)}'")
                     rep.warnings += 1
                     self._issue(rep, sheet, row, tool_id, col.header, val, "선택지 밖 값",
                                 "드롭다운에서 고르세요. 목록에 없으면 '기타'를 고르고 비고에 적어 주세요")
             if isinstance(val, str) and not _blank(val) and (
                     (col.slot in self.free_text and self.person_re.search(val)) or any(p.search(val) for p in self.person_all)):
-                warnings.append(f"인명 유사 패턴: {where} '{col.header}'")
+                warnings.append(f"인명 유사 패턴: {where} '{col.header}'")      # where 의 Tool ID·데이터명은 이미 _q (그 칸이 걸려도 값이 안 옮겨진다)
                 rep.warnings += 1
                 self._issue(rep, sheet, row, tool_id, col.header, None, "인명 유사",
                             "사람 이름·연락처로 보이는 내용 — 지워 주세요 (인명은 저장하지 않습니다)")
@@ -1033,12 +1146,13 @@ class Loader:
                 continue
             if _blank(raw.get("source_key")):
                 name = nfc_strip(raw.get("reported_tool_name"))
-                warnings.append(f"SW ID 없는 내용 행: {fname} {USAGE_SHEET} '{name}' — 건너뜀")
+                warnings.append(f"SW ID 없는 내용 행: {fname} {USAGE_SHEET} '{self._q(name)}' — 건너뜀")
                 rep.warnings += 1
                 exclude(USAGE_SHEET, n, "SW ID 없음 (I22)")
                 self._issue(rep, USAGE_SHEET, n, "", "Tool ID", None, "Tool ID 없음", "Tool ID(부서약칭-번호)를 적어 주세요")
                 continue
-            where = f"{fname} {USAGE_SHEET} {cell_key(raw.get('source_key'))}"
+            # 경고 위치 문구 — 값(Tool ID)은 _q 로 (표 아래 꼬리말·서명이 Tool ID 칸에 들어갈 수 있다, C5·C8). 이 행의 모든 경고가 쓴다
+            where = f"{fname} {USAGE_SHEET} {self._q(cell_key(raw.get('source_key')))}"
             v, rawvals = {}, {}
             for slot, val in raw.items():
                 v[slot], r = self._convert(cols_u[slot], val, where, warnings, rep, n, raw.get("source_key"))
@@ -1074,10 +1188,10 @@ class Loader:
             dom = nfc_strip(v.get("reported_domain"))
             allowed = self._domains(u.part)
             if u.part and dom and allowed and dom not in allowed:
-                warnings.append(f"파일 분야 ≠ 담당 부서: {fname} {u.sw_id} → '{dom}'")
+                warnings.append(f"파일 분야 ≠ 담당 부서: {fname} {self._q(u.sw_id)} → '{self._q(dom)}'")
                 rep.warnings += 1
             for slot, r in rawvals.items():
-                warnings.append(f"{cols_u[slot].header.rstrip(' *')} 정수 변환 실패: {fname} {u.sw_id} '{r}' — 원문 보존")
+                warnings.append(f"{cols_u[slot].header.rstrip(' *')} 정수 변환 실패: {fname} {self._q(u.sw_id)} '{self._q(r)}' — 원문 보존")
                 rep.warnings += 1
             by_id[k] = u
             usages.append(u)
@@ -1099,18 +1213,19 @@ class Loader:
             if _blank(raw.get("owner_source_key")) and fill_down and prev_id is not None and prev_n == n - 1:
                 # 같은 툴의 입출력을 여러 행에 적으며 첫 행에만 ID 를 적은 경우 (Leo 2026-10-09) — 바로 위 행과 붙어 있을 때만
                 raw = {**raw, "owner_source_key": prev_id}
-                warnings.append(f"Tool ID 이어받음: {fname} {IO_SHEET} '{nfc_strip(raw.get('data_name'))}' → '{nfc_strip(prev_id)}' (바로 위 행)")
+                warnings.append(f"Tool ID 이어받음: {fname} {IO_SHEET} '{self._q(nfc_strip(raw.get('data_name')))}' → "
+                                f"'{self._q(nfc_strip(prev_id))}' (바로 위 행)")
                 rep.warnings += 1
             if _blank(raw.get("owner_source_key")):
                 prev_n = prev_id = None
-                warnings.append(f"SW ID 없는 내용 행: {fname} {IO_SHEET} '{nfc_strip(raw.get('data_name'))}' — 건너뜀")
+                warnings.append(f"SW ID 없는 내용 행: {fname} {IO_SHEET} '{self._q(nfc_strip(raw.get('data_name')))}' — 건너뜀")
                 rep.warnings += 1
                 exclude(IO_SHEET, n, "SW ID 없음 (I22)")
                 self._issue(rep, IO_SHEET, n, "", "Tool ID", None, "Tool ID 없음",
                             "이 입출력이 어느 Tool 것인지 Tool ID 를 적어 주세요")
                 continue
             prev_n, prev_id = n, raw.get("owner_source_key")
-            where = f"{fname} {IO_SHEET} {cell_key(raw.get('owner_source_key'))} '{cell_key(raw.get('data_name'))}'"
+            where = f"{fname} {IO_SHEET} {self._q(cell_key(raw.get('owner_source_key')))} '{self._q(cell_key(raw.get('data_name')))}'"
             v = {}
             for slot, val in raw.items():
                 v[slot], _ = self._convert(cols_i[slot], val, where, warnings, rep, n, raw.get("owner_source_key"))
@@ -1122,15 +1237,15 @@ class Loader:
             dval = nfc_strip(v.get("direction"))
             x = IORec(fname, rep.field, n, v, owner, self.dir_short.get(dval, "?"), near_example=near)
             if owner is None:
-                warnings.append(f"고아 입출력: {fname} SW ID '{sw}' ({x.name}) — SW기본정보에 없음")
+                warnings.append(f"고아 입출력: {fname} SW ID '{self._q(sw)}' ({self._q(x.name)}) — SW기본정보에 없음")
                 rep.warnings += 1
                 self._issue(rep, IO_SHEET, n, sw, "Tool ID", sw, "Tool ID 가 기본정보에 없음",
                             "Tool 기본정보 시트의 Tool ID 와 똑같이 적어 주세요")
             elif owner.sw_id != sw:
-                warnings.append(f"Tool ID 표기 차이: {fname} '{sw}' → '{owner.sw_id}' 로 연결")
+                warnings.append(f"Tool ID 표기 차이: {fname} '{self._q(sw)}' → '{self._q(owner.sw_id)}' 로 연결")
                 rep.warnings += 1
             if dval and x.direction_short == "?":                      # #11 방향을 못 읽으면 연결 계산에서 빠진다
-                warnings.append(f"방향 값 인식 못 함: {where} '{dval}' — 연결 계산에서 빠짐 (config/value_aliases.yaml 로 대응)")
+                warnings.append(f"방향 값 인식 못 함: {where} '{self._q(dval)}' — 연결 계산에서 빠짐 (config/value_aliases.yaml 로 대응)")
                 rep.warnings += 1
             x.exts, x.inhouse, x.bad_ext = self.norm.extensions(v.get("extensions_raw"))
             self._check_extensions(rep, x, n, sw, cols_i["extensions_raw"].header, warnings)
@@ -1184,7 +1299,7 @@ class Loader:
         prefix = self.renames.get(prefix, prefix)
         if prefix in {self.renames.get(p, p) for p in self.bundles[rep.field]}:
             return prefix
-        warnings.append(f"묶음 파일 파트 미정: {rep.name} {nfc_strip(tool_id)} — Tool ID 앞부분이 {self.bundles[rep.field]} 가 아님, "
+        warnings.append(f"묶음 파일 파트 미정: {rep.name} {self._q(nfc_strip(tool_id))} — Tool ID 앞부분이 {self.bundles[rep.field]} 가 아님, "
                         f"'{rep.field}' 로 적재")
         rep.warnings += 1
         self._issue(rep, USAGE_SHEET, row, tool_id, "Tool ID", tool_id, "묶음 파일 파트 미정",
@@ -1205,10 +1320,10 @@ class Loader:
         masked = self._looks_person(raw)
         multi = self.norm.unknown_compound(x.exts)
         if x.bad_ext:
-            warnings.append(f"확장자 매핑 실패: {rep.name} {sw} '{self._q(x.name)}' 토큰 {PERSON_MASK if masked else x.bad_ext} — 원문 보존")
+            warnings.append(f"확장자 매핑 실패: {rep.name} {self._q(sw)} '{self._q(x.name)}' 토큰 {PERSON_MASK if masked else x.bad_ext} — 원문 보존")
             rep.warnings += 1
         if multi:
-            warnings.append(f"확장자 다중 점 확인: {rep.name} {sw} '{self._q(x.name)}' 토큰 {PERSON_MASK if masked else multi} — 그대로 사용 "
+            warnings.append(f"확장자 다중 점 확인: {rep.name} {self._q(sw)} '{self._q(x.name)}' 토큰 {PERSON_MASK if masked else multi} — 그대로 사용 "
                             "(묶음 확장자면 extensions.yaml compound_extensions 에 추가)")
             rep.warnings += 1
         hints = []
@@ -1322,7 +1437,7 @@ class Loader:
                 raw_keys[id(u)] = amap.get(k) or amap.get(kn) or k
                 continue
             k = f"{GENERIC_KEY_PREFIX}{u.field}/{u.reg_key}"              # 범용·빈 이름 — 파일 간 충돌 행은 구분 꼬리까지 (I34·I36)
-            warnings.append(f"툴 이름 범용/비어 있음: {u.file} {u.sw_id} — 통합하지 않고 행별 툴로 둠 (툴 이름 요청)")
+            warnings.append(f"툴 이름 범용/비어 있음: {u.file} {self._q(u.sw_id)} — 통합하지 않고 행별 툴로 둠 (툴 이름 요청)")
             rep = (reports or {}).get(u.file)
             if rep is not None:
                 rep.warnings += 1
@@ -1339,7 +1454,7 @@ class Loader:
             k = raw_keys[id(u)]
             if k in absorb:
                 survivor = absorb[k]
-                warnings.append(f"제조사 접두 흡수: {u.file} {u.sw_id} '{k}' → '{survivor}' ({reasons[k]})")
+                warnings.append(f"제조사 접두 흡수: {u.file} {self._q(u.sw_id)} '{self._q(k)}' → '{self._q(survivor)}' ({reasons[k]})")
                 amap.setdefault(k, survivor)                     # 레지스트리의 옛 행(k)이 통합됨으로 바뀌게 (rdf_writer)
                 if k in labels and survivor not in labels:
                     labels[survivor] = labels[k]
@@ -1418,6 +1533,11 @@ class Loader:
         s = "" if s is None else str(s)
         return PERSON_MASK if self._looks_person(s) else s
 
+    def _names(self, group: ToolGroup) -> list[str]:
+        """검토표·load_log 통합 후보의 보고 이름(표기 칸) — 인명 유사 이름은 PERSON_MASK (C5 '검토표 표기 칸도 가림'; apply-review 는 표기 칸을 읽지 않는다).
+        키 칸은 apply-review 가 쓰므로 그대로 (키는 공백·괄호가 빠져 인명 패턴에 거의 걸리지 않는다)."""
+        return [self._q(n) for n in group.names]
+
     def _resolve_partners(self, ios, usages, tools, amap, warnings: list) -> None:
         """연계 SW명 → 툴 (I1): 키가 같거나, 조사에 나온 제조사명(범용 제조사 제외)을 앞에서 뗀 키가 같으면 그 툴.
         사람 이름처럼 보이는 표기는 조사 누락 후보에 올리지 않는다 (#20-2)."""
@@ -1466,7 +1586,7 @@ class Loader:
                 if contains or r >= th or prefix:
                     out.append({"a": a, "b": b, "similarity": round(r, 3),
                                 "reason": "제조사 접두" if prefix else "포함" if contains else "유사도",
-                                "names_a": tools[a].names, "names_b": tools[b].names})
+                                "names_a": self._names(tools[a]), "names_b": self._names(tools[b])})
         return out
 
     def _partner_review(self, summary: dict[str, dict], tools: dict, amap: dict) -> list[dict]:
@@ -1497,7 +1617,7 @@ class Loader:
             strong = [s for s in scored if s[2] or -s[0] >= th]
             a = strong[0][1] if strong else ""
             out.append({"a": a, "b": k, "similarity": -strong[0][0] if strong else None,
-                        "reason": "연계SW 미해석", "names_a": tools[a].names if a else [],
+                        "reason": "연계SW 미해석", "names_a": self._names(tools[a]) if a else [],
                         "mentions": e["mentions"], "fields": e["fields"],
                         "hints": [] if a else [(t, -r) for r, t, _c in scored if -r >= 0.5][:3]})
         return out
@@ -1572,7 +1692,7 @@ class Loader:
                 if seen[sig]:
                     x.seq = seen[sig]
                     x.suffix += f"#{x.seq}"
-                    warnings.append(f"완전 중복 입출력 행: {x.key} — 경고 후 순번")
+                    warnings.append(f"완전 중복 입출력 행: {self._q(x.key)} — 경고 후 순번")    # 키에 데이터명·연계 SW명 원문이 든다
                     reports[x.file].warnings += 1
                 seen[sig] += 1
 

@@ -21,7 +21,7 @@ from pathlib import Path
 from engenius_onto.config import (CONFIG_DIR, REAL_CONFIG_DIR, REPO_ROOT, check_aliases_shape, config_where, default_overlay_dir,
                                   installed_version, read_csv_rows, read_yaml)
 from engenius_onto.loader import LoadResult, Loader
-from engenius_onto.normalize import link_root as _root, merge_keys_from_pairs, nfc_strip, read_merge_pairs
+from engenius_onto.normalize import GENERIC_KEY_PREFIX, link_root as _root, merge_keys_from_pairs, nfc_strip, read_merge_pairs
 from engenius_onto.rdf_writer import SchemaTerms, SurveyWriter
 from engenius_onto.registry import ACTIVE, Registry, registry_lock
 
@@ -94,7 +94,8 @@ def _csv_safe(v) -> str:
 def write_review(path: Path, res: LoadResult) -> None:
     """툴 통합 검토표 (6.1-5). 통합 후보 행(I23·제조사 접두 보류) 뒤에 연계 행(사유 '연계SW 미해석', docs/09 #17 — Loader._partner_review).
     연계 행: 툴A_키 = 기존 툴 키 제안(비슷한 툴이 뚜렷할 때만, 아니면 빈칸 + 툴A_표기에 비슷한 키 힌트), 툴B_키 = 해석 못 한 연계 키,
-    툴B_표기 = 언급 수·파트 (원문 partner_raw 는 쓰지 않는다). 표기 칸은 _csv_safe (엑셀 수식 방지)."""
+    툴B_표기 = 언급 수·파트 (원문 partner_raw 는 쓰지 않는다). 표기 칸은 _csv_safe (엑셀 수식 방지). 보고 이름(names_a·names_b)은 적재기가
+    인명 유사면 PERSON_MASK 로 가려 넘긴다 (Loader._names, C5)."""
     with path.open("w", encoding="utf-8-sig", newline="") as f:          # 엑셀에서 바로 열리도록 BOM
         w = csv.writer(f, lineterminator="\n")
         w.writerow(REVIEW_COLUMNS)
@@ -167,14 +168,23 @@ def _drop_if_empty(path: Path) -> None:
 
 def _apply_part_renames(reg: Registry, renames: dict[str, str], warnings: list) -> None:
     """약칭 개명 (docs/09 #25b, parts.yaml renamed_from): 레지스트리 분야 키를 옛 → 새로 — FLD ID 가 그대로라 툴사용 키 (FLD ID, Tool ID)와
-    입출력 해시도 그대로다. 옛·새 키 행이 둘 다 있으면(개명 설정 없이 한 번 적재한 뒤) 손대지 않고 경고. 약칭은 설정 값이라 그대로 인용한다."""
+    입출력 해시도 그대로다. 옛·새 키 행이 둘 다 있으면(개명 설정 없이 한 번 적재한 뒤) 손대지 않고 경고. 약칭은 설정 값이라 그대로 인용한다.
+    범용·빈 이름 툴의 행별 키 '미상:<파트>/<Tool ID>' (I34)는 파트 약칭을 품고 있어 툴 표의 키 접두도 옛 → 새로 바꾼다 — TOOL ID 유지
+    (2026-10-12 검토 수리; 새 키 행이 이미 있으면 그 툴만 보류 경고). 분야 키가 보류면 툴 키도 손대지 않는다."""
     for old, new in sorted(renames.items()):
         status, old_id, new_id = reg.rekey("field", old, new)
+        moved, held = ([], []) if status == "conflict" else reg.rekey_prefix("tool", f"{GENERIC_KEY_PREFIX}{old}/", f"{GENERIC_KEY_PREFIX}{new}/")
+        tools = f", 범용 이름 툴 {len(moved)}개 키 '{GENERIC_KEY_PREFIX}{old}/…' → '{GENERIC_KEY_PREFIX}{new}/…' (TOOL ID 유지)" if moved else ""
         if status == "rekeyed":
-            warnings.append(f"파트 약칭 개명 반영: {old} → {new} ({old_id} 유지 — 툴사용·입출력 ID 도 유지)")
+            warnings.append(f"파트 약칭 개명 반영: {old} → {new} ({old_id} 유지 — 툴사용·입출력 ID 도 유지{tools})")
         elif status == "conflict":
             warnings.append(f"파트 약칭 개명 보류: '{old}'({old_id})·'{new}'({new_id}) 가 레지스트리에 둘 다 있음 — 개명 전 레지스트리 사본으로 "
                             "되돌린 뒤 다시 적재 (사본이 없으면 README_offline 6장 '파트 약칭을 바꿀 때'; 새 ID 로 계속 가려면 renamed_from 을 지운다)")
+        elif moved:
+            warnings.append(f"파트 약칭 개명 반영: {old} → {new}{tools}")
+        if held:
+            warnings.append(f"범용 이름 툴 키 개명 보류: {', '.join(held)} — '{GENERIC_KEY_PREFIX}{new}/…' 키 행이 이미 있어 옛 키 '{GENERIC_KEY_PREFIX}{old}/…' "
+                            "그대로 (그 툴은 새 TOOL ID 로 간다 — 옛 ID 를 살리려면 개명 전 레지스트리 사본으로 되돌린 뒤 다시 적재)")
 
 
 def _part_turnover(reg: Registry, loader: Loader, warnings: list) -> None:
