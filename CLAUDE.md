@@ -47,6 +47,17 @@
 - `reference/SW조사양식_EnGenius_v1.0.xlsx` — 원본 양식 (합성 데이터 생성의 틀)
 - `reference/엔진개발_지식스키마_v0.2.md` — 상위 스키마 원칙 (URI 정책, 조직 노드, provenance, 보안)
 
+## 관련 저장소 (2026-10-23) — 각 작업은 그 폴더를 연 세션에서
+
+| 저장소 | 무엇 | 상태 |
+|---|---|---|
+| `C:\EnGenius\engenius-workflow-ontology` (GitHub `aerogyu/En-genius-Workflow-Ontology`) | 개념설계 워크플로 온톨로지 — 분야별 YAML 을 손으로 쓰고 build 가 TTL·계약 JSON Schema·그림. 이 저장소의 툴을 TOOL ID 로 참조(읽기만, 4술어) | W0·W1 완료, ★Leo 확인 ① 중 |
+| `C:\EnGenius\engenius-data-inventory` (GitHub `aerogyu/En-genius-Data-Inventory`) | 조직 자료 보유 현황 1차 조사(파트 21) — 양식 생성기·취합 검사기. 이 저장소의 `config/parts.yaml` 을 읽는다(같은 부모 폴더) | 양식 v0.2 초안 게시, Leo 확인 대기 |
+| `C:\EnGenius\HAS-En-Genius-MCP-Factory` (org 저장소, 브랜치 dev/4) | 플랫폼 MCP 서버 모음 — 이 저장소의 MCP 서버를 얇은 어댑터로 붙일 곳 | 별도 세션 |
+
+**이 저장소는 2026-10-19 부터 잠시 쉼** (Leo — 워크플로 온톨로지·자료 조사 먼저). 다시 시작하면: 사내 `a3e4e0f_to_d50da9e` 적용·재적재 diag 확인 → **M4** (설계는 Fable 권장).
+이 저장소의 `config/parts.yaml` 은 자료 조사 저장소가 읽으므로 약칭을 바꾸면 그쪽도 확인한다.
+
 ## 현재 상태
 
 - [x] M0 환경·골격 (2026-09-24 — help 동작 / Fuseki 6.2.0·5.6.0 에 engenius 데이터셋 기동 / pytest 21 통과·skip 0)
