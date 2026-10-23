@@ -3,7 +3,7 @@
 연습용 패키지 v0.1 (2026-09-29) + 업데이트(6-1장). **M3.1 판(`1874bc7` 이후)부터 실데이터 적재 가능** — 6장.
 그 전 판(`2d6e8c6`·`f3a4f55`)으로는 합성 데이터 연습만 한다 (양식 v1.1 을 못 읽고 인명 보호가 없다).
 
-**받는 곳**: GitHub 비공개 저장소 `aerogyu/En-genius-Ontology` 의 **`import-package` 브랜치** — 파일을 하나씩 열어 `Download`(원본 받기).
+**받는 곳**: GitHub 비공개 저장소 `aerogyu/En-genius-Tool-Ontology` 의 **`import-package` 브랜치** — 파일을 하나씩 열어 `Download`(원본 받기).
 큰 zip 은 Git LFS 로 올라가 있어 브랜치 전체 'Download ZIP' 으로는 알맹이가 안 받아진다 — 파일마다 받는다.
 
 ## 0. 이 패키지로 할 수 있는 것
